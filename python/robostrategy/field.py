@@ -12,8 +12,8 @@ import numpy as np
 import fitsio
 import matplotlib.pyplot as plt
 
-import robostrategy.cadence as cadence
-import robostrategy.robot as robot
+import roboscheduler.cadence as cadence
+import observesim.robot as robot
 
 __all__ = ['Field']
 
