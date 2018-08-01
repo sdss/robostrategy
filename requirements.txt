@@ -1,7 +1,8 @@
 
-# numpy
+numpy
 # astropy
 pyyaml
 pygments
+matplotlib
 sdss-tree>=2.15.2
 sdss-access>=0.2.3
