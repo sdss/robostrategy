@@ -1,0 +1,133 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: field_assign_gg
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.field as field
+import observesim.db.peewee.targetdb as targetdb
+
+
+def get_targets(racen=None, deccen=None, radius=1.49):
+    ramin = racen - radius / np.cos(deccen * np.pi / 180.)
+    ramax = racen + radius / np.cos(deccen * np.pi / 180.)
+    decmin = deccen - radius
+    decmax = deccen + radius
+
+    nt = targetdb.Target.select(targetdb.Target.ra,
+                                targetdb.Target.dec,
+                                targetdb.Program.label).where(targetdb.Target.ra.between(ramin, ramax) &
+                                                                 targetdb.Target.dec.between(decmin, decmax)).join(targetdb.Program).count()
+    ts = targetdb.Target.select(targetdb.Target.ra,
+                                targetdb.Target.dec,
+                                targetdb.Program.label).where(targetdb.Target.ra.between(ramin, ramax) &
+                                                                 targetdb.Target.dec.between(decmin, decmax)).join(targetdb.Program).dicts()
+
+    target_type = ['apogee'] * nt
+
+    ra = np.zeros(nt, dtype=np.float64)
+    dec = np.zeros(nt, dtype=np.float64)
+    program = [''] * nt
+    for indx, t in zip(np.arange(nt), ts):
+        ra[indx] = t['ra']
+        dec[indx] = t['dec']
+        program[indx] = t['label']
+    program = np.array(program)
+
+    target0 = [('targetid', np.int32),
+               ('ra', np.float64),
+               ('dec', np.float64),
+               ('cadence', 'a10'),
+               ('type', 'a10')]
+    targets = np.zeros(nt, dtype=target0)
+    targets['targetid'] = np.arange(nt)
+    targets['ra'] = ra
+    targets['dec'] = dec
+    targets['cadence'] = ['single' for t in target_type]
+    targets['type'] = [str(t) for t in target_type]
+
+    iprogram = np.where(program == 'Disco')[0]
+
+    return(targets[iprogram])
+
+
+def initialize_cadences(ncadence=None):
+    cadencelist = cadence.CadenceList()
+    cadencelist.reset()
+    cadencelist.add_cadence(name='single',
+                            nexposures=1,
+                            delta=[0.],
+                            delta_min=[0.],
+                            delta_max=[0.],
+                            lunation=[1.],
+                            instrument=['apogee'])
+    n = ncadence
+    cadencelist.add_cadence(name='repeat-n', nexposures=n,
+                            delta=[-1.] * n,
+                            delta_min=[-1.] * n,
+                            delta_max=[-1.] * n,
+                            lunation=[-1.] * n,
+                            instrument=['apogee'] * n)
+    return()
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-r', '--racen', dest='racen',
+                        type=np.float64, help='ra center')
+    parser.add_argument('-d', '--deccen', dest='deccen',
+                        type=np.float64, help='dec center')
+    parser.add_argument('-n', '--ncadence', dest='ncadence',
+                        type=np.int32, help='max number of cadences',
+                        default=100)
+
+    args = parser.parse_args()
+
+    initialize_cadences(ncadence=args.ncadence)
+
+    targets = get_targets(racen=args.racen, deccen=args.deccen)
+    values = np.ones(len(targets))
+
+    f = field.Field(racen=args.racen, deccen=args.deccen)
+    f.targets_fromarray(targets)
+    f.field_cadence = 'repeat-n'
+    f.assign()
+
+    field0 = [('fieldid', np.int32),
+              ('racen', np.float64),
+              ('deccen', np.float64),
+              ('ntargets', np.int32),
+              ('ngot', np.int32, args.ncadence),
+              ('valuegot', np.float32, args.ncadence)]
+    field = np.zeros(1, dtype=field0)
+    field['racen'][0] = args.racen
+    field['deccen'][0] = args.deccen
+    field['ntargets'][0] = len(targets)
+    for indx in np.arange(args.ncadence, dtype=np.int32) + 1:
+        igot = np.where(f.assignments[:, 0:indx] >= 0)
+        tgot = f.assignments[igot]
+        field['ngot'][0][indx - 1] = igot[0].size
+        field['valuegot'][0][indx - 1] = values[tgot].sum()
+    fitsio.write('test.fits', field, clobber=True)
+
+    plt.savefig('test.png', dpi=150)

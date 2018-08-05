@@ -112,17 +112,22 @@ class Field(object):
         dec = self.deccen + (y / scale)
         return(ra, dec)
 
-    def read_targets(self, filename=None):
-        self.target_fits = fitsio.read(filename)
-        self.ntarget = len(self.target_fits)
-        self.target_ra = self.target_fits['ra']
-        self.target_dec = self.target_fits['dec']
+    def targets_fromarray(self, target_array):
+        self.target_array = target_array
+        self.ntarget = len(self.target_array)
+        self.target_ra = self.target_array['ra']
+        self.target_dec = self.target_array['dec']
         self.target_x, self.target_y = self.radec2xy(self.target_ra,
                                                      self.target_dec)
         self.target_cadence = np.array([c.decode().strip()
-                                        for c in self.target_fits['cadence']])
+                                        for c in self.target_array['cadence']])
         self.target_type = np.array([t.decode().strip()
-                                     for t in self.target_fits['type']])
+                                     for t in self.target_array['type']])
+        return
+
+    def targets_fromfits(self, filename=None):
+        target_array = fitsio.read(filename)
+        self.targets_fromarray(target_array)
         return
 
     def plot(self, epochs=None):
@@ -130,7 +135,7 @@ class Field(object):
             epochs = np.arange(self.assignments.shape[1])
         else:
             epochs = self._arrayify(epochs, dtype=np.int32)
-        colors = ['black', 'red', 'green', 'blue', 'cyan', 'purple']
+        colors = ['black', 'green', 'blue', 'cyan', 'purple']
         plt.scatter(self.robot.xcen, self.robot.ycen, s=3, color='black')
         plt.scatter(self.target_x, self.target_y, s=3, color='red')
         for irobot in np.arange(self.assignments.shape[0]):
@@ -151,19 +156,25 @@ class Field(object):
         got_target = np.zeros(self.ntarget, dtype=np.int32)
         ok_cadence = dict()
         for curr_cadence in np.unique(self.target_cadence):
-            ok_cadence[curr_cadence] = self.cadencelist.cadence_consistency(curr_cadence, self.field_cadence, return_solutions=False)
+            ok = self.cadencelist.cadence_consistency(curr_cadence, self.field_cadence, return_solutions=False)
+            ok_cadence[curr_cadence] = (ok |
+                                        (self.cadencelist.cadences[curr_cadence].nepochs == 1))
         ok = [ok_cadence[tcadence] for tcadence in self.target_cadence]
         iok = np.where(np.array(ok))[0]
         if(len(iok) == 0):
             return
+        target_requires_apogee = np.array([self.cadencelist.cadences[c].requires_apogee
+                                           for c in self.target_cadence],
+                                          dtype=np.int8)
+        target_requires_boss = np.array([self.cadencelist.cadences[c].requires_boss
+                                         for c in self.target_cadence],
+                                        dtype=np.int8)
         for indx in np.arange(self.robot.npositioner):
             positionerid = self.robot.positionerid[indx]
             ileft = np.where(got_target[iok] == 0)[0]
             if(len(ileft) > 0):
-                requires_apogee = np.array([self.cadencelist.cadences[c].requires_apogee
-                                            for c in self.target_cadence[iok[ileft]]])
-                requires_boss = np.array([self.cadencelist.cadences[c].requires_boss
-                                          for c in self.target_cadence[iok[ileft]]])
+                requires_apogee = target_requires_apogee[iok[ileft]]
+                requires_boss = target_requires_boss[iok[ileft]]
                 it = self.robot.targets(positionerid=positionerid,
                                         x=self.target_x[iok[ileft]],
                                         y=self.target_y[iok[ileft]],
