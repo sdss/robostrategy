@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: field_assign_gg
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import robostrategy.slots
+import roboscheduler.scheduler
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument("-t", "--telescope", dest="telescope", type=str,
+                        required=False, help="telescope ('apo' or 'lco')",
+                        default='apo')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.telescope
+    airmass_limit = 1.4
+    airmass_pad = 0.2
+
+    slots_base = '{plan}-slots-{obs}.fits'.format(plan=plan, obs=observatory)
+    slots_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                              'allocations', args.plan, slots_base)
+    slots = robostrategy.slots.Slots(observatory=observatory)
+    slots.fromfits(filename=slots_file)
+
+    options_base = '{plan}-options-{observatory}.fits'
+    options_base = options_base.format(plan=args.plan, observatory=observatory)
+    options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                'allocations', plan, options_base)
+    field_options = fitsio.read(options_file)
+    nfields = len(field_options)
+
+    field_slots_dtype = [('fieldid', np.int32),
+                         ('racen', np.float64),
+                         ('deccen', np.float64),
+                         ('slots', np.int32, (slots.nlst,
+                                              slots.nlunation))]
+    field_slots = np.zeros(nfields, dtype=field_slots_dtype)
+    field_slots['fieldid'] = field_options['fieldid']
+    field_slots['racen'] = field_options['racen']
+    field_slots['deccen'] = field_options['deccen']
+
+    observer = roboscheduler.scheduler.Observer(observatory=observatory)
+    for ilst in np.arange(slots.nlst):
+        clst = (np.float32(ilst) + 0.5) / np.float32(slots.nlst) * 360.
+        lst = np.zeros(nfields, dtype=np.float32) + clst
+        ha = observer.ralst2ha(ra=field_options['racen'], lst=lst)
+        (alt, az) = observer.hadec2altaz(ha=ha,
+                                         dec=field_options['deccen'],
+                                         lat=observer.latitude)
+        (alt_max, az_tmp) = observer.hadec2altaz(ha=np.zeros(nfields),
+                                                 dec=field_options['deccen'],
+                                                 lat=observer.latitude)
+        airmass = observer.alt2airmass(alt=alt)
+        airmass_min = observer.alt2airmass(alt=alt_max)
+        iok = np.where((alt > 0) & ((airmass < airmass_limit) |
+                                    (airmass < airmass_min + airmass_pad)))[0]
+        for ilunation in np.arange(slots.nlunation):
+            field_slots['slots'][iok, ilst, ilunation] = 1
+
+    slots_base = '{plan}-field-slots-{observatory}.fits'
+    slots_base = slots_base.format(plan=args.plan, observatory=observatory)
+    slots_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                              'allocations', plan, slots_base)
+    fitsio.write(slots_file, field_slots, clobber=True)
