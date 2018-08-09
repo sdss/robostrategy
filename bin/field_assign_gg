@@ -93,41 +93,62 @@ if __name__ == '__main__':
         prog=os.path.basename(sys.argv[0]),
         description='Field assignment test for Galactic Genesis')
 
-    parser.add_argument('-r', '--racen', dest='racen',
-                        type=np.float64, help='ra center')
-    parser.add_argument('-d', '--deccen', dest='deccen',
-                        type=np.float64, help='dec center')
     parser.add_argument('-n', '--ncadence', dest='ncadence',
                         type=np.int32, help='max number of cadences',
                         default=100)
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+    parser.add_argument('-t', '--telescope', dest='telescope',
+                        type=str, help='north or south',
+                        choices=['apo', 'lco'])
 
     args = parser.parse_args()
 
     initialize_cadences(ncadence=args.ncadence)
 
-    targets = get_targets(racen=args.racen, deccen=args.deccen)
-    values = np.ones(len(targets))
+    fields_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                               'plans', args.plan,
+                               '{plan}-fields-{telescope}.fits'.format(plan=args.plan,
+                                                                       telescope=args.telescope))
+    fields_array = fitsio.read(fields_file)
 
-    f = field.Field(racen=args.racen, deccen=args.deccen)
-    f.targets_fromarray(targets)
-    f.field_cadence = 'repeat-n'
-    f.assign()
+    assign_dtype = [('fieldid', np.int32),
+                    ('racen', np.float64),
+                    ('deccen', np.float64),
+                    ('ntargets', np.int32),
+                    ('ngot', np.int32, args.ncadence),
+                    ('valuegot', np.float32, args.ncadence)]
 
-    field0 = [('fieldid', np.int32),
-              ('racen', np.float64),
-              ('deccen', np.float64),
-              ('ntargets', np.int32),
-              ('ngot', np.int32, args.ncadence),
-              ('valuegot', np.float32, args.ncadence)]
-    field = np.zeros(1, dtype=field0)
-    field['racen'][0] = args.racen
-    field['deccen'][0] = args.deccen
-    field['ntargets'][0] = len(targets)
-    for indx in np.arange(args.ncadence, dtype=np.int32) + 1:
-        igot = np.where(f.assignments[:, 0:indx] >= 0)
-        tgot = f.assignments[igot]
-        field['ngot'][0][indx - 1] = igot[0].size
-        field['valuegot'][0][indx - 1] = values[tgot].sum()
-    fitsio.write('test.fits', field, clobber=True)
+    assign_array = np.zeros(len(fields_array), dtype=assign_dtype)
 
-    plt.savefig('test.png', dpi=150)
+    for fields_entry, assign_entry in zip(fields_array, assign_array):
+        fieldid = fields_entry['fieldid']
+        if((fieldid % 10) == 0):
+            print(fieldid)
+        targets = get_targets(racen=fields_entry['racen'],
+                              deccen=fields_entry['deccen'],
+                              radius=fields_entry['radius'])
+
+        values = np.ones(len(targets))
+
+        f = field.Field(racen=fields_entry['racen'],
+                        deccen=fields_entry['deccen'])
+        f.targets_fromarray(targets)
+        f.field_cadence = 'repeat-n'
+        f.assign()
+
+        assign_entry['fieldid'] = fields_entry['fieldid']
+        assign_entry['racen'] = fields_entry['racen']
+        assign_entry['deccen'] = fields_entry['deccen']
+        assign_entry['ntargets'] = len(targets)
+        for indx in np.arange(args.ncadence, dtype=np.int32) + 1:
+            igot = np.where(f.assignments[:, 0:indx] >= 0)
+            tgot = f.assignments[igot]
+            assign_entry['ngot'][indx - 1] = igot[0].size
+            assign_entry['valuegot'][indx - 1] = values[tgot].sum()
+
+    options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                'allocations', args.plan,
+                                '{plan}-options-{telescope}.fits'.format(plan=args.plan,
+                                                                         telescope=args.telescope))
+    fitsio.write(options_file, assign_array, clobber=True)
