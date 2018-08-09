@@ -61,7 +61,7 @@ class AllocateLST(object):
          'fieldid' - field identifier
          'cadence' - cadence name
          'nfilled' - number of exposures allocated
-         'slots' - exposures allocated for each slot 
+         'slots' - exposures allocated for each slot
         (set by solve() method)
 
     Methods:
