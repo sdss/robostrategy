@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: field_assign_gg
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+from ortools.constraint_solver import pywrapcp
+
+
+def available_slots(field=None):
+    racen = field['racen']
+    nslots = 24
+    available = np.zeros(nslots, dtype=np.int32)
+    iavailable = np.int32(np.floor(racen / 15.))
+    available[iavailable] = 1
+    return(available)
+
+
+def allocation_dict(field=None):
+    alloc = dict()
+
+    if(field['ngot'].max() == 0):
+        cadences = [1]
+    else:
+        fgot = field['ngot'] / field['ngot'].max()
+        fgot_unique, iunique = np.unique(fgot, return_index=True)
+        indx = np.where(fgot_unique > 0.75)[0]
+        if(len(indx) > 0):
+            cadences = [int(iunique[i] + 1) for i in indx]
+        else:
+            cadences = [int(iunique[-1] + 1)]
+
+    cadences = cadences[0:1]
+    for cadence in cadences:
+        alloc[cadence] = dict()
+        alloc[cadence]['available'] = cadence * available_slots(field)
+        alloc[cadence]['value'] = cadence
+        alloc[cadence]['needed'] = cadence
+
+    return(alloc)
+
+
+def allocate_lst(fields=None):
+    nslots = 24
+
+    total = np.zeros(nslots, dtype=np.int32) + 4000
+
+    solver = pywrapcp.Solver("allocate_lst")
+
+    # Set up variables
+    for indx in np.arange(len(fields), dtype=np.int32):
+        field = fields[indx]
+        for cadence in field:
+            field[cadence]['var'] = dict()
+            for slot in np.arange(nslots, dtype=np.int32):
+                name = "{f}-{c}-{s}".format(f=indx, c=cadence, s=slot)
+                if(field[cadence]['available'][slot]):
+                    field[cadence]['var'][slot] = solver.IntVar(0, int(field[cadence]['available'][slot]), name)
+
+    # Constrain sum of each slot to be less than total
+    for slot in np.arange(nslots, dtype=np.int32):
+        vars = []
+        for field in fields:
+            for cadence in field:
+                if slot in field[cadence]['var']:
+                    vars.append(field[cadence]['var'][slot])
+        solver.Add(solver.Sum(vars) <= int(total[slot]))
+
+    # Constrain such that only one cadence is picked for each field,
+    # and track which cadence used for each field
+    field_value_vars = []
+    for field in fields:
+        all_field_cadence_used = []
+        for cadence in field:
+            field_cadence_used = solver.Sum(list(field[cadence]['var'].values())) > 0
+            field_value_vars.append(field_cadence_used * int(field[cadence]['value']))
+            var = solver.Sum(list(field[cadence]['var'].values()))
+            solver.Add(solver.Max(var == 0, var == field[cadence]['needed']) == 1)
+            all_field_cadence_used.append(field_cadence_used)
+        if(len(all_field_cadence_used) > 1):
+            solver.Add(solver.Sum(all_field_cadence_used) <= 1)
+
+    allvars = []
+    for slot in np.arange(nslots, dtype=np.int32):
+        for field in fields:
+            for cadence in field:
+                if slot in field[cadence]['var']:
+                    allvars.append(field[cadence]['var'][slot])
+
+    objective_expr = solver.IntVar(0, 10000000, "value")
+    solver.Add(objective_expr == solver.Sum(field_value_vars))
+    objective = solver.Maximize(objective_expr, 1)
+
+    db = solver.Phase(allvars, solver.CHOOSE_FIRST_UNBOUND,
+                      solver.ASSIGN_MIN_VALUE)
+
+    # Create a solution collector.
+    collector = solver.LastSolutionCollector()
+
+    # Add the decision variables.
+    for allvar in allvars:
+        collector.Add(allvar)
+
+    # Add the objective.
+    collector.AddObjective(objective_expr)
+
+    success = solver.Solve(db, [objective, collector])
+
+    best_solution = collector.SolutionCount() - 1
+    fieldslot = np.zeros((len(fields), nslots), dtype=np.float32)
+    for slot in np.arange(nslots, dtype=np.int32):
+        for indx, field in zip(np.arange(len(fields), dtype=np.int32), fields):
+            for cadence in field:
+                if slot in field[cadence]['var']:
+                    if(collector.Value(best_solution, field[cadence]['var'][slot])):
+                        fieldslot[indx, slot] = fieldslot[indx, slot] + field[cadence]['value']
+
+    #for var in allvars:
+        #print(str(var) + " " + str(collector.Value(best_solution, var)))
+
+    print("Objective value:", collector.ObjectiveValue(best_solution))
+    return(fieldslot)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+    parser.add_argument('-s', '--hemisphere', dest='hemisphere',
+                        type=str, help='north or south',
+                        choices=['north', 'south'])
+
+    args = parser.parse_args()
+
+    options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                'allocations', args.plan,
+                                '{plan}-options-{hemisphere}.fits'.format(plan=args.plan,
+                                                                         hemisphere=args.hemisphere))
+    field_options = fitsio.read(options_file)
+
+    np.random.seed(100)
+    np.random.shuffle(field_options)
+    field_options = field_options[0:500]
+
+    fields = [dict()] * len(field_options)
+    for indx in np.arange(len(field_options), dtype=np.int32):
+        fields[indx] = allocation_dict(field_options[indx])
+
+    fieldslot = allocate_lst(fields)
+    fitsio.write('test.fits', fieldslot, clobber=True)
