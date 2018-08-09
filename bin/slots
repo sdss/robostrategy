@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 7, 2018
+# @Filename: field_assign_gg
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+import sys
+import argparse
+import numpy as np
+import robostrategy.slots
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument("-t", "--telescope", dest="telescope", type=str,
+                        required=False, help="telescope ('apo' or 'lco')",
+                        default='apo')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.telescope
+
+    slots = robostrategy.slots.Slots(observatory=observatory)
+    slots.fill()
+    slots_base = '{plan}-slots-{obs}.fits'.format(plan=plan, obs=observatory)
+    slots_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                              'allocations', args.plan, slots_base)
+    slots.tofits(filename=slots_file)
