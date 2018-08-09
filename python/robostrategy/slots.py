@@ -1,0 +1,175 @@
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: field_assign_gg
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import numpy as np
+import fitsio
+import roboscheduler.scheduler
+
+
+class Slots(object):
+    """Slots of time, in LST and lunation
+
+    Parameters:
+    ----------
+
+    nlst : int, np.int32
+        number of LST bins (default 24)
+
+    lunation : list of float or np.float32
+        edges of lunation bins (N+1 length for N lunation bins; default 
+        [0., 0.35, 1.])
+
+    observatory : str
+        observatory to calculate slots for, 'apo' or 'lco' (default 'apo')
+
+    duration : float, np.float32
+        duration of a single nominal exposures, in hours (default 18. / 60.)
+
+    Attributes:
+    ----------
+
+    nlst : int, np.int32
+        number of LST bins
+
+    lunation : list of float or np.float32
+        edges of lunation bins (N+1 length for N lunation bins)
+
+    nlunation : int
+        number of lunation bins N
+
+    observatory : str
+        observatory to calculate slots for, 'apo' or 'lco'
+
+    duration : float, np.float32
+        duration of a single nominal exposures, in hours
+
+    fclear : float, np.float32
+        clear fraction to assume (0.5 for 'apo', 0.7 for 'lco')
+
+    slots : ndarray of np.float32
+        number of available hours in LST, lunation slots [nlst, nlunation],
+        created only when fill() is called
+
+    Methods:
+    -------
+
+    fill() : fills slots array with number of available hours
+    tofits() : write slots information in class to a FITS file
+    fromfits() : set object from information in a FITS file
+
+    Notes:
+    -----
+
+    fclear is not applied to the number of hours in slots. It is there
+    just as a place to set the assumption of clear hours. This perhaps
+    better lives in roboscheduler somewhere.
+
+"""
+    def __init__(self, nlst=24, lunation=[0., 0.35, 1.],
+                 observatory='apo', duration=18 / 60.):
+        self.nlst = nlst
+        self.lunation = np.array(lunation)
+        self.nlunation = len(lunation) - 1
+        self.observatory = observatory
+        if(self.observatory == 'apo'):
+            self.fclear = 0.5
+        if(self.observatory == 'lco'):
+            self.fclear = 0.7
+        self.duration = duration
+        return
+
+    def fill(self):
+        """Fill slots attribute with available hours
+
+        Notes:
+        ------
+
+        Sets the attribute slots to an ndarray of np.float32 with
+        shape (nlst, nlunation).
+
+        Uses roboscheduler to step through every night of the survey
+        and count the number of hours per LST and lunation. (Does NOT
+        apply the fclear factor).
+        """
+        self.slots = np.zeros((self.nlst, self.nlunation), dtype=np.float32)
+        scheduler = roboscheduler.scheduler.Scheduler(observatory=self.observatory)
+        for mjd in scheduler.mjds:
+            mjd_evening_twilight = scheduler.evening_twilight(mjd)
+            mjd_morning_twilight = scheduler.morning_twilight(mjd)
+            curr_mjd = mjd_evening_twilight
+            while(curr_mjd < mjd_morning_twilight and
+                  curr_mjd < scheduler.end_mjd()):
+                lst = scheduler.lst(curr_mjd)
+                lunation = scheduler.lunation(curr_mjd)
+                ilst = np.int32(np.floor((lst / 15. / 24.) * self.nlst))
+                ilunation = np.where((lunation >= self.lunation[0:-1]) &
+                                     (lunation <= self.lunation[1:]))[0][0]
+                self.slots[ilst, ilunation] = (self.slots[ilst, ilunation] +
+                                               self.duration)
+                curr_mjd = curr_mjd + self.duration / 24.
+        return
+
+    def tofits(self, filename=None):
+        """Write slots information to FITS file
+
+        Parameters:
+        ----------
+
+        filename : str
+            file name to write to
+
+        Notes:
+        ------
+
+        Will fail if the slots attribute has not yet been set.
+
+        Writes header keywords (NLST, DURATION, FCLEAR, OBSERVAT, NLUN,
+        and LUN0..LUN[NLUN+1]) with object attributes.
+
+        Writes slots attribute as a binary image.
+
+"""
+        hdr = dict()
+        hdr['NLST'] = self.nlst
+        hdr['DURATION'] = self.duration
+        hdr['FCLEAR'] = self.fclear
+        hdr['OBSERVAT'] = self.observatory
+        hdr['NLUN'] = self.nlunation
+        for indx in range(len(self.lunation)):
+            hdr['LUN{indx}'.format(indx=indx)] = self.lunation[indx]
+        fitsio.write(filename, self.slots, header=hdr, clobber=True)
+        return
+
+    def fromfits(self, filename=None):
+        """Read slots information from FITS file
+
+        Parameters:
+        ----------
+
+        filename : str
+            file name to read from
+
+        Notes:
+        ------
+
+        Assumes the FITS file is of the form written by the tofits()
+        method.
+"""
+        self.slots, hdr = fitsio.read(filename, ext=0, header=True)
+        self.nlst = hdr['NLST']
+        self.duration = hdr['DURATION']
+        self.fclear = hdr['FCLEAR']
+        self.observatory = hdr['OBSERVAT']
+        self.nlunation = hdr['NLUN']
+        self.lunation = np.zeros(self.nlunation + 1, dtype=np.float32)
+        for indx in range(len(self.lunation)):
+            self.lunation[indx] = hdr['LUN{indx}'.format(indx=indx)]
+        return()
