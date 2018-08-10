@@ -75,7 +75,7 @@ class AllocateLST(object):
     Notes:
     -----
 
-    This class applies a linear programming approach to allocating 
+    This class applies a linear programming approach to allocating
     field observations.
 
     The inputs are:
@@ -122,8 +122,25 @@ class AllocateLST(object):
     boundary, it often lands on a corner of the constraints, which
     is often an integer.
 
-    Nevertheless, for those cases where that is not true, 
+    Nevertheless, for those cases where that is not true, we do the
+    following.  For each field i, we sum up the linear programming
+    allocations for each cadence j:
 
+        C_ij = \sum_k w_ijk.
+
+    Then for each field i we pick randomly the cadence according to
+    probabilities defined by:
+
+        P_ij = C_ij / \sum_j C_ij
+
+    Then, we look at the total allocation of the field relative to the
+    needed allocation for the cadence:
+
+        \sum_{jk} w_ijk / A_ij
+
+    If this is greater than one, we accept the field, and if it is
+    less than one we take the field with probability equal to the above
+    ratio.
 """
     def __init__(self, slots=None, field_slots=None, field_options=None,
                  seed=100):
