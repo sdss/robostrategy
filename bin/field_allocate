@@ -76,3 +76,12 @@ if __name__ == '__main__':
                             'allocations', plan, png_base)
     allocate.plot_full()
     plt.savefig(png_file, dpi=150)
+    plt.clf()
+
+    png_base = '{plan}-allocate-{observatory}-radec.png'
+    png_base = png_base.format(plan=args.plan, observatory=observatory)
+    png_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                            'allocations', plan, png_base)
+    allocate.plot_fields()
+    plt.savefig(png_file, dpi=150)
+    plt.clf()
