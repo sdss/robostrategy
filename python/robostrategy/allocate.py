@@ -15,6 +15,11 @@ import collections
 import matplotlib.pyplot as plt
 from ortools.linear_solver import pywraplp
 
+try:
+    import mpl_toolkits.basemap as basemap
+except ImportError:
+    basemap = None
+
 
 class AllocateLST(object):
     """LST allocation object for robostrategy
@@ -162,6 +167,7 @@ class AllocateLST(object):
         of dictionaries that contains the information necessary to
         construct the linear programming problem.
 """
+        self.allocinfo = collections.OrderedDict()
         for field_option, field_slot in zip(self.field_options,
                                             self.field_slots):
             alloc = collections.OrderedDict()
@@ -170,7 +176,7 @@ class AllocateLST(object):
             else:
                 fgot = field_option['ngot'] / field_option['ngot'].max()
                 fgot_unique, iunique = np.unique(fgot, return_index=True)
-                indx = np.where(fgot_unique > 0.75)[0]
+                indx = np.where(fgot_unique > 0.5)[0]
                 if(len(indx) > 0):
                     cadences = [int(iunique[i] + 1) for i in indx]
                 else:
@@ -359,4 +365,31 @@ class AllocateLST(object):
         plt.plot(rahist, color='blue', linewidth=1)
         plt.xlabel('LST (hours)')
         plt.ylabel('Number of exposures')
+
+        return
+
+    def _convert_radec(self, m, ra, dec):
+        return m(((360. - ra) + 180.) % 360., dec, inverse=False)
+
+    def plot_fields(self):
+        """Plot the RA/Dec distribution of fields allocated
+"""
+        if basemap is None:
+            raise ImportError('basemap was not imported. Is it installed?')
+
+        m = basemap.Basemap(projection='moll', lon_0=270, resolution='c')
+
+        # draw parallels and meridians.
+        m.drawparallels(np.arange(-90., 120., 30.),
+                        linewidth=0.5,
+                        labels=[1, 0, 0, 0],
+                        labelstyle='+/-')
+        m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+        m.drawmapboundary()
+
+        ii = np.where(self.field_array['nfilled'] > 0)[0]
+        (xx, yy) = self._convert_radec(m, self.field_options['racen'][ii],
+                                       self.field_options['deccen'][ii])
+        plt.scatter(xx, yy, s=4, c=np.log10(self.field_array['nfilled'][ii]))
+
         return
