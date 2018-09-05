@@ -82,8 +82,18 @@ def initialize_cadences(ncadence=None):
                             delta=[-1.] * n,
                             delta_min=[-1.] * n,
                             delta_max=[-1.] * n,
-                            lunation=[-1.] * n,
+                            lunation=[1.] * n,
                             instrument=['apogee'] * n)
+
+    for indx in np.arange(ncadence) + 1:
+        cadencelist.add_cadence(name='repeat-{indx}'.format(indx=indx),
+                                nexposures=indx,
+                                delta=[-1.] * indx,
+                                delta_min=[-1.] * indx,
+                                delta_max=[-1.] * indx,
+                                lunation=[1.] * indx,
+                                instrument=['apogee'] * indx)
+
     return()
 
 
@@ -97,14 +107,23 @@ if __name__ == '__main__':
                         type=np.int32, help='max number of cadences',
                         default=100)
     parser.add_argument('-p', '--plan', dest='plan',
-                        type=str, help='name of plan')
+                        type=str, help='name of plan', required=True)
     parser.add_argument('-t', '--telescope', dest='telescope',
-                        type=str, help='north or south',
-                        choices=['apo', 'lco'])
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
 
     args = parser.parse_args()
 
     initialize_cadences(ncadence=args.ncadence)
+
+    cadencelist = cadence.CadenceList()
+    cadence_base = '{plan}-cadences-{telescope}.fits'
+    cadence_base = cadence_base.format(plan=args.plan,
+                                       telescope=args.telescope)
+    cadence_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                'allocations', args.plan, cadence_base)
+    cadence_array = cadencelist.toarray()
+    fitsio.write(cadence_file, cadence_array, clobber=True)
 
     fields_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
                                'plans', args.plan,
@@ -116,12 +135,14 @@ if __name__ == '__main__':
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('ntargets', np.int32),
-                    ('ngot', np.int32, args.ncadence),
-                    ('valuegot', np.float32, args.ncadence)]
+                    ('cadence', np.dtype('a20')),
+                    ('nvisit', np.int32),
+                    ('ngot', np.int32),
+                    ('valuegot', np.float32)]
 
-    assign_array = np.zeros(len(fields_array), dtype=assign_dtype)
+    assign_array = np.zeros(0, dtype=assign_dtype)
 
-    for fields_entry, assign_entry in zip(fields_array, assign_array):
+    for fields_entry in fields_array:
         fieldid = fields_entry['fieldid']
         if((fieldid % 10) == 0):
             print(fieldid)
@@ -137,15 +158,33 @@ if __name__ == '__main__':
         f.field_cadence = 'repeat-n'
         f.assign()
 
-        assign_entry['fieldid'] = fields_entry['fieldid']
-        assign_entry['racen'] = fields_entry['racen']
-        assign_entry['deccen'] = fields_entry['deccen']
-        assign_entry['ntargets'] = len(targets)
+        assign_entries = np.zeros(0, dtype=assign_dtype)
         for indx in np.arange(args.ncadence, dtype=np.int32) + 1:
+            assign_entry = np.zeros(1, dtype=assign_dtype)
+            assign_entry['fieldid'] = fields_entry['fieldid']
+            assign_entry['racen'] = fields_entry['racen']
+            assign_entry['deccen'] = fields_entry['deccen']
+            assign_entry['cadence'] = 'repeat-{n}'.format(n=indx)
+            assign_entry['nvisit'] = indx
+            assign_entry['ntargets'] = len(targets)
             igot = np.where(f.assignments[:, 0:indx] >= 0)
             tgot = f.assignments[igot]
-            assign_entry['ngot'][indx - 1] = igot[0].size
-            assign_entry['valuegot'][indx - 1] = values[tgot].sum()
+            assign_entry['ngot'] = igot[0].size
+            assign_entry['valuegot'] = values[tgot].sum()
+            assign_entries = np.append(assign_entries, assign_entry)
+
+        if(assign_entries['ngot'].max() == 0):
+            ikeep = 0
+        else:
+            fgot = assign_entries['ngot'] / assign_entries['ngot'].max()
+            fgot_unique, iunique = np.unique(fgot, return_index=True)
+            indx = np.where(fgot_unique > 0.5)[0]
+            if(len(indx) > 0):
+                ikeep = iunique[indx]
+            else:
+                ikeep = [iunique[-1]]
+
+        assign_array = np.append(assign_array, assign_entries[ikeep])
 
     options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
                                 'allocations', args.plan,

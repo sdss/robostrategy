@@ -38,6 +38,12 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.telescope
 
+    fields_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                               'plans', args.plan,
+                               '{plan}-fields-{telescope}.fits'.format(plan=args.plan,
+                                                                       telescope=args.telescope))
+    fields_array = fitsio.read(fields_file)
+
     options_base = '{plan}-options-{observatory}.fits'
     options_base = options_base.format(plan=args.plan, observatory=observatory)
     options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
@@ -59,7 +65,8 @@ if __name__ == '__main__':
 
     allocate = robostrategy.allocate.AllocateLST(slots=slots,
                                                  field_options=field_options,
-                                                 field_slots=field_slots)
+                                                 field_slots=field_slots,
+                                                 fields=fields_array)
     allocate.construct()
     allocate.solve()
 

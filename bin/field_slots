@@ -20,6 +20,7 @@ import numpy as np
 import fitsio
 import robostrategy.slots
 import roboscheduler.scheduler
+import roboscheduler.cadence as cadence
 
 
 if __name__ == '__main__':
@@ -40,6 +41,15 @@ if __name__ == '__main__':
     airmass_limit = 1.4
     airmass_pad = 0.2
 
+    cadencelist = cadence.CadenceList()
+    cadencelist.reset()
+    cadence_base = '{plan}-cadences-{telescope}.fits'
+    cadence_base = cadence_base.format(plan=args.plan,
+                                       telescope=args.telescope)
+    cadence_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                'allocations', args.plan, cadence_base)
+    cadencelist.fromfits(cadence_file)
+
     slots_base = '{plan}-slots-{obs}.fits'.format(plan=plan, obs=observatory)
     slots_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
                               'allocations', args.plan, slots_base)
@@ -54,14 +64,20 @@ if __name__ == '__main__':
     nfields = len(field_options)
 
     field_slots_dtype = [('fieldid', np.int32),
+                         ('cadence', np.dtype('a20')),
                          ('racen', np.float64),
                          ('deccen', np.float64),
                          ('slots', np.int32, (slots.nlst,
                                               slots.nlunation))]
     field_slots = np.zeros(nfields, dtype=field_slots_dtype)
     field_slots['fieldid'] = field_options['fieldid']
+    field_slots['cadence'] = [c.decode().strip()
+                              for c in field_options['cadence']]
     field_slots['racen'] = field_options['racen']
     field_slots['deccen'] = field_options['deccen']
+    field_cadences = [c.decode().strip() for c in field_options['cadence']]
+    field_min_lunation = [cadencelist.cadences[c].lunation.min() for
+                          c in field_cadences]
 
     observer = roboscheduler.scheduler.Observer(observatory=observatory)
     for ilst in np.arange(slots.nlst):
@@ -76,9 +92,11 @@ if __name__ == '__main__':
                                                  lat=observer.latitude)
         airmass = observer.alt2airmass(alt=alt)
         airmass_min = observer.alt2airmass(alt=alt_max)
-        iok = np.where((alt > 0) & ((airmass < airmass_limit) |
-                                    (airmass < airmass_min + airmass_pad)))[0]
         for ilunation in np.arange(slots.nlunation):
+            iok = np.where((alt > 0) &
+                           ((airmass < airmass_limit) |
+                            (airmass < airmass_min + airmass_pad)) &
+                           (field_min_lunation >= slots.lunation[ilunation]))[0]
             field_slots['slots'][iok, ilst, ilunation] = 1
 
     slots_base = '{plan}-field-slots-{observatory}.fits'

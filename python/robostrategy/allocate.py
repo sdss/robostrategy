@@ -31,10 +31,10 @@ class AllocateLST(object):
         information about available time in survey
 
     field_slots : ndarray
-        for each field, which slots are available
+        for each field-cadence combination, which slots are available
 
     field_options : ndarray
-        for each field, what cadence options to choose from
+        for each field-cadence combination, what cadence options to choose from
 
     seed : int, np.int32
         random seed for solution selection (default 100)
@@ -46,10 +46,10 @@ class AllocateLST(object):
         information about available time in survey
 
     field_slots : ndarray
-        for each field, which slots are available
+        for each field-cadence combination, which slots are available
 
     field_options : ndarray
-        for each field, what cadence options to choose from
+        for each field-cadence combination, what cadence options to choose from
 
     nfields : int
         number of fields
@@ -147,9 +147,10 @@ class AllocateLST(object):
     less than one we take the field with probability equal to the above
     ratio.
 """
-    def __init__(self, slots=None, field_slots=None, field_options=None,
-                 seed=100):
+    def __init__(self, slots=None, fields=None, field_slots=None,
+                 field_options=None, seed=100):
         self.slots = slots
+        self.fields = fields
         self.field_slots = field_slots
         self.field_options = field_options
         self.nfields = len(self.field_options)
@@ -168,28 +169,22 @@ class AllocateLST(object):
         construct the linear programming problem.
 """
         self.allocinfo = collections.OrderedDict()
-        for field_option, field_slot in zip(self.field_options,
-                                            self.field_slots):
+        fieldids = np.unique(self.field_slots['fieldid'])
+        for fieldid in fieldids:
+            icurr = np.where(self.field_options['fieldid'] == fieldid)[0]
+            curr_slots = self.field_slots[icurr]
+            curr_options = self.field_options[icurr]
+
             alloc = collections.OrderedDict()
-            if(field_option['ngot'].max() == 0):
-                cadences = [1]
-            else:
-                fgot = field_option['ngot'] / field_option['ngot'].max()
-                fgot_unique, iunique = np.unique(fgot, return_index=True)
-                indx = np.where(fgot_unique > 0.5)[0]
-                if(len(indx) > 0):
-                    cadences = [int(iunique[i] + 1) for i in indx]
-                else:
-                    cadences = [int(iunique[-1] + 1)]
-
-            for cadence in cadences:
+            for curr_slot, curr_option in zip(curr_slots, curr_options):
+                cadence = curr_slot['cadence']
                 alloc[cadence] = collections.OrderedDict()
-                alloc[cadence]['slots'] = field_slot['slots']
+                alloc[cadence]['slots'] = curr_slot['slots']
                 alloc[cadence]['vars'] = [0] * (self.slots.nlunation * self.slots.nlst)
-                alloc[cadence]['needed'] = float(cadence)
-                alloc[cadence]['value'] = float(cadence)
+                alloc[cadence]['needed'] = float(curr_option['nvisit'])
+                alloc[cadence]['value'] = float(curr_option['valuegot'])
 
-            self.allocinfo[field_option['fieldid']] = alloc
+            self.allocinfo[fieldid] = alloc
         return()
 
     def solve(self):
@@ -285,13 +280,19 @@ class AllocateLST(object):
 
         # Decide on which cadences to pick.
         field_array_dtype = [('fieldid', np.int32),
-                             ('cadence', 'a30'),
+                             ('racen', np.float64),
+                             ('deccen', np.float64),
+                             ('cadence', np.dtype('a20')),
                              ('nfilled', np.int32),
+                             ('needed', np.int32),
                              ('slots', np.float32, (self.slots.nlst,
                                                     self.slots.nlunation))]
         field_array = np.zeros(len(self.allocinfo), dtype=field_array_dtype)
         for findx, fieldid in zip(np.arange(len(self.allocinfo)),
                                   self.allocinfo):
+            ifield = np.where(fieldid == self.fields['fieldid'])[0]
+            field_array['racen'][findx] = self.fields['racen'][ifield]
+            field_array['deccen'][findx] = self.fields['deccen'][ifield]
             ncadence = len(self.allocinfo[fieldid])
             cadence_totals = np.zeros(ncadence, dtype=np.float32)
             slots_totals = np.zeros((self.slots.nlst,
@@ -316,6 +317,7 @@ class AllocateLST(object):
                    field_total / self.allocinfo[fieldid][cadence]['needed']):
                     field_array['cadence'][findx] = str(cadence)
                     field_array['slots'][findx] = slots_totals
+                    field_array['needed'][findx] = self.allocinfo[fieldid][cadence]['needed']
 
             field_array['nfilled'][findx] = field_array['slots'][findx, :, :].sum()
 
@@ -345,21 +347,20 @@ class AllocateLST(object):
 """
         total = self.slots.slots / self.slots.duration * self.slots.fclear
         used = self.field_array['slots'][:, :, :].sum(axis=0).sum(axis=1)
-        weights = np.array([int(c.decode().strip()) for c in
-                            self.field_array['cadence']])
+        weights = self.field_array['needed']
         #color = ['red', 'blue']
         #for ilun in range(self.slots.nlunation):
         #    plt.plot(used[:, ilun], color=color[ilun], linewidth=3, alpha=0.6)
         plt.plot(used[:], color='red', linewidth=3, alpha=0.6)
         plt.plot(total.sum(axis=1), color='red', linewidth=1)
         print(used.sum())
-        rahist, rabinedges = np.histogram(self.field_options['racen'] / 15.,
+        rahist, rabinedges = np.histogram(self.field_array['racen'] / 15.,
                                           range=[0., 24.],
                                           weights=self.field_array['nfilled'],
                                           bins=24)
         plt.plot(rahist, color='blue', linewidth=3, alpha=0.6)
         print(rahist.sum())
-        rahist, rabinedges = np.histogram(self.field_options['racen'] / 15.,
+        rahist, rabinedges = np.histogram(self.field_array['racen'] / 15.,
                                           range=[0., 24.], weights=weights,
                                           bins=24)
         plt.plot(rahist, color='blue', linewidth=1)
@@ -388,8 +389,8 @@ class AllocateLST(object):
         m.drawmapboundary()
 
         ii = np.where(self.field_array['nfilled'] > 0)[0]
-        (xx, yy) = self._convert_radec(m, self.field_options['racen'][ii],
-                                       self.field_options['deccen'][ii])
+        (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
+                                       self.field_array['deccen'][ii])
         plt.scatter(xx, yy, s=4, c=np.log10(self.field_array['nfilled'][ii]))
 
         return
