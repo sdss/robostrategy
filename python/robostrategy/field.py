@@ -87,7 +87,8 @@ class Field(object):
         self.racen = racen
         self.deccen = deccen
         self.cadencelist = cadence.CadenceList()
-        self.field_cadence = ''
+        self.field_cadence = None
+        self.assignments = None
         return
 
     def _arrayify(self, quantity=None, dtype=np.float64):
@@ -117,6 +118,7 @@ class Field(object):
         self.ntarget = len(self.target_array)
         self.target_ra = self.target_array['ra']
         self.target_dec = self.target_array['dec']
+        self.target_pk = self.target_array['pk']
         self.target_x, self.target_y = self.radec2xy(self.target_ra,
                                                      self.target_dec)
         self.target_cadence = np.array([c.decode().strip()
@@ -124,6 +126,32 @@ class Field(object):
         self.target_type = np.array([t.decode().strip()
                                      for t in self.target_array['type']])
         return
+
+    def targets_toarray(self):
+        target_array_dtype = np.dtype([('ra', np.float64),
+                                       ('dec', np.float64),
+                                       ('pk', np.int64),
+                                       ('cadence', np.dtype('a20')),
+                                       ('type', np.dtype('a20'))])
+
+        target_array = np.zeros(self.ntarget, dtype=target_array_dtype)
+        target_array['ra'] = self.target_ra
+        target_array['dec'] = self.target_dec
+        target_array['pk'] = self.target_pk
+        target_array['cadence'] = self.target_cadence
+        target_array['type'] = self.target_type
+        return(target_array)
+
+    def tofits(self, filename=None, clobber=True):
+        hdr = dict()
+        hdr['RACEN'] = self.racen
+        hdr['DECCEN'] = self.deccen
+        if(self.field_cadence is not None):
+            hdr['FCADENCE'] = self.field_cadence
+        tarray = self.targets_toarray()
+        fitsio.write(filename, tarray, header=hdr, clobber=clobber)
+        if(self.assignments is not None):
+            fitsio.write(filename, self.assignments, clobber=False)
 
     def targets_fromfits(self, filename=None):
         target_array = fitsio.read(filename)
