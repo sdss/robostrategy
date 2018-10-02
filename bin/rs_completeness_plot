@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_completeness_plot
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+import healpy
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Evaluate completeness of target assignments')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory=observatory)
+    targets = fitsio.read(targets_file)
+
+    assigned_file = sdss_path.full('rsAssignments', plan=plan,
+                                   observatory=observatory)
+    assigned = fitsio.read(assigned_file)
+
+    gotpk = np.zeros(targets['pk'].max() + 1, dtype=np.int8)
+    gotpk[assigned['pk']] = 1
+    got = gotpk[targets['pk']]
+    igot = np.where(got)[0]
+
+    nside = 32
+    hpix = healpy.pixelfunc.ang2pix(nside, targets['ra'],
+                                    targets['dec'], lonlat=True)
+
+    ntargets_map = np.zeros(healpy.nside2npix(nside), dtype=np.int32)
+    for h in hpix:
+        ntargets_map[h] = ntargets_map[h] + 1
+
+    ngot_map = np.zeros(healpy.nside2npix(nside), dtype=np.int32)
+    for h in hpix[igot]:
+        ngot_map[h] = ngot_map[h] + 1
+
+    fgot_map = np.ones(healpy.nside2npix(nside), dtype=np.float32)
+    inz = np.where(ntargets_map > 0)[0]
+    fgot_map[inz] = ngot_map[inz] / ntargets_map[inz]
+
+    fig = plt.figure(figsize=(8, 4))
+    healpy.mollview(ntargets_map, title='Number of targets')
+    ntargets_png_file = sdss_path.full('rsAssignmentsPng',
+                                       name='ntargets', plan=plan,
+                                       observatory=observatory)
+    plt.savefig(ntargets_png_file)
+
+    fig = plt.figure(figsize=(8, 4))
+    healpy.mollview(ngot_map, title='Number of targets gotten')
+    ngot_png_file = sdss_path.full('rsAssignmentsPng',
+                                   name='ngot', plan=plan,
+                                   observatory=observatory)
+    plt.savefig(ngot_png_file)
+
+    fig = plt.figure(figsize=(8, 4))
+    healpy.mollview(fgot_map, title='Fraction of targets gotten')
+    fgot_png_file = sdss_path.full('rsAssignmentsPng',
+                                   name='fgot', plan=plan,
+                                   observatory=observatory)
+    plt.savefig(ntargets_png_file)

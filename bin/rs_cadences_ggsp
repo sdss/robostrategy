@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_cadences_ggsp
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+def initialize_cadences(ncadence=None):
+    cadencelist = cadence.CadenceList()
+    cadencelist.reset()
+    cadencelist.add_cadence(name='single',
+                            nexposures=1,
+                            delta=[0.],
+                            delta_min=[0.],
+                            delta_max=[0.],
+                            lunation=[1.],
+                            instrument=['apogee'])
+
+    n = ncadence
+    cadencelist.add_cadence(name='repeat-n', nexposures=n,
+                            delta=[-1.] * n,
+                            delta_min=[-1.] * n,
+                            delta_max=[-1.] * n,
+                            lunation=[1.] * n,
+                            instrument=['apogee'] * n)
+
+    delta = [0., 0., 0., 0.]
+    delta_min = [0., 0., 0., 0.]
+    delta_max = [0., 1., 1., 1.]
+    lunation = [0.35, 0.35, 0.35, 0.35]
+    instrument = ['boss', 'boss', 'boss', 'boss']
+    cadencelist.add_cadence(name='bhm_spiders_1x4',
+                            nexposures=4, delta=delta, delta_min=delta_min,
+                            delta_max=delta_max, lunation=lunation,
+                            instrument=instrument)
+
+    for indx in np.arange(n - 4) + 5:
+        delta.append(-1.)
+        delta_min.append(-1.)
+        delta_max.append(-1.)
+        lunation.append(1.)
+        instrument.append('apogee')
+        cadencelist.add_cadence(name='bhm_spiders_1x4-{indx}'.format(indx=indx),
+                                nexposures=indx,
+                                delta=delta,
+                                delta_min=delta_min,
+                                delta_max=delta_max, lunation=lunation,
+                                instrument=instrument)
+
+    cadencelist.add_cadence(name='bhm_spiders_1x4-n',
+                            nexposures=ncadence, delta=delta,
+                            delta_min=delta_min,
+                            delta_max=delta_max, lunation=lunation,
+                            instrument=instrument)
+
+    for indx in np.arange(ncadence) + 1:
+        cadencelist.add_cadence(name='repeat-{indx}'.format(indx=indx),
+                                nexposures=indx,
+                                delta=[-1.] * indx,
+                                delta_min=[-1.] * indx,
+                                delta_max=[-1.] * indx,
+                                lunation=[1.] * indx,
+                                instrument=['apogee'] * indx)
+
+    return()
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Cadences for GG plus Spiders test allocation')
+
+    parser.add_argument('-n', '--ncadence', dest='ncadence',
+                        type=np.int32, help='max number of cadences',
+                        default=100)
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    initialize_cadences(ncadence=args.ncadence)
+
+    cadencelist = cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadences_array = cadencelist.toarray()
+    fitsio.write(cadences_file, cadences_array, clobber=True)

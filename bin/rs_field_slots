@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: field_assign_gg
+# @Filename: rs_field_slots
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -21,45 +21,40 @@ import fitsio
 import robostrategy.slots
 import roboscheduler.scheduler
 import roboscheduler.cadence as cadence
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Field assignment test for Galactic Genesis')
+        description='Create available slots for fields')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
-    parser.add_argument("-t", "--telescope", dest="telescope", type=str,
-                        required=False, help="telescope ('apo' or 'lco')",
+    parser.add_argument("-o", "--observatory", dest="observatory", type=str,
+                        required=False, help="observatory ('apo' or 'lco')",
                         default='apo')
 
     args = parser.parse_args()
     plan = args.plan
-    observatory = args.telescope
+    observatory = args.observatory
     airmass_limit = 1.4
     airmass_pad = 0.2
 
     cadencelist = cadence.CadenceList()
-    cadencelist.reset()
-    cadence_base = '{plan}-cadences-{telescope}.fits'
-    cadence_base = cadence_base.format(plan=args.plan,
-                                       telescope=args.telescope)
-    cadence_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                                'allocations', args.plan, cadence_base)
-    cadencelist.fromfits(cadence_file)
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(cadences_file)
 
-    slots_base = '{plan}-slots-{obs}.fits'.format(plan=plan, obs=observatory)
-    slots_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                              'allocations', args.plan, slots_base)
     slots = robostrategy.slots.Slots(observatory=observatory)
+    slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
     slots.fromfits(filename=slots_file)
 
-    options_base = '{plan}-options-{observatory}.fits'
-    options_base = options_base.format(plan=args.plan, observatory=observatory)
-    options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                                'allocations', plan, options_base)
+    options_file = sdss_path.full('rsOptions', plan=plan,
+                                  observatory=observatory)
     field_options = fitsio.read(options_file)
     nfields = len(field_options)
 
@@ -97,10 +92,8 @@ if __name__ == '__main__':
                            ((airmass < airmass_limit) |
                             (airmass < airmass_min + airmass_pad)) &
                            (field_min_lunation >= slots.lunation[ilunation]))[0]
-            field_slots['slots'][iok, ilst, ilunation] = 1
+            field_slots['slots'][iok, ilst, ilunation] = 1.
 
-    slots_base = '{plan}-field-slots-{observatory}.fits'
-    slots_base = slots_base.format(plan=args.plan, observatory=observatory)
-    slots_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                              'allocations', plan, slots_base)
+    slots_file = sdss_path.full('rsFieldSlots', plan=plan,
+                                observatory=observatory)
     fitsio.write(slots_file, field_slots, clobber=True)

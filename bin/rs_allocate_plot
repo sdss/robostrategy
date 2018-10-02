@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_allocate_plot
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+import robostrategy.allocate
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Plot field allocation results')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument("-o", "--observatory", dest="observatory", type=str,
+                        required=False, help="observatory ('apo' or 'lco')",
+                        default='apo')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file)
+
+    cadences = [c.decode().strip() for c in allocate.field_array['cadence']]
+    base_cadences = np.array([c.split('-')[0] for c in cadences])
+
+    png_base = '{plan}-allocate-{observatory}.png'
+    png_base = png_base.format(plan=args.plan, observatory=observatory)
+    png_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                            'allocations', plan, png_base)
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='lst-all')
+    allocate.plot_full()
+    plt.savefig(png_file, dpi=150)
+    plt.clf()
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='lst-dark')
+    allocate.plot_full(ilunation=0, title='Dark time')
+    plt.savefig(png_file, dpi=150)
+    plt.clf()
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='lst-bright')
+    allocate.plot_full(ilunation=1, title='Bright time')
+    plt.savefig(png_file, dpi=150)
+    plt.clf()
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='radec')
+    allocate.plot_fields()
+    plt.savefig(png_file, dpi=150)
+    plt.clf()
+
+    for base_cadence in np.unique(base_cadences):
+        name = 'radec-{base_cadence}'.format(base_cadence=base_cadence)
+        png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                  observatory=observatory, name=name)
+        indx = np.where(base_cadences == base_cadence)[0]
+        allocate.plot_fields(indx=indx)
+        plt.savefig(png_file, dpi=150)
+        plt.clf()

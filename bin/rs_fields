@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: field_assign_gg
+# @Filename: rs_fields
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -21,6 +21,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import fitsio
 import robostrategy.sloane as sloane
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
 
 
 if __name__ == '__main__':
@@ -36,6 +39,7 @@ if __name__ == '__main__':
                         default=-14.)
 
     args = parser.parse_args()
+    plan = args.plan
 
     fields_north = sloane.Sloane(n=7682, radius=1.49)
     fields_south = sloane.Sloane(n=18752, radius=0.95)
@@ -63,28 +67,22 @@ if __name__ == '__main__':
     fields_south_array['deccen'] = fields_south.dec
     fields_south_array['radius'] = fields_south.radius
 
-    fields_north_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                                     'plans', args.plan,
-                                     '{plan}-fields-north.fits'.format(plan=args.plan))
-    fields_south_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                                     'plans', args.plan,
-                                     '{plan}-fields-south.fits'.format(plan=args.plan))
+    fields_north_file = sdss_path.full('rsFields', plan=plan, observatory='apo')
+    fields_south_file = sdss_path.full('rsFields', plan=plan, observatory='lco')
 
     fitsio.write(fields_north_file, fields_north_array, clobber=True)
     fitsio.write(fields_south_file, fields_south_array, clobber=True)
 
     matplotlib.rcParams['figure.figsize'] = (16.0, 8.0)
     fields_north.plot()
-    fields_north_png = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                                     'plans', args.plan,
-                                     '{plan}-fields-north.png'.format(plan=args.plan))
+    fields_north_png = sdss_path.full('rsFieldsPng', plan=plan,
+                                      observatory='apo')
     plt.savefig(fields_north_png, dpi=150)
     plt.clf()
 
     matplotlib.rcParams['figure.figsize'] = (16.0, 8.0)
     fields_south.plot()
-    fields_south_png = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                                     'plans', args.plan,
-                                     '{plan}-fields-south.png'.format(plan=args.plan))
+    fields_south_png = sdss_path.full('rsFieldsPng', plan=plan,
+                                      observatory='lco')
     plt.savefig(fields_south_png, dpi=150)
     plt.clf()
