@@ -24,7 +24,7 @@ class Slots(object):
         number of LST bins (default 24)
 
     lunation : list of float or np.float32
-        edges of lunation bins (N+1 length for N lunation bins; default 
+        edges of lunation bins (N+1 length for N lunation bins; default
         [0., 0.35, 1.])
 
     observatory : str
@@ -117,7 +117,7 @@ class Slots(object):
                 curr_mjd = curr_mjd + self.duration / 24.
         return
 
-    def tofits(self, filename=None):
+    def tofits(self, filename=None, clobber=True):
         """Write slots information to FITS file
 
         Parameters:
@@ -145,10 +145,10 @@ class Slots(object):
         hdr['NLUN'] = self.nlunation
         for indx in range(len(self.lunation)):
             hdr['LUN{indx}'.format(indx=indx)] = self.lunation[indx]
-        fitsio.write(filename, self.slots, header=hdr, clobber=True)
+        fitsio.write(filename, self.slots, header=hdr, clobber=clobber)
         return
 
-    def fromfits(self, filename=None):
+    def fromfits(self, filename=None, ext=0):
         """Read slots information from FITS file
 
         Parameters:
@@ -163,7 +163,7 @@ class Slots(object):
         Assumes the FITS file is of the form written by the tofits()
         method.
 """
-        self.slots, hdr = fitsio.read(filename, ext=0, header=True)
+        self.slots, hdr = fitsio.read(filename, ext=ext, header=True)
         self.nlst = hdr['NLST']
         self.duration = hdr['DURATION']
         self.fclear = hdr['FCLEAR']
