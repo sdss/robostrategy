@@ -41,34 +41,13 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    targets_file = sdss_path.full('rsTargets', plan=plan,
-                                  observatory=observatory)
-    targets = fitsio.read(targets_file)
+    completeness_file = sdss_path.full('rsCompleteness', plan=plan,
+                                       observatory=observatory)
 
-    assigned_file = sdss_path.full('rsAssignments', plan=plan,
-                                   observatory=observatory)
-    assigned = fitsio.read(assigned_file)
-
-    gotpk = np.zeros(targets['pk'].max() + 1, dtype=np.int8)
-    gotpk[assigned['pk']] = 1
-    got = gotpk[targets['pk']]
-    igot = np.where(got)[0]
-
-    nside = 32
-    hpix = healpy.pixelfunc.ang2pix(nside, targets['ra'],
-                                    targets['dec'], lonlat=True)
-
-    ntargets_map = np.zeros(healpy.nside2npix(nside), dtype=np.int32)
-    for h in hpix:
-        ntargets_map[h] = ntargets_map[h] + 1
-
-    ngot_map = np.zeros(healpy.nside2npix(nside), dtype=np.int32)
-    for h in hpix[igot]:
-        ngot_map[h] = ngot_map[h] + 1
-
-    fgot_map = np.ones(healpy.nside2npix(nside), dtype=np.float32)
-    inz = np.where(ntargets_map > 0)[0]
-    fgot_map[inz] = ngot_map[inz] / ntargets_map[inz]
+    ntargets_map, hdr = fitsio.read(completeness_file, header=True, ext=0)
+    nside = np.int32(hdr['NSIDE'])
+    ngot_map = fitsio.read(completeness_file, ext=1)
+    fgot_map = fitsio.read(completeness_file, ext=2)
 
     fig = plt.figure(figsize=(8, 4))
     healpy.mollview(ntargets_map, title='Number of targets')
