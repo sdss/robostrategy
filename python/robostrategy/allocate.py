@@ -1,4 +1,4 @@
-# @Author: Michael R. Blanton
+# @Author: Michael R. Blanton 
 # @Date: Aug 3, 2018
 # @Filename: field_assign_gg
 # @License: BSD 3-Clause
@@ -13,6 +13,7 @@ import numpy as np
 import fitsio
 import collections
 import matplotlib.pyplot as plt
+import robostrategy.slots
 from ortools.linear_solver import pywraplp
 
 try:
@@ -148,12 +149,15 @@ class AllocateLST(object):
     ratio.
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
-                 field_options=None, seed=100):
-        self.slots = slots
-        self.fields = fields
-        self.field_slots = field_slots
-        self.field_options = field_options
-        self.nfields = len(self.field_options)
+                 field_options=None, seed=100, filename=None):
+        if(filename is None):
+            self.slots = slots
+            self.fields = fields
+            self.field_slots = field_slots
+            self.field_options = field_options
+            self.nfields = len(self.field_options)
+        else:
+            self.fromfits(filename=filename)
         self.seed = seed
         np.random.seed(self.seed)
         return
@@ -177,7 +181,7 @@ class AllocateLST(object):
 
             alloc = collections.OrderedDict()
             for curr_slot, curr_option in zip(curr_slots, curr_options):
-                cadence = curr_slot['cadence']
+                cadence = curr_slot['cadence'].decode().strip()
                 alloc[cadence] = collections.OrderedDict()
                 alloc[cadence]['slots'] = curr_slot['slots']
                 alloc[cadence]['vars'] = [0] * (self.slots.nlunation * self.slots.nlst)
@@ -303,7 +307,7 @@ class AllocateLST(object):
                 slots_totals = slots_totals + ccadence['allocation']
                 cadence_totals[indx] = ccadence['allocation'].sum()
             field_total = cadence_totals.sum()
-            field_array['cadence'][findx] = '0'
+            field_array['cadence'][findx] = 'none'
             field_array['slots'][fieldid] = self.allocinfo[fieldid][cadence]['slots'] * 0.
             if(field_total > 0.):
                 cadence_totals = cadence_totals / field_total
@@ -315,7 +319,7 @@ class AllocateLST(object):
                 field_array['fieldid'][findx] = fieldid
                 if(choose_field <
                    field_total / self.allocinfo[fieldid][cadence]['needed']):
-                    field_array['cadence'][findx] = str(cadence)
+                    field_array['cadence'][findx] = cadence
                     field_array['slots'][findx] = slots_totals
                     field_array['needed'][findx] = self.allocinfo[fieldid][cadence]['needed']
 
@@ -337,44 +341,103 @@ class AllocateLST(object):
         Notes:
         ------
 
-        Writes the field_array attribute as a binary table.
+        Writes all array attributes as a binary table.
 """
         fitsio.write(filename, self.field_array, clobber=True)
+        self.slots.tofits(filename=filename, clobber=False)
+        fitsio.write(filename, self.fields, clobber=False)
+        fitsio.write(filename, self.field_slots, clobber=False)
+        fitsio.write(filename, self.field_options, clobber=False)
         return
 
-    def plot_full(self):
+    def fromfits(self, filename=None):
+        """Read field allocation array from a FITS file
+
+        Parameters:
+        ----------
+
+        filename : str
+            file name to write to
+
+        Notes:
+        ------
+
+        Reads all attributes from a binary FITS table.
+"""
+        self.field_array, hdr = fitsio.read(filename, header=True, ext=1)
+        self.slots = robostrategy.slots.Slots()
+        self.slots.fromfits(filename, ext=2)
+        self.fields = fitsio.read(filename, ext=3)
+        self.field_slots = fitsio.read(filename, ext=4)
+        self.field_options = fitsio.read(filename, ext=5)
+        return
+
+    def available_lst(self):
+        available = (self.slots.slots /
+                     self.slots.duration * self.slots.fclear)
+        return(available)
+
+    def used_lst(self):
+        used = self.field_array['slots'][:, :, :].sum(axis=0)
+        return(used)
+
+    def got_ra(self):
+        got = np.zeros((self.slots.nlst, self.slots.nlunation),
+                       dtype=np.float32)
+        for ilunation in np.arange(self.slots.nlunation):
+            nfilled = self.field_array['slots'][:, :, ilunation].sum(axis=1)
+            rahist, rabinedges = np.histogram(self.field_array['racen'] / 15.,
+                                              range=[0., 24.],
+                                              weights=nfilled,
+                                              bins=self.slots.nlst)
+            got[:, ilunation] = rahist
+
+        return(got)
+
+    def plot_full(self, ilunation=None, title=None):
         """Plot the LST distributions for the allocations
 """
-        total = self.slots.slots / self.slots.duration * self.slots.fclear
-        used = self.field_array['slots'][:, :, :].sum(axis=0).sum(axis=1)
-        weights = self.field_array['needed']
-        #color = ['red', 'blue']
-        #for ilun in range(self.slots.nlunation):
-        #    plt.plot(used[:, ilun], color=color[ilun], linewidth=3, alpha=0.6)
-        plt.plot(used[:], color='red', linewidth=3, alpha=0.6)
-        plt.plot(total.sum(axis=1), color='red', linewidth=1)
+
+        available = self.available_lst()
+        used = self.used_lst()
+        got = self.got_ra()
+
+        if(ilunation is None):
+            used = used.sum(axis=1)
+            available = available.sum(axis=1)
+            got = got.sum(axis=1)
+        else:
+            used = used[:, ilunation]
+            available = available[:, ilunation]
+            got = got[:, ilunation]
+
+        plt.plot(used, color='red', linewidth=3, alpha=0.6,
+                 label='Exposures used per LST')
+        plt.plot(available, color='red', linewidth=1,
+                 label='Exposures available per LST')
         print(used.sum())
-        rahist, rabinedges = np.histogram(self.field_array['racen'] / 15.,
-                                          range=[0., 24.],
-                                          weights=self.field_array['nfilled'],
-                                          bins=24)
-        plt.plot(rahist, color='blue', linewidth=3, alpha=0.6)
-        print(rahist.sum())
-        rahist, rabinedges = np.histogram(self.field_array['racen'] / 15.,
-                                          range=[0., 24.], weights=weights,
-                                          bins=24)
-        plt.plot(rahist, color='blue', linewidth=1)
-        plt.xlabel('LST (hours)')
+        print(available.sum())
+        plt.plot(got, color='blue', linewidth=3, alpha=0.6,
+                 label='Exposures achieved per RA')
+        print(got.sum())
+        plt.xlabel('LST or RA (hours)')
         plt.ylabel('Number of exposures')
+        plt.legend(loc=0)
+        if(title is not None):
+            plt.title(title)
 
         return
 
     def _convert_radec(self, m, ra, dec):
         return m(((360. - ra) + 180.) % 360., dec, inverse=False)
 
-    def plot_fields(self):
+    def plot_fields(self, indx=None):
         """Plot the RA/Dec distribution of fields allocated
 """
+
+        if(indx is None):
+            indx = np.arange(len(self.field_array), dtype=np.int32)
+
         if basemap is None:
             raise ImportError('basemap was not imported. Is it installed?')
 
@@ -388,7 +451,8 @@ class AllocateLST(object):
         m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
         m.drawmapboundary()
 
-        ii = np.where(self.field_array['nfilled'] > 0)[0]
+        ii = np.where(self.field_array['nfilled'][indx] > 0)[0]
+        ii = indx[ii]
         (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
                                        self.field_array['deccen'][ii])
         plt.scatter(xx, yy, s=4, c=np.log10(self.field_array['nfilled'][ii]))
