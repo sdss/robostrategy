@@ -1,0 +1,87 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_assign_ggsp
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import matplotlib.pyplot as plt
+import sdss_access.path
+
+try:
+    import mpl_toolkits.basemap as basemap
+except ImportError:
+    basemap = None
+
+sdss_path = sdss_access.path.Path()
+
+def _convert_radec(m, ra, dec):
+    return m(((360. - ra) + 180.) % 360., dec, inverse=False)
+
+if __name__ == '__main__':
+
+    if basemap is None:
+        raise ImportError('basemap was not imported. Is it installed?')
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-n', '--ncadence', dest='ncadence',
+                        type=np.int32, help='max number of cadences',
+                        default=100)
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    fields = fitsio.read(fields_file)
+
+    field_cadence_file = sdss_path.full('rsFieldCadences',
+                                        plan=plan, observatory=observatory)
+    cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
+
+    ncad = np.int32(hdr['NCAD'])
+    for indx in np.arange(ncad):
+        field_cadence = hdr['CAD{indx}'.format(indx=indx)]
+
+        m = basemap.Basemap(projection='moll', lon_0=270, resolution='c')
+
+        # draw parallels and meridians.
+        m.drawparallels(np.arange(-90., 120., 30.),
+                        linewidth=0.5,
+                        labels=[1, 0, 0, 0],
+                        labelstyle='+/-')
+        m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+        m.drawmapboundary()
+
+        icadence = np.where(cadence_mask[:, indx] != 0)[0]
+        (xx, yy) = _convert_radec(m, fields['racen'][icadence],
+                                  fields['deccen'][icadence])
+        plt.scatter(xx, yy, s=4, c='black')
+
+        png_file = sdss_path.full('rsFieldCadencesPng',
+                                  name=field_cadence, plan=plan,
+                                  observatory=observatory)
+        plt.savefig(png_file)
+        plt.clf()

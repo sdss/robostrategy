@@ -1,0 +1,170 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_targets_ggsp
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import observesim.db.peewee.targetdb as targetdb
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+targetdb.database.autoconnect()
+
+
+def get_targets():
+    nt = targetdb.Target.select(targetdb.Target.ra,
+                                targetdb.Target.dec,
+                                targetdb.Program.label).join(targetdb.Program).count()
+    ts = targetdb.Target.select(
+        targetdb.Target.ra,
+        targetdb.Target.dec,
+        targetdb.Target.pk,
+        targetdb.Program.label,
+        targetdb.TargetCadence.n_epochs,
+        targetdb.TargetCadence.n_exp_per_epoch).join(
+            targetdb.Program).switch(
+                targetdb.Target).join(targetdb.TargetCadence).dicts()
+
+    target_type = np.array(['apogee'] * nt)
+
+    ra = np.zeros(nt, dtype=np.float64)
+    dec = np.zeros(nt, dtype=np.float64)
+    pk = np.zeros(nt, dtype=np.int64)
+    n_epochs = np.zeros(nt, dtype=np.int32)
+    n_exp_per_epoch = np.zeros(nt, dtype=np.int32)
+    program = [''] * nt
+    for indx, t in zip(np.arange(nt), ts):
+        ra[indx] = t['ra']
+        dec[indx] = t['dec']
+        pk[indx] = t['pk']
+        n_epochs[indx] = t['n_epochs']
+        n_exp_per_epoch[indx] = t['n_exp_per_epoch']
+        program[indx] = t['label']
+    program = np.array(program)
+
+    target0 = [('targetid', np.int32),
+               ('pk', np.int64),
+               ('ra', np.float64),
+               ('dec', np.float64),
+               ('cadence', 'a30'),
+               ('type', 'a30')]
+    targets = np.zeros(nt, dtype=target0)
+    keep = np.zeros(nt, dtype=np.int32)
+    targets['targetid'] = np.arange(nt)
+    targets['ra'] = ra
+    targets['dec'] = dec
+    targets['pk'] = pk
+
+    idisco = np.where(program == 'Disco')[0]
+    keep[idisco] = 1
+    targets['cadence'][idisco] = ['mwm_galactic_1x1'
+                                  for t in target_type[idisco]]
+    targets['type'][idisco] = [str(t) for t in target_type[idisco]]
+
+    idust = np.where(program == 'Dust')[0]
+    keep[idust] = 1
+    targets['cadence'][idust] = ['mwm_galactic_1x1'
+                                 for t in target_type[idust]]
+    targets['type'][idust] = [str(t) for t in target_type[idust]]
+
+    ifix = np.where(n_epochs == 17)[0]
+    n_epochs[ifix] = 18
+    irv = np.where(program == 'ATLaS_RV')[0]
+    keep[irv] = 1
+    targets['cadence'][irv] = ['mwm_rv_{ne}x{nper}'.format(ne=ne, nper=nper)
+                               for t, ne, nper in
+                               zip(target_type[irv], n_epochs[irv],
+                                   n_exp_per_epoch[irv])]
+    targets['type'][irv] = [str(t) for t in target_type[irv]]
+
+    # What do I do with these?
+    # irv = np.where(program == 'ATLaS_TESS')[0]
+    # keep[irv] = 1
+    # targets['cadence'][irv] = ['mwm_rv_{ne}x{nper}'.format(ne=ne, nper=nper)
+                               # for t, ne, nper in
+                               # zip(target_type[irv], n_epochs[irv],
+                                   # n_exp_per_epoch[irv])]
+    # targets['type'][irv] = [str(t) for t in target_type[idust]]
+
+    isoeopt = np.where(program == 'SOE_OPT')[0]
+    keep[isoeopt] = 1
+    targets['cadence'][isoeopt] = ['mwm_100pc_faint_1x1'
+                                   for t in target_type[isoeopt]]
+    targets['type'][isoeopt] = [str(t) for t in target_type[isoeopt]]
+
+    isoeir = np.where(program == 'SOE_IR')[0]
+    keep[isoeir] = 1
+    targets['cadence'][isoeir] = ['mwm_100pc_bright_2x1'
+                                  for t in target_type[isoeir]]
+    targets['type'][isoeir] = [str(t) for t in target_type[isoeir]]
+
+    ispiders = np.where(program == 'SPIDERS_AGN')[0]
+    keep[ispiders] = 1
+    targets['cadence'][ispiders] = ['bhm_spiders_1x{nexp}'.format(nexp=nexp)
+                                    for t, nexp in
+                                    zip(target_type[ispiders],
+                                        n_exp_per_epoch[ispiders])]
+    targets['type'][ispiders] = [str(t) for t in target_type[ispiders]]
+
+    iwidea = np.where(program == 'ReSpeQ_WIDEA')[0]
+    keep[iwidea] = 1
+    targets['cadence'][iwidea] = ['bhm_aqmes_wide_3x4'
+                                  for t in target_type[iwidea]]
+    targets['type'][iwidea] = [str(t) for t in target_type[iwidea]]
+
+    iwideb = np.where(program == 'ReSpeQ_WIDEB')[0]
+    keep[iwideb] = 1
+    targets['cadence'][iwideb] = ['bhm_aqmes_wide_2x4'
+                                  for t in target_type[iwideb]]
+    targets['type'][iwideb] = [str(t) for t in target_type[iwideb]]
+
+    imed = np.where(program == 'ReSpeQ_MED')[0]
+    keep[imed] = 1
+    targets['cadence'][imed] = ['bhm_aqmes_medium_12x4'
+                                for t in target_type[imed]]
+    targets['type'][imed] = [str(t) for t in target_type[imed]]
+
+    irm = np.where(program == 'ReSpeQ_RM')[0]
+    keep[irm] = 1
+    targets['cadence'][irm] = ['bhm_rm_174x8'
+                               for t in target_type[irm]]
+    targets['type'][irm] = [str(t) for t in target_type[irm]]
+
+    return(targets[keep > 0])
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Export targets as a FITS file')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    targets = get_targets()
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory=observatory)
+    fitsio.write(targets_file, targets, clobber=True)

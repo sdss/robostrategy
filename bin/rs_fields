@@ -67,8 +67,10 @@ if __name__ == '__main__':
     fields_south_array['deccen'] = fields_south.dec
     fields_south_array['radius'] = fields_south.radius
 
-    fields_north_file = sdss_path.full('rsFields', plan=plan, observatory='apo')
-    fields_south_file = sdss_path.full('rsFields', plan=plan, observatory='lco')
+    fields_north_file = sdss_path.full('rsFields', plan=plan,
+                                       observatory='apo')
+    fields_south_file = sdss_path.full('rsFields', plan=plan,
+                                       observatory='lco')
 
     fitsio.write(fields_north_file, fields_north_array, clobber=True)
     fitsio.write(fields_south_file, fields_south_array, clobber=True)

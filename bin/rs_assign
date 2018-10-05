@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_assign_ggsp
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import astropy.coordinates as coordinates
+import astropy.units as units
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.field as field
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-n', '--ncadence', dest='ncadence',
+                        type=np.int32, help='max number of cadences',
+                        default=100)
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    ncadence = args.ncadence
+
+    cadencelist = cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file)
+
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    fields_array = fitsio.read(fields_file)
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory=observatory)
+    targets_all = fitsio.read(targets_file)
+    targets_coord = coordinates.SkyCoord(ra=targets_all['ra'] * units.degree,
+                                         dec=targets_all['dec'] * units.degree)
+
+    field_cadence_file = sdss_path.full('rsFieldCadences',
+                                        plan=plan, observatory=observatory)
+    cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
+
+    ncad = np.int32(hdr['NCAD'])
+    all_cadences = []
+    for indx in np.arange(ncad):
+        all_cadences.append(hdr['CAD{indx}'.format(indx=indx)])
+    all_cadences = np.array(all_cadences)
+
+    assign_dtype = [('fieldid', np.int32),
+                    ('racen', np.float64),
+                    ('deccen', np.float64),
+                    ('ntargets', np.int32),
+                    ('cadence', np.dtype('a20')),
+                    ('nvisit', np.int32),
+                    ('ngot', np.int32),
+                    ('valuegot', np.float32)]
+
+    assign_array = np.zeros(0, dtype=assign_dtype)
+
+    for ifield in np.arange(len(fields_array)):
+        fields_entry = fields_array[ifield]
+        fieldid = fields_entry['fieldid']
+        if((fieldid % 10) == 0):
+            print(fieldid)
+
+        field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
+                                           observatory=observatory,
+                                           fieldid=fieldid)
+        targets = fitsio.read(field_target_file)
+
+        values = np.ones(len(targets))
+
+        f = field.Field(racen=fields_entry['racen'],
+                        deccen=fields_entry['deccen'])
+        f.targets_fromarray(targets)
+
+        icadences = np.where(cadence_mask[ifield, :] != 0)[0]
+        field_cadences = all_cadences[icadences]
+
+        for field_cadence in field_cadences:
+            f = field.Field(racen=fields_entry['racen'],
+                            deccen=fields_entry['deccen'])
+            f.targets_fromarray(targets)
+
+            f.field_cadence = field_cadence
+            f.assign()
+
+            if(field_cadence.split('-')[-1] == 'n'):
+                field_cadence_base = field_cadence.split('-')[0]
+                assign_entries = np.zeros(0, dtype=assign_dtype)
+                for indx in np.arange(ncadence, dtype=np.int32) + 1:
+                    assign_entry = np.zeros(1, dtype=assign_dtype)
+                    assign_entry['fieldid'] = fields_entry['fieldid']
+                    assign_entry['racen'] = fields_entry['racen']
+                    assign_entry['deccen'] = fields_entry['deccen']
+                    assign_entry['cadence'] = (
+                        '{base}-{n}'.format(base=field_cadence_base, n=indx))
+                    assign_entry['nvisit'] = indx
+                    assign_entry['ntargets'] = len(targets)
+                    igot = np.where(f.assignments[:, 0:indx] >= 0)
+                    tgot = f.assignments[igot]
+                    assign_entry['ngot'] = igot[0].size
+                    assign_entry['valuegot'] = values[tgot].sum()
+                    assign_entries = np.append(assign_entries, assign_entry)
+
+                if(assign_entries['ngot'].max() == 0):
+                    ikeep = 0
+                else:
+                    fgot = assign_entries['ngot'] / assign_entries['ngot'].max()
+                    fgot_unique, iunique = np.unique(fgot, return_index=True)
+                    indx = np.where(fgot_unique > 0.5)[0]
+                    if(len(indx) > 0):
+                        ikeep = iunique[indx]
+                    else:
+                        ikeep = [iunique[-1]]
+
+                assign_array = np.append(assign_array, assign_entries[ikeep])
+            else:
+                assign_entry = np.zeros(1, dtype=assign_dtype)
+                assign_entry['fieldid'] = fields_entry['fieldid']
+                assign_entry['racen'] = fields_entry['racen']
+                assign_entry['deccen'] = fields_entry['deccen']
+                assign_entry['cadence'] = field_cadence
+                assign_entry['nvisit'] = cadencelist.cadences[field_cadence].nexposures
+                assign_entry['ntargets'] = len(targets)
+                igot = np.where(f.assignments[:, :] >= 0)
+                tgot = f.assignments[igot]
+                assign_entry['ngot'] = igot[0].size
+                assign_entry['valuegot'] = values[tgot].sum()
+                assign_array = np.append(assign_array, assign_entry)
+
+    options_file = sdss_path.full('rsOptions', plan=plan,
+                                  observatory=observatory)
+    fitsio.write(options_file, assign_array, clobber=True)

@@ -54,6 +54,7 @@ if __name__ == '__main__':
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
     fields_array = fitsio.read(fields_file)
+    fields_array = fields_array[0:5]
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
@@ -72,7 +73,8 @@ if __name__ == '__main__':
 
     assign_array = np.zeros(0, dtype=assign_dtype)
 
-    for fields_entry in fields_array:
+    for ifield in np.arange(len(fields_array)):
+        fields_entry = fields_array[ifield]
         fieldid = fields_entry['fieldid']
         if((fieldid % 1) == 0):
             print(fieldid)
