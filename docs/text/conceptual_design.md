@@ -37,16 +37,18 @@ Elements of Observing Strategy
  Each cadence category has the following information:
 
   * nexposures:
-	    number of exposures in the field total.
+        number of exposures in the field total.
   * delta[]:
-	    for each exposure, ideal number of days since last exposure
+        for each exposure, ideal number of days since last exposure
   * delta_low[]:
-	    for each exposure, tolerance on low side of delta
+        for each exposure, tolerance on low side of delta
   * delta_high[]:
-	    for each exposure, tolerance on high side of delta
+        for each exposure, tolerance on high side of delta
   * lunation[]:
-	    for each epoch, the maximum moon lunation (lunation is equal to
-	    moon illumination, or 0 if moon is below the horizon)
+        for each epoch, the maximum moon lunation (lunation is equal to
+        moon illumination, or 0 if moon is below the horizon)
+  * instrument[]:
+        for each epoch, which instrument to use
 
  d. The target table is output to disk as a set of FITS files
  organized by healpix pixel, for archival purposes. 
@@ -62,26 +64,26 @@ and approaches based on simulations.
     appropriate density. This will almost certainly be a by-hand task.
 
  b. "design" is run for each field. For each field, we choose a set of
-	   possible cadences, and assign targets to fibers under that
-	   cadence. Our first path forward will be as follows: (i) to
-	   consider the unassigned targets available to each robot in turn,
-	   and pack the epochs of that robot with the targets to maximize
-	   total value; (ii) to allow trades at each epoch to free up robots
-	   that are then allocated again. At this stage we need to
-	   incorporate the robot constraints, which is not solved at this
-	   point. Skies and standards are included. A total value for each
-	   cadence choice is defined based on the net results.
+    possible cadences, and assign targets to fibers under that
+    cadence. Our first path forward will be as follows: (i) to
+    consider the unassigned targets available to each robot in turn,
+    and pack the epochs of that robot with the targets to maximize
+    total value; (ii) to allow trades at each epoch to free up robots
+    that are then allocated again. At this stage we need to
+    incorporate the robot constraints, which is not solved at this
+    point. Skies and standards are included. A total value for each
+    cadence choice is defined based on the net results.
 
  c. We then model the survey time availability as a function of
     LST. There is a total number of exposures available at each
     LST. For each LST, a specific set of fields is observable. 
-		Each field can be observed under one choice of cadence, which
-		costs a certain number of exposures. The result tells us which
-		cadences to approach in which field will maximize the value.
+    Each field can be observed under one choice of cadence, which
+    costs a certain number of exposures. The result tells us which
+    cadences to approach in which field will maximize the value.
 
  d. We assess the results in terms of the targets achieved and
-	  fields observed and adjust values until a satisfactory result
-		emerges.
+    fields observed and adjust values until a satisfactory result
+    emerges.
 
 3. Simulation:
 
@@ -112,7 +114,7 @@ and approaches based on simulations.
     targets-of-opportunity may be added. The configuration used for
     each observation is stored and the results of each exposure is
     stored. At this stage we use S/N criteria to decide whether to
-		an full exposure is achieved on a design.
+        an full exposure is achieved on a design.
 
  c. Each morning, the fpsdb database is updated with the results of
     the night. The status of each design and overall fiber plan for
@@ -138,9 +140,9 @@ ultimately we should be refactoring into separate products:
 
 * target: to run targeting
 
-* design: to create designs
+* robostrategy: to create designs
 
-* scheduler: software to run scheduler
+* roboscheduler: software to run scheduler
 
 * kaiju: software to assign and test fiber configurations
 

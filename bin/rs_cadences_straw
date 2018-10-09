@@ -32,6 +32,51 @@ def initialize_cadences(ncadence=None):
     cadencelist.reset()
     cadencelist.fromfits(target_cadence_file)
 
+    cadencelist.cadences['bhm_spiders_1x1'].delta[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x1'].delta_min[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x1'].delta_max[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x2'].delta[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x2'].delta_min[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x2'].delta_max[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x3'].delta[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x3'].delta_min[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x3'].delta_max[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x4'].delta[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x4'].delta_min[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x4'].delta_max[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x8'].delta[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x8'].delta_min[0] = -1.
+    cadencelist.cadences['bhm_spiders_1x8'].delta_max[0] = -1.
+
+    cadencelist.cadences['mwm_erosita_bright_1x1'].delta[0] = -1.
+    cadencelist.cadences['mwm_erosita_bright_1x1'].delta_min[0] = -1.
+    cadencelist.cadences['mwm_erosita_bright_1x1'].delta_max[0] = -1.
+    cadencelist.cadences['mwm_erosita_medium_1x2'].delta[0] = -1.
+    cadencelist.cadences['mwm_erosita_medium_1x2'].delta_min[0] = -1.
+    cadencelist.cadences['mwm_erosita_medium_1x2'].delta_max[0] = -1.
+    cadencelist.cadences['mwm_erosita_faint_1x3'].delta[0] = -1.
+    cadencelist.cadences['mwm_erosita_faint_1x3'].delta_min[0] = -1.
+    cadencelist.cadences['mwm_erosita_faint_1x3'].delta_max[0] = -1.
+
+    cadencelist.cadences['mwm_galactic_1x1'].delta[0] = -1.
+    cadencelist.cadences['mwm_galactic_1x1'].delta_min[0] = -1.
+    cadencelist.cadences['mwm_galactic_1x1'].delta_max[0] = -1.
+
+    cadencelist.cadences['mwm_planet_1x1'].delta[0] = -1.
+    cadencelist.cadences['mwm_planet_1x1'].delta_min[0] = -1.
+    cadencelist.cadences['mwm_planet_1x1'].delta_max[0] = -1.
+
+    cadencelist.cadences['mwm_100pc_faint_1x1'].delta[0] = -1.
+    cadencelist.cadences['mwm_100pc_faint_1x1'].delta_min[0] = -1.
+    cadencelist.cadences['mwm_100pc_faint_1x1'].delta_max[0] = -1.
+
+    cadencelist.cadences['mwm_100pc_bright_2x1'].delta[0] = -1.
+    cadencelist.cadences['mwm_100pc_bright_2x1'].delta_min[0] = -1.
+    cadencelist.cadences['mwm_100pc_bright_2x1'].delta_max[0] = -1.
+    cadencelist.cadences['mwm_100pc_bright_2x1'].delta[1] = -1.
+    cadencelist.cadences['mwm_100pc_bright_2x1'].delta_min[1] = -1.
+    cadencelist.cadences['mwm_100pc_bright_2x1'].delta_max[1] = -1.
+
 #        delta.append(-1.)
 #        delta_min.append(-1.)
 #        delta_max.append(-1.)

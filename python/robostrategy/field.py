@@ -5,9 +5,6 @@
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 
 
-import os
-import warnings
-
 import numpy as np
 import fitsio
 import matplotlib.pyplot as plt
@@ -183,7 +180,9 @@ class Field(object):
                                      dtype=np.int32) - 1)
         got_target = np.zeros(self.ntarget, dtype=np.int32)
         ok_cadence = dict()
+        print(np.unique(self.target_cadence))
         for curr_cadence in np.unique(self.target_cadence):
+            print(curr_cadence)
             ok = self.cadencelist.cadence_consistency(curr_cadence, self.field_cadence, return_solutions=False)
             ok_cadence[curr_cadence] = (ok |
                                         (self.cadencelist.cadences[curr_cadence].nepochs == 1))
@@ -199,6 +198,7 @@ class Field(object):
                                         dtype=np.int8)
         for indx in np.arange(self.robot.npositioner):
             positionerid = self.robot.positionerid[indx]
+            print(positionerid)
             ileft = np.where(got_target[iok] == 0)[0]
             if(len(ileft) > 0):
                 requires_apogee = target_requires_apogee[iok[ileft]]
@@ -209,6 +209,9 @@ class Field(object):
                                         requires_apogee=requires_apogee,
                                         requires_boss=requires_boss)
                 if(len(it) > 0):
+                    print(positionerid)
+                    print(self.target_cadence[iok[ileft[it]]])
+                    print(self.field_cadence)
                     epoch_targets, itarget = self.cadencelist.pack_targets(self.target_cadence[iok[ileft[it]]], self.field_cadence)
                     iassigned = np.where(itarget >= 0)[0]
                     nassigned = len(iassigned)

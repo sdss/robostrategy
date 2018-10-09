@@ -55,6 +55,7 @@ if __name__ == '__main__':
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
     fields_array = fitsio.read(fields_file)
+    fields_array = fields_array[322:]
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
@@ -65,6 +66,7 @@ if __name__ == '__main__':
     field_cadence_file = sdss_path.full('rsFieldCadences',
                                         plan=plan, observatory=observatory)
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
+    cadence_mask = cadence_mask[322:, :]
 
     ncad = np.int32(hdr['NCAD'])
     all_cadences = []
@@ -86,7 +88,7 @@ if __name__ == '__main__':
     for ifield in np.arange(len(fields_array)):
         fields_entry = fields_array[ifield]
         fieldid = fields_entry['fieldid']
-        if((fieldid % 10) == 0):
+        if((fieldid % 1) == 0):
             print(fieldid)
 
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
@@ -108,8 +110,15 @@ if __name__ == '__main__':
                             deccen=fields_entry['deccen'])
             f.targets_fromarray(targets)
 
+            for indx in np.arange(len(targets)):
+                if('mwm_rv' in f.target_cadence[indx]):
+                    f.target_x = f.target_x + 50. * np.random.random()
+                    f.target_y = f.target_y + 50. * np.random.random()
+
             f.field_cadence = field_cadence
+            print(field_cadence)
             f.assign()
+            print("tyo")
 
             if(field_cadence.split('-')[-1] == 'n'):
                 field_cadence_base = field_cadence.split('-')[0]
