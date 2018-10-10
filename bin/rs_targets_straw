@@ -18,6 +18,7 @@ import os
 import sys
 import numpy as np
 import fitsio
+import roboscheduler.cadence as cadence
 import observesim.db.peewee.targetdb as targetdb
 import sdss_access.path
 
@@ -60,8 +61,8 @@ def get_targets():
                ('pk', np.int64),
                ('ra', np.float64),
                ('dec', np.float64),
-               ('cadence', 'a30'),
-               ('type', 'a30')]
+               ('cadence', cadence.fits_type),
+               ('type', np.dtype('a30'))]
     targets = np.zeros(nt, dtype=target0)
     keep = np.zeros(nt, dtype=np.int32)
     targets['targetid'] = np.arange(nt)

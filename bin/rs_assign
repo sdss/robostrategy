@@ -55,7 +55,6 @@ if __name__ == '__main__':
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
     fields_array = fitsio.read(fields_file)
-    fields_array = fields_array[322:]
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
@@ -66,7 +65,6 @@ if __name__ == '__main__':
     field_cadence_file = sdss_path.full('rsFieldCadences',
                                         plan=plan, observatory=observatory)
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
-    cadence_mask = cadence_mask[322:, :]
 
     ncad = np.int32(hdr['NCAD'])
     all_cadences = []
@@ -78,7 +76,7 @@ if __name__ == '__main__':
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('ntargets', np.int32),
-                    ('cadence', np.dtype('a20')),
+                    ('cadence', cadence.fits_type),
                     ('nvisit', np.int32),
                     ('ngot', np.int32),
                     ('valuegot', np.float32)]
@@ -114,11 +112,17 @@ if __name__ == '__main__':
                 if('mwm_rv' in f.target_cadence[indx]):
                     f.target_x = f.target_x + 50. * np.random.random()
                     f.target_y = f.target_y + 50. * np.random.random()
+                if(f.target_cadence[indx] == 'mwm_rv_16x1'):
+                    f.target_cadence[indx] = 'mwm_rv_15x1'
+                if(f.target_cadence[indx] == 'mwm_rv_16x2'):
+                    f.target_cadence[indx] = 'mwm_rv_15x2'
+                if(f.target_cadence[indx] == 'mwm_rv_16x3'):
+                    f.target_cadence[indx] = 'mwm_rv_15x3'
+                if(f.target_cadence[indx] == 'mwm_rv_16x4'):
+                    f.target_cadence[indx] = 'mwm_rv_15x4'
 
             f.field_cadence = field_cadence
-            print(field_cadence)
             f.assign()
-            print("tyo")
 
             if(field_cadence.split('-')[-1] == 'n'):
                 field_cadence_base = field_cadence.split('-')[0]

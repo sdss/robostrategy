@@ -54,10 +54,10 @@ if __name__ == '__main__':
     assignment_dtype = np.dtype([('pk', np.int64),
                                  ('ra', np.float64),
                                  ('dec', np.float64),
-                                 ('cadence', np.dtype('a20')),
+                                 ('cadence', cadence.fits_type),
                                  ('fieldid', np.int32),
                                  ('exposure', np.int32),
-                                 ('field_cadence', np.dtype('a20'))])
+                                 ('field_cadence', cadence.fits_type)])
 
     nassignment = 1000000
     assignment = np.zeros(nassignment, dtype=assignment_dtype)

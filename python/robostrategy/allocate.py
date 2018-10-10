@@ -14,6 +14,7 @@ import fitsio
 import collections
 import matplotlib.pyplot as plt
 import robostrategy.slots
+import roboscheduler.cadence as rcadence
 from ortools.linear_solver import pywraplp
 
 try:
@@ -286,7 +287,7 @@ class AllocateLST(object):
         field_array_dtype = [('fieldid', np.int32),
                              ('racen', np.float64),
                              ('deccen', np.float64),
-                             ('cadence', np.dtype('a20')),
+                             ('cadence', rcadence.fits_type),
                              ('nfilled', np.int32),
                              ('needed', np.int32),
                              ('slots', np.float32, (self.slots.nlst,

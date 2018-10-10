@@ -26,9 +26,12 @@ Steps to run strategy
 Things to do
 ============
 
+ * Document all pieces
  * Fix radec2xy (at least to include LCO)
  * Set RM field locations
  * Set RV field locations, and replace RV targets (remove hack in
 	 rs_assign)
- * Make greedy version of pack targets
  * How to make sure targets with field cadence are ensured
+ * Mixed BOSS and APOGEE cadence
+ * Code to produce report
+ * Testbed

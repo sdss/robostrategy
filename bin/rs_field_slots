@@ -59,7 +59,7 @@ if __name__ == '__main__':
     nfields = len(field_options)
 
     field_slots_dtype = [('fieldid', np.int32),
-                         ('cadence', np.dtype('a20')),
+                         ('cadence', cadence.fits_type),
                          ('racen', np.float64),
                          ('deccen', np.float64),
                          ('slots', np.int32, (slots.nlst,
