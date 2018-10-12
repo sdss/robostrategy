@@ -17,12 +17,31 @@ import argparse
 import os
 import sys
 import numpy as np
-import matplotlib.pyplot as plt
 import healpy
 import fitsio
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
+
+
+def make_map(hpix=None, got=None):
+
+    igot = np.where(got)[0]
+
+    ntargets_map = np.bincount(hpix, minlength=healpy.nside2npix(nside))
+    ngot_map = np.bincount(hpix[igot], minlength=healpy.nside2npix(nside))
+
+    fgot_map = - np.ones(healpy.nside2npix(nside), dtype=np.float32)
+    inz = np.where(ntargets_map > 0)[0]
+    fgot_map[inz] = ngot_map[inz] / ntargets_map[inz]
+
+    return(ntargets_map, ngot_map, fgot_map)
+
+    hdr = dict()
+    hdr['NSIDE'] = nside
+    fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
+    fitsio.write(completeness_file, ngot_map, clobber=False)
+    fitsio.write(completeness_file, fgot_map, clobber=False)
 
 
 if __name__ == '__main__':
@@ -44,6 +63,11 @@ if __name__ == '__main__':
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     targets = fitsio.read(targets_file)
+    cadences = np.array([c.decode().strip() for c in targets['cadence']])
+    base_cadences = np.array([c.split('-')[0] for c in cadences])
+    base_cadences = np.array(["_".join(c.split('_')[0:-1])
+                              for c in base_cadences])
+    unique_base_cadences = np.unique(base_cadences)
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
@@ -52,29 +76,47 @@ if __name__ == '__main__':
     gotpk = np.zeros(targets['pk'].max() + 1, dtype=np.int8)
     gotpk[assigned['pk']] = 1
     got = gotpk[targets['pk']]
-    igot = np.where(got)[0]
 
     nside = 32
     hpix = healpy.pixelfunc.ang2pix(nside, targets['ra'],
                                     targets['dec'], lonlat=True)
 
-    ntargets_map = np.zeros(healpy.nside2npix(nside), dtype=np.int32)
-    for h in hpix:
-        ntargets_map[h] = ntargets_map[h] + 1
-
-    ngot_map = np.zeros(healpy.nside2npix(nside), dtype=np.int32)
-    for h in hpix[igot]:
-        ngot_map[h] = ngot_map[h] + 1
-
-    fgot_map = np.ones(healpy.nside2npix(nside), dtype=np.float32)
-    inz = np.where(ntargets_map > 0)[0]
-    fgot_map[inz] = ngot_map[inz] / ntargets_map[inz]
-
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
 
+    ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix)
+
+    ntargets = len(targets)
+    ngot = len(targets)
+    fgot = np.float32(ngot) / np.float32(ntargets)
+
     hdr = dict()
     hdr['NSIDE'] = nside
+    hdr['NCADENCE'] = len(unique_base_cadences)
+    hdr['NTARGETS'] = ntargets
+    hdr['NGOT'] = ngot
+    hdr['FGOT'] = fgot
     fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
     fitsio.write(completeness_file, ngot_map, clobber=False)
     fitsio.write(completeness_file, fgot_map, clobber=False)
+
+    for indx in np.arange(len(unique_base_cadences)):
+        unique_base_cadence = unique_base_cadences[indx]
+
+        icadence = np.where(base_cadences == unique_base_cadence)[0]
+        ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
+                                                    got=got[icadence])
+
+        ntargets = len(icadence)
+        ngot = np.int32(got[icadence].sum())
+        fgot = np.float32(ngot) / np.float32(ntargets)
+
+        hdr = dict()
+        hdr['CADENCE'] = unique_base_cadence
+        hdr['NTARGETS'] = ntargets
+        hdr['NGOT'] = ngot
+        hdr['FGOT'] = fgot
+        fitsio.write(completeness_file, ntargets_map, header=hdr,
+                     clobber=False)
+        fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
+        fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)

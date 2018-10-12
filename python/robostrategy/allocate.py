@@ -1,4 +1,4 @@
-# @Author: Michael R. Blanton 
+# @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
 # @Filename: field_assign_gg
 # @License: BSD 3-Clause
@@ -76,6 +76,7 @@ class AllocateLST(object):
 
     construct() : create allocinfo attribute organizing field info
     solve() : solve for allocation, create field_array attribute with results
+    fromfits() : write field_array to a FITS file
     tofits() : write field_array to a FITS file
     plot_full() : plot the LST distribution of field_array
 
@@ -295,6 +296,7 @@ class AllocateLST(object):
         field_array = np.zeros(len(self.allocinfo), dtype=field_array_dtype)
         for findx, fieldid in zip(np.arange(len(self.allocinfo)),
                                   self.allocinfo):
+            field_array['fieldid'][findx] = fieldid
             ifield = np.where(fieldid == self.fields['fieldid'])[0]
             field_array['racen'][findx] = self.fields['racen'][ifield]
             field_array['deccen'][findx] = self.fields['deccen'][ifield]
@@ -309,7 +311,8 @@ class AllocateLST(object):
                 cadence_totals[indx] = ccadence['allocation'].sum()
             field_total = cadence_totals.sum()
             field_array['cadence'][findx] = 'none'
-            field_array['slots'][fieldid] = self.allocinfo[fieldid][cadence]['slots'] * 0.
+            field_array['slots'][findx] = (
+                self.allocinfo[fieldid][cadence]['slots'] * 0.)
             if(field_total > 0.):
                 cadence_totals = cadence_totals / field_total
                 cadence_cumulative = cadence_totals.cumsum()
@@ -317,14 +320,15 @@ class AllocateLST(object):
                 icadence = np.where(cadence_cumulative > choose)[0][0]
                 cadence = list(self.allocinfo[fieldid].keys())[icadence]
                 choose_field = np.random.random()
-                field_array['fieldid'][findx] = fieldid
                 if(choose_field <
                    field_total / self.allocinfo[fieldid][cadence]['needed']):
                     field_array['cadence'][findx] = cadence
                     field_array['slots'][findx] = slots_totals
-                    field_array['needed'][findx] = self.allocinfo[fieldid][cadence]['needed']
+                    field_array['needed'][findx] = (
+                        self.allocinfo[fieldid][cadence]['needed'])
 
-            field_array['nfilled'][findx] = field_array['slots'][findx, :, :].sum()
+            field_array['nfilled'][findx] = (
+                field_array['slots'][findx, :, :].sum())
 
         self.field_array = field_array
 
@@ -373,16 +377,16 @@ class AllocateLST(object):
         self.field_options = fitsio.read(filename, ext=5)
         return
 
-    def available_lst(self):
+    def _available_lst(self):
         available = (self.slots.slots /
                      self.slots.duration * self.slots.fclear)
         return(available)
 
-    def used_lst(self):
+    def _used_lst(self):
         used = self.field_array['slots'][:, :, :].sum(axis=0)
         return(used)
 
-    def got_ra(self):
+    def _got_ra(self):
         got = np.zeros((self.slots.nlst, self.slots.nlunation),
                        dtype=np.float32)
         for ilunation in np.arange(self.slots.nlunation):
@@ -397,11 +401,20 @@ class AllocateLST(object):
 
     def plot_full(self, ilunation=None, title=None):
         """Plot the LST distributions for the allocations
+
+        Parameters:
+        ----------
+
+        ilunation : ndarray of np.int32
+            indices of the lunation classes to plot
+
+        title : str
+            title to put on plot
 """
 
-        available = self.available_lst()
-        used = self.used_lst()
-        got = self.got_ra()
+        available = self._available_lst()
+        used = self._used_lst()
+        got = self._got_ra()
 
         if(ilunation is None):
             used = used.sum(axis=1)
@@ -423,7 +436,9 @@ class AllocateLST(object):
         print(got.sum())
         plt.xlabel('LST or RA (hours)')
         plt.ylabel('Number of exposures')
-        plt.legend(loc=0)
+        plt.ylim(np.array([-0.05, 1.2]) * np.array([got.max(), used.max(),
+                                                    available.max()]).max())
+        plt.legend(loc=1)
         if(title is not None):
             plt.title(title)
 
@@ -434,6 +449,12 @@ class AllocateLST(object):
 
     def plot_fields(self, indx=None):
         """Plot the RA/Dec distribution of fields allocated
+
+        Parameters:
+        ----------
+
+        indx : ndarray of np.int32
+            indices of fields to plot
 """
 
         if(indx is None):
@@ -457,5 +478,7 @@ class AllocateLST(object):
         (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
                                        self.field_array['deccen'][ii])
         plt.scatter(xx, yy, s=4, c=np.log10(self.field_array['nfilled'][ii]))
+        cb = plt.colorbar()
+        cb.set_label('$\log_{10} N$')
 
         return

@@ -39,6 +39,15 @@ class Field(object):
     deccen : np.float64
         boresight Dec, J2000 deg
 
+    observatory : str
+        observatory field observed from, 'apo' or 'lco' (default 'apo')
+
+    fps_layout : str
+        name of FPS layout to assume (default 'filled_hex')
+
+    db : boolean
+        whether to use database when setting up Robot instance (default True)
+
     Attributes:
     ----------
 
@@ -48,17 +57,38 @@ class Field(object):
     deccen : np.float64
         boresight Dec, J2000 deg
 
+    observatory : str
+        observatory field observed from ('apo' or 'lco')
+
     field_cadence : int, np.int32
         index of field cadence in cadencelist
 
     robot : Robot class
-        instance of Robot
+        instance of Robot (singleton)
+
+    cadencelist : CadenceList class
+        instance of CadenceList (singleton)
+
+    ntarget : int or np.int32
+        number of targets
+
+    target_array : ndarray
+        ndarray with target info, exact format varies
+
+    target_ra : ndarray of np.float64
+        RA of targets, J2000 deg
+
+    target_dec : ndarray of np.float64
+        Dec of targets, J2000 deg
 
     target_x : ndarray of np.float64
-        x positions of targets
+        x positions of targets, mm
 
     target_y : ndarray of np.float64
-        y positions of targets
+        y positions of targets, mm
+
+    target_pk : ndarray of np.int64
+        unique primary key for each target
 
     target_cadence : ndarray of np.int32
         cadences of targets
@@ -66,25 +96,36 @@ class Field(object):
     target_type : ndarray of strings
         target types ('boss' or 'apogee')
 
+    assignment : ndarray of np.int32
+        (npositioner, nexposure) array of target indices
+
+    greedy_limit : int or np.int32
+        number of exposures above which assign() uses greedy algorithm
+
     Methods:
     -------
 
     targets_fromarray() : read targets from an ndarray
     targets_fromfits() : read targets from a FITS file
+    targets_toarray() : write targets to an ndarray
+    targets_tofits() : write targets (and assignments) to a FITS file
     assign() : assign targets to robots for cadence
+    plot() : plot assignments of robots to targets
 
     Notes:
     -----
 
-    This class is definitely going to need to be refactored (please
-    email me if you are reading this comment in 2025 ...).
-
+    assignments gives a direct index into the target_* arrays, or -1
+    for unassigned positioner-exposures. It does not contain
+    target_pk.
 """
     def __init__(self, racen=None, deccen=None,
-                 db=True, fps_layout='filled_hex'):
+                 db=True, fps_layout='filled_hex',
+                 observatory='apo'):
         self.robot = robot.Robot(db=db, fps_layout=fps_layout)
         self.racen = racen
         self.deccen = deccen
+        self.observatory = observatory
         self.cadencelist = cadence.CadenceList()
         self.field_cadence = None
         self.assignments = None
@@ -101,14 +142,20 @@ class Field(object):
 
     def radec2xy(self, ra=None, dec=None):
         # Yikes!
-        scale = 218.
+        if(self.observatory == 'apo'):
+            scale = 218.
+        if(self.observatory == 'lco'):
+            scale = 329.
         x = (ra - self.racen) * np.cos(self.deccen * np.pi / 180.) * scale
         y = (dec - self.deccen) * scale
         return(x, y)
 
     def xy2radec(self, x=None, y=None):
         # Yikes!
-        scale = 218.
+        if(self.observatory == 'apo'):
+            scale = 218.
+        if(self.observatory == 'lco'):
+            scale = 329.
         ra = self.racen + (x / scale) / np.cos(self.deccen * np.pi / 180.)
         dec = self.deccen + (y / scale)
         return(ra, dec)

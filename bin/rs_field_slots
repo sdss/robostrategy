@@ -91,7 +91,8 @@ if __name__ == '__main__':
             iok = np.where((alt > 0) &
                            ((airmass < airmass_limit) |
                             (airmass < airmass_min + airmass_pad)) &
-                           (field_min_lunation >= slots.lunation[ilunation]))[0]
+                           (field_min_lunation >=
+                            slots.lunation[ilunation + 1]))[0]
             field_slots['slots'][iok, ilst, ilunation] = 1.
 
     slots_file = sdss_path.full('rsFieldSlots', plan=plan,

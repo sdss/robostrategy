@@ -1,0 +1,208 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_html
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+img_tag = "<a href='{png_file}'><img src='{png_file}' width=300px/></a>"
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Evaluate completeness of target assignments')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    field_cadence_file = sdss_path.full('rsFieldCadences',
+                                        plan=plan, observatory=observatory)
+    cadence_mask, cadence_hdr = fitsio.read(field_cadence_file, header=True)
+
+    completeness_file = sdss_path.full('rsCompleteness',
+                                       plan=plan, observatory=observatory)
+    nt, completeness_hdr = fitsio.read(completeness_file, header=True)
+
+    html_path = os.path.dirname(sdss_path.full('rsCompletenessHtml', plan=plan,
+                                               observatory=observatory))
+    html_file = os.path.join(html_path,
+                             'rs-{observatory}.html'.format(observatory=observatory))
+
+    fp = open(html_file, "w")
+    fp.write("<html>")
+    fp.write("<body>")
+
+    fp.write("""<h2>Output files</h2>
+
+<p>The main results of the allocation process can be found here:</p>
+
+<ul> <li> <a href="rsTargets-{plan}-{observatory}.fits">rsTargets</a>:
+list of target inputs </li>
+
+<li> <a href="rsCadences-{plan}-{observatory}.fits">rsCadences</a>:
+list of cadence definitions </li>
+
+<li> <a
+href="rsAllocation-{plan}-{observatory}.fits">rsAllocation</a>:
+cadences chosen for each field, and the LST and LUNATION slots used.
+The <code>slots</code> column has a 24-by-2 array with the allocation
+of exposures by LST hour and lunation.</li>
+
+<li> <a
+href="rsAssignments-{plan}-{observatory}.fits">rsAssignments</a>: A
+list of assignments of fields to targets. The exposure number in the
+field cadence sequence is given (but the actual robot used is
+not). The <a href="targets">targets</a> directory has more complete
+information per field in a set of individual files.</li>
+
+<li> <a
+href="rsCompleteness-{plan}-{observatory}.fits">rsCompleteness</a>:
+Completeness maps for all targets and for target cadence classes in
+healpix format.</li>
+
+</ul>
+""".format(plan=plan, observatory=observatory))
+
+    fp.write("""<h2>Allocation of time</h2>
+
+    <p> For both all time and for different lunations, the allocation of time as a function of LST.</p>
+""")
+
+    fp.write("<table>")
+    fp.write("<tr>")
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='lst-all')
+    fp.write("<td>")
+    fp.write(img_tag.format(png_file=png_file))
+    fp.write("</td>")
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='lst-dark')
+    fp.write("<td>")
+    fp.write(img_tag.format(png_file=png_file))
+    fp.write("</td>")
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='lst-bright')
+    fp.write("<td>")
+    fp.write(img_tag.format(png_file=png_file))
+    fp.write("</td>")
+
+    fp.write("</tr>")
+    fp.write("</table>")
+
+    fp.write("""<h2>Cadences per field</h2>
+
+
+    <p>The left column shows which fields had an opportunity to be allowed each cadence. The right column shows how exposures were allocated to those fields, within each cadence.</p>
+""")
+
+    fp.write("<table>")
+    ncad = np.int32(cadence_hdr['NCAD'])
+    for icad in np.arange(ncad):
+        fp.write("<tr>")
+        field_cadence = cadence_hdr['CAD{icad}'.format(icad=icad)]
+        base_field_cadence = field_cadence.split('-')[0]
+        print(base_field_cadence)
+
+        png_file = sdss_path.full('rsFieldCadencesPng',
+                                  name=field_cadence, plan=plan,
+                                  observatory=observatory)
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        name = 'radec-{base_field_cadence}'.format(
+            base_field_cadence=base_field_cadence)
+        png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                  observatory=observatory, name=name)
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        fp.write("</tr>")
+    fp.write("</table>")
+
+    fp.write("""<h2>Target completeness</h2>
+
+    <p>These plots show the completeness as a function of target class. In this case we define the target class according to cadence groups (for example, defining cadences like mwm_rv_NxM to be all within the same group). Targets either get all the necessary exposures for their cadence, or they get none.</p>
+
+    <p>The left column shows the total number of targets in each healpix pixel (scaled with asinh to be able to see the dynamic range. The middle column shows the number of targets completed (scaled with asinh again). The right column shows the fraction. If the fraction is shown as negative (the darkest color) then that means there were zero targets in the pixel to begin with.</p>
+""")
+
+    fp.write("<table>")
+    ncad = np.int32(completeness_hdr['NCADENCE'])
+    for icad in np.arange(ncad):
+        fp.write("<tr>")
+
+        ntargets_map, hdr = fitsio.read(completeness_file, header=True,
+                                        ext=icad * 3 + 0)
+        if('CADENCE' in hdr):
+            cadence = hdr['CADENCE']
+        else:
+            cadence = 'all'
+        ntarget = hdr['NTARGET']
+        ngot = hdr['NGOT']
+        fgot = hdr['FGOT']
+
+        png_file = sdss_path.full(
+            'rsAssignmentsPng', name='ntargets-{c}'.format(c=cadence),
+            plan=plan, observatory=observatory)
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        png_file = sdss_path.full(
+            'rsAssignmentsPng', name='ngot-{c}'.format(c=cadence),
+            plan=plan, observatory=observatory)
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        png_file = sdss_path.full(
+            'rsAssignmentsPng', name='fgot-{c}'.format(c=cadence), plan=plan,
+            observatory=observatory)
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        fp.write("<td>")
+        fp.write("<table>")
+        fp.write("<tr><td>Cadence group {c}</tr>".format(c=cadence))
+        fp.write("<tr><td>n<sub>target</sub> = {n}</td></tr>".format(n=ntarget))
+        fp.write("<tr><td>n<sub>got</sub> = {n}</td></tr>".format(n=ngot))
+        fp.write("<tr><td>f<sub>got</sub> = {n}</td></tr>".format(n=fgot))
+        fp.write("</table>")
+        fp.write("</td>")
+
+        fp.write("</tr>")
+    fp.write("</table>")
+
+    fp.write("</body>")
+    fp.write("</html>")
+
+    fp.close()

@@ -22,16 +22,21 @@ Steps to run strategy
  * rs_allocate_plot -p [plan] -o [observatory]
  * rs_completeness -p [plan] -o [observatory]
  * rs_completeness_plot -p [plan] -o [observatory]
+ * rs_html -p [plan] -o [observatory]
 
 Things to do
 ============
 
- * Document all pieces
- * Fix radec2xy (at least to include LCO)
+ * Make plots
  * Set RM field locations
  * Set RV field locations, and replace RV targets (remove hack in
 	 rs_assign)
+ * Fix radec2xy for 0/360 and poles issues
  * How to make sure targets with field cadence are ensured
+ * Fix hex grid pattern
+ * Handle assignments in overlapping fields 
  * Mixed BOSS and APOGEE cadence
- * Code to produce report
+ * Fix radec2xy fully
  * Testbed
+ * Incorporate kaiju constraints
+ * Combine LCO/APO constraints into single optimization

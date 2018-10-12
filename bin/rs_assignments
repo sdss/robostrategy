@@ -69,7 +69,8 @@ if __name__ == '__main__':
             print(fieldid)
 
         f = field.Field(racen=allocate.fields['racen'][indx],
-                        deccen=allocate.fields['deccen'][indx])
+                        deccen=allocate.fields['deccen'][indx],
+                        observatory=observatory)
 
         field_assigned_file = sdss_path.full('rsFieldAssignments',
                                              plan=plan,

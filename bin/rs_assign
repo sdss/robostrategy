@@ -97,7 +97,8 @@ if __name__ == '__main__':
         values = np.ones(len(targets))
 
         f = field.Field(racen=fields_entry['racen'],
-                        deccen=fields_entry['deccen'])
+                        deccen=fields_entry['deccen'],
+                        observatory=observatory)
         f.targets_fromarray(targets)
 
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
@@ -105,7 +106,8 @@ if __name__ == '__main__':
 
         for field_cadence in field_cadences:
             f = field.Field(racen=fields_entry['racen'],
-                            deccen=fields_entry['deccen'])
+                            deccen=fields_entry['deccen'],
+                            observatory=observatory)
             f.targets_fromarray(targets)
 
             for indx in np.arange(len(targets)):

@@ -17,7 +17,9 @@ import argparse
 import os
 import sys
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+import fitsio
 import robostrategy.allocate
 import sdss_access.path
 
@@ -44,42 +46,54 @@ if __name__ == '__main__':
                                    observatory=observatory)
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file)
 
+    field_cadence_file = sdss_path.full('rsFieldCadences',
+                                        plan=plan, observatory=observatory)
+    cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
+
     cadences = [c.decode().strip() for c in allocate.field_array['cadence']]
     base_cadences = np.array([c.split('-')[0] for c in cadences])
 
-    png_base = '{plan}-allocate-{observatory}.png'
-    png_base = png_base.format(plan=args.plan, observatory=observatory)
-    png_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                            'allocations', plan, png_base)
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-all')
-    allocate.plot_full()
-    plt.savefig(png_file, dpi=150)
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+    allocate.plot_full(title='Total time')
+    plt.savefig(png_file)
     plt.clf()
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-dark')
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_full(ilunation=0, title='Dark time')
-    plt.savefig(png_file, dpi=150)
+    plt.savefig(png_file)
     plt.clf()
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-bright')
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_full(ilunation=1, title='Bright time')
-    plt.savefig(png_file, dpi=150)
+    plt.savefig(png_file)
     plt.clf()
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='radec')
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_fields()
-    plt.savefig(png_file, dpi=150)
+    plt.title("All cadences")
+    plt.savefig(png_file)
     plt.clf()
 
-    for base_cadence in np.unique(base_cadences):
-        name = 'radec-{base_cadence}'.format(base_cadence=base_cadence)
+    ncad = np.int32(hdr['NCAD'])
+    for icad in np.arange(ncad):
+        field_cadence = hdr['CAD{icad}'.format(icad=icad)]
+        base_field_cadence = field_cadence.split('-')[0]
+        print(field_cadence)
+        name = 'radec-{base_field_cadence}'.format(
+            base_field_cadence=base_field_cadence)
         png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                   observatory=observatory, name=name)
-        indx = np.where(base_cadences == base_cadence)[0]
+        indx = np.where(base_cadences == base_field_cadence)[0]
+        matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
         allocate.plot_fields(indx=indx)
-        plt.savefig(png_file, dpi=150)
+        plt.title(base_field_cadence)
+        plt.savefig(png_file)
         plt.clf()

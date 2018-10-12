@@ -126,6 +126,9 @@ class Slots(object):
         filename : str
             file name to write to
 
+        clobber : boolean
+            whether to overwrite existing file (default True)
+
         Notes:
         ------
 

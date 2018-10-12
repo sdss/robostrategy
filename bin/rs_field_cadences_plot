@@ -18,6 +18,7 @@ import os
 import sys
 import numpy as np
 import fitsio
+import matplotlib
 import matplotlib.pyplot as plt
 import sdss_access.path
 
@@ -28,8 +29,12 @@ except ImportError:
 
 sdss_path = sdss_access.path.Path()
 
+
 def _convert_radec(m, ra, dec):
     return m(((360. - ra) + 180.) % 360., dec, inverse=False)
+
+image_template = "<a href='{png_file}'><img src='{png_file}' width=300px /></a>"
+
 
 if __name__ == '__main__':
 
@@ -65,6 +70,7 @@ if __name__ == '__main__':
     for indx in np.arange(ncad):
         field_cadence = hdr['CAD{indx}'.format(indx=indx)]
 
+        matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
         m = basemap.Basemap(projection='moll', lon_0=270, resolution='c')
 
         # draw parallels and meridians.
@@ -79,6 +85,7 @@ if __name__ == '__main__':
         (xx, yy) = _convert_radec(m, fields['racen'][icadence],
                                   fields['deccen'][icadence])
         plt.scatter(xx, yy, s=4, c='black')
+        plt.title(field_cadence)
 
         png_file = sdss_path.full('rsFieldCadencesPng',
                                   name=field_cadence, plan=plan,
