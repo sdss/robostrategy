@@ -165,7 +165,7 @@ healpix format.</li>
             cadence = hdr['CADENCE']
         else:
             cadence = 'all'
-        ntarget = hdr['NTARGET']
+        ntarget = hdr['NTARGETS']
         ngot = hdr['NGOT']
         fgot = hdr['FGOT']
 
@@ -195,7 +195,7 @@ healpix format.</li>
         fp.write("<tr><td>Cadence group {c}</tr>".format(c=cadence))
         fp.write("<tr><td>n<sub>target</sub> = {n}</td></tr>".format(n=ntarget))
         fp.write("<tr><td>n<sub>got</sub> = {n}</td></tr>".format(n=ngot))
-        fp.write("<tr><td>f<sub>got</sub> = {n}</td></tr>".format(n=fgot))
+        fp.write("<tr><td>f<sub>got</sub> = {n:4.3f}</td></tr>".format(n=fgot))
         fp.write("</table>")
         fp.write("</td>")
 

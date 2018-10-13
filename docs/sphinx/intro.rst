@@ -31,6 +31,7 @@ Things to do
  * Set RM field locations
  * Set RV field locations, and replace RV targets (remove hack in
 	 rs_assign)
+ * airmass cost
  * Fix radec2xy for 0/360 and poles issues
  * How to make sure targets with field cadence are ensured
  * Fix hex grid pattern
@@ -40,3 +41,4 @@ Things to do
  * Testbed
  * Incorporate kaiju constraints
  * Combine LCO/APO constraints into single optimization
+ * Put on constraints of number of certain targets to achieve.

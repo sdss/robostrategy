@@ -84,10 +84,10 @@ if __name__ == '__main__':
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
 
-    ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix)
+    ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix, got=got)
 
     ntargets = len(targets)
-    ngot = len(targets)
+    ngot = np.int32(got.sum())
     fgot = np.float32(ngot) / np.float32(ntargets)
 
     hdr = dict()
