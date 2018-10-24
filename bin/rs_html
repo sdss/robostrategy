@@ -39,12 +39,12 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    field_cadence_file = sdss_path.full('rsFieldCadences',
-                                        plan=plan, observatory=observatory)
+    field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
+                                                         plan=plan, observatory=observatory))
     cadence_mask, cadence_hdr = fitsio.read(field_cadence_file, header=True)
 
-    completeness_file = sdss_path.full('rsCompleteness',
-                                       plan=plan, observatory=observatory)
+    completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
+                                                        plan=plan, observatory=observatory))
     nt, completeness_hdr = fitsio.read(completeness_file, header=True)
 
     html_path = os.path.dirname(sdss_path.full('rsCompletenessHtml', plan=plan,
@@ -94,20 +94,20 @@ healpix format.</li>
 
     fp.write("<table>")
     fp.write("<tr>")
-    png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                              observatory=observatory, name='lst-all')
+    png_file = os.path.basename(sdss_path.full('rsAllocationPng', plan=plan,
+                                               observatory=observatory, name='lst-all'))
     fp.write("<td>")
     fp.write(img_tag.format(png_file=png_file))
     fp.write("</td>")
 
-    png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                              observatory=observatory, name='lst-dark')
+    png_file = os.path.basename(sdss_path.full('rsAllocationPng', plan=plan,
+                                               observatory=observatory, name='lst-dark'))
     fp.write("<td>")
     fp.write(img_tag.format(png_file=png_file))
     fp.write("</td>")
 
-    png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                              observatory=observatory, name='lst-bright')
+    png_file = os.path.basename(sdss_path.full('rsAllocationPng', plan=plan,
+                                               observatory=observatory, name='lst-bright'))
     fp.write("<td>")
     fp.write(img_tag.format(png_file=png_file))
     fp.write("</td>")
@@ -129,17 +129,18 @@ healpix format.</li>
         base_field_cadence = field_cadence.split('-')[0]
         print(base_field_cadence)
 
-        png_file = sdss_path.full('rsFieldCadencesPng',
-                                  name=field_cadence, plan=plan,
-                                  observatory=observatory)
+        png_file = os.path.basename(sdss_path.full('rsFieldCadencesPng',
+                                                   name=field_cadence, plan=plan,
+                                                   observatory=observatory))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
 
         name = 'radec-{base_field_cadence}'.format(
             base_field_cadence=base_field_cadence)
-        png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                                  observatory=observatory, name=name)
+        png_file = os.path.basename(
+            sdss_path.full('rsAllocationPng', plan=plan,
+                           observatory=observatory, name=name))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
@@ -169,23 +170,23 @@ healpix format.</li>
         ngot = hdr['NGOT']
         fgot = hdr['FGOT']
 
-        png_file = sdss_path.full(
+        png_file = os.path.basename(sdss_path.full(
             'rsAssignmentsPng', name='ntargets-{c}'.format(c=cadence),
-            plan=plan, observatory=observatory)
+            plan=plan, observatory=observatory))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
 
-        png_file = sdss_path.full(
+        png_file = os.path.basename(sdss_path.full(
             'rsAssignmentsPng', name='ngot-{c}'.format(c=cadence),
-            plan=plan, observatory=observatory)
+            plan=plan, observatory=observatory))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
 
-        png_file = sdss_path.full(
+        png_file = os.path.basename(sdss_path.full(
             'rsAssignmentsPng', name='fgot-{c}'.format(c=cadence), plan=plan,
-            observatory=observatory)
+            observatory=observatory))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
