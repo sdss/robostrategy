@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_targets_extract
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import sdssdb.peewee.targetdb as targetdb
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+def get_targets():
+    nt = targetdb.Target.select(targetdb.Target.ra,
+                                targetdb.Target.dec).count()
+
+    ts = (targetdb.Target.select(targetdb.Target.ra,
+                                 targetdb.Target.dec,
+                                 targetdb.Target.pk,
+                                 targetdb.Program.label.alias('program'),
+                                 targetdb.TargetCadence.name.alias('cadence'))
+          .join(targetdb.Program).switch(targetdb.Target)
+          .join(targetdb.TargetCadence).dicts())
+
+    target_type = np.array(['apogee'] * nt)
+
+    target0 = [('targetid', np.int32),
+               ('pk', np.int64),
+               ('ra', np.float64),
+               ('dec', np.float64),
+               ('program', np.dtype('a30')),
+               ('cadence', cadence.fits_type),
+               ('type', np.dtype('a30'))]
+    targets = np.zeros(nt, dtype=target0)
+
+    for indx, t in zip(np.arange(nt), ts):
+        targets['targetid'][indx] = indx
+        targets['ra'][indx] = t['ra']
+        targets['dec'][indx] = t['dec']
+        targets['pk'][indx] = t['pk']
+        targets['program'][indx] = t['program']
+        targets['cadence'][indx] = t['cadence']
+        targets['type'][indx] = target_type[indx]
+
+    return(targets)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Export targets as a FITS file')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    targets = get_targets()
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory=observatory)
+    fitsio.write(targets_file, targets, clobber=True)
