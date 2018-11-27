@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_cadences_ggsp
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Retrieve cadences from targetdb')
+
+    parser.add_argument('-n', '--ncadence', dest='ncadence',
+                        type=np.int32, help='max number of cadences',
+                        default=100)
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    cadencelist = cadence.CadenceList()
+    cadencelist.reset()
+    cadencelist.fromdb()
+
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadences_array = cadencelist.toarray()
+    fitsio.write(cadences_file, cadences_array, clobber=True)
