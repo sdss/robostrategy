@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_fields
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import astropy.io.ascii as ascii
+import fitsio
+import robostrategy.sloane as sloane
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field list creation for SDSS-V')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+    parser.add_argument('-d', '--div', dest='nsdiv',
+                        type=np.float64, help='max number of cadences',
+                        default=-14.)
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    fields_north = sloane.Sloane(n=7682, radius=1.49)
+    fields_south = sloane.Sloane(n=18752, radius=0.95)
+
+    fields_north.deccut(args.nsdiv)
+    fields_south.deccut(args.nsdiv, above=False)
+
+    fields_dtype = [('fieldid', np.int32),
+                    ('racen', np.float64),
+                    ('deccen', np.float64),
+                    ('radius', np.float32),
+                    ('type', np.dtype('a30'))]
+
+    fields_north_array = np.zeros(len(fields_north.ra), dtype=fields_dtype)
+    fields_north_array['fieldid'] = np.arange(len(fields_north.ra),
+                                              dtype=np.int32)
+    fields_north_array['racen'] = fields_north.ra
+    fields_north_array['deccen'] = fields_north.dec
+    fields_north_array['radius'] = fields_north.radius
+    fields_north_array['type'] = 'allsky_north'
+
+    # RM fields
+    fields_north_rm = np.zeros(3, dtype=fields_dtype)
+    fields_north_rm['fieldid'] = (fields_north_array['fieldid'].max() +
+                                  1 + np.arange(3))
+    fields_north_rm['racen'] = [150.1, 213.7, 270.0]
+    fields_north_rm['deccen'] = [2.2, 53.1, 66.6]
+    fields_north_rm['radius'] = [1.49] * 3
+    fields_north_rm['type'] = 'rm_north'
+    fields_north_array = np.append(fields_north_array, fields_north_rm)
+
+    # RV fields
+    atlas = ascii.read(os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                    'data', 'atlasFields2.csv'))
+    inorth = np.where(atlas['Dec Deg'] > args.nsdiv)[0]
+    isouth = np.where(atlas['Dec Deg'] <= args.nsdiv)[0]
+    ibad = np.where((atlas['nVisits'] == 17) &
+                    (atlas['expLen'] == 1))[0]
+    atlas['nVisits'][ibad] = 18
+
+    fields_north_rv = np.zeros(len(inorth), dtype=fields_dtype)
+    fields_north_rv['fieldid'] = (fields_north_array['fieldid'].max() +
+                                  1 + np.arange(len(inorth)))
+    fields_north_rv['racen'] = atlas['RA deg'][inorth]
+    fields_north_rv['deccen'] = atlas['Dec Deg'][inorth]
+    fields_north_rv['radius'] = [1.49] * len(inorth)
+    for indx in np.arange(len(inorth)):
+        fields_north_rv['type'][indx] = (
+            'rv_{nepoch}x{nexp}'.format(nepoch=atlas['nVisits'][inorth[indx]],
+                                        nexp=atlas['expLen'][inorth[indx]]))
+    fields_north_array = np.append(fields_north_array, fields_north_rv)
+
+    fields_south_array = np.zeros(len(fields_south.ra), dtype=fields_dtype)
+    fields_south_array['fieldid'] = (fields_north_array['fieldid'].max() +
+                                     1 + np.arange(len(fields_south.ra),
+                                                   dtype=np.int32))
+    fields_south_array['racen'] = fields_south.ra
+    fields_south_array['deccen'] = fields_south.dec
+    fields_south_array['radius'] = fields_south.radius
+    fields_south_array['type'] = 'allsky_south'
+
+    # RM fields
+    fields_south_rm = np.zeros(2, dtype=fields_dtype)
+    fields_south_rm['fieldid'] = (fields_south_array['fieldid'].max() +
+                                  1 + np.arange(2))
+    fields_south_rm['racen'] = [52.5, 36.4]
+    fields_south_rm['deccen'] = [- 28., - 4.6]
+    fields_south_rm['radius'] = [0.95] * 2
+    fields_south_rm['type'] = 'rm_south'
+    fields_south_array = np.append(fields_south_array, fields_south_rm)
+
+    fields_south_rv = np.zeros(len(isouth), dtype=fields_dtype)
+    fields_south_rv['fieldid'] = (fields_south_array['fieldid'].max() +
+                                  1 + np.arange(len(isouth)))
+    fields_south_rv['racen'] = atlas['RA deg'][isouth]
+    fields_south_rv['deccen'] = atlas['Dec Deg'][isouth]
+    fields_south_rv['radius'] = [0.95] * len(isouth)
+    for indx in np.arange(len(isouth)):
+        fields_south_rv['type'][indx] = (
+            'rv_{nepoch}x{nexp}'.format(nepoch=atlas['nVisits'][isouth[indx]],
+                                        nexp=atlas['expLen'][isouth[indx]]))
+    fields_south_array = np.append(fields_south_array, fields_south_rv)
+    
+    fields_north_file = sdss_path.full('rsFields', plan=plan,
+                                       observatory='apo')
+    fields_south_file = sdss_path.full('rsFields', plan=plan,
+                                       observatory='lco')
+
+    fitsio.write(fields_north_file, fields_north_array, clobber=True)
+    fitsio.write(fields_south_file, fields_south_array, clobber=True)
+
+    matplotlib.rcParams['figure.figsize'] = (16.0, 8.0)
+    fields_north.plot()
+    fields_north_png = sdss_path.full('rsFieldsPng', plan=plan,
+                                      observatory='apo')
+    plt.savefig(fields_north_png, dpi=150)
+    plt.clf()
+
+    matplotlib.rcParams['figure.figsize'] = (16.0, 8.0)
+    fields_south.plot()
+    fields_south_png = sdss_path.full('rsFieldsPng', plan=plan,
+                                      observatory='lco')
+    plt.savefig(fields_south_png, dpi=150)
+    plt.clf()
