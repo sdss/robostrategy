@@ -19,11 +19,10 @@ import sys
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
-import observesim.db.peewee.targetdb as targetdb
+import sdssdb.peewee.targetdb as targetdb
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
-targetdb.database.autoconnect()
 
 
 def get_targets():

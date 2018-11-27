@@ -113,7 +113,7 @@ class Sloane(object):
         return
 
     def _uniform(self, n=None):
-        icover_path = os.path.join(os.getenv('OBSERVESIM_DIR'),
+        icover_path = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                    'bin', 'icover')
         out = subprocess.run([icover_path, str(n)], stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
