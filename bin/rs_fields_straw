@@ -80,6 +80,9 @@ if __name__ == '__main__':
     ibad = np.where((atlas['nVisits'] == 17) &
                     (atlas['expLen'] == 1))[0]
     atlas['nVisits'][ibad] = 18
+    ibad = np.where((atlas['nVisits'] == 16) &
+                    (atlas['expLen'] == 2))[0]
+    atlas['nVisits'][ibad] = 15
 
     fields_north_rv = np.zeros(len(inorth), dtype=fields_dtype)
     fields_north_rv['fieldid'] = (fields_north_array['fieldid'].max() +

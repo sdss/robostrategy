@@ -27,11 +27,15 @@ Steps to run strategy
 Things to do
 ============
 
- * Fix RV targets
- * Add RM targets
- * airmass cost
+ * Move all stuff to single directory
+ * Fix instrument
+ * Check RV cadence consistency
+ * Correctly calculate fgot
+ * Document how to get list of results for each target.
+ * Document how to get list of results for each field.
  * Fix radec2xy for 0/360 and poles issues
  * How to make sure targets with field cadence are ensured
+ * airmass cost
  * Fix hex grid pattern
  * Handle assignments in overlapping fields 
  * Mixed BOSS and APOGEE cadence
@@ -40,3 +44,13 @@ Things to do
  * Incorporate kaiju constraints
  * Combine LCO/APO constraints into single optimization
  * Put on constraints of number of certain targets to achieve.
+
+Need from teams:
+
+ * In general, review the cadences
+ * In general, review the list of targets
+ * New RV targets
+ * TESS RGB targets?
+ * TESS OBAF targets?
+ * TESS Planet targets?
+

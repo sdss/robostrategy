@@ -19,7 +19,7 @@ import sys
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
-import sdssdb.peewee.targetdb as targetdb
+import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -49,13 +49,91 @@ def get_targets():
     targets = np.zeros(nt, dtype=target0)
 
     for indx, t in zip(np.arange(nt), ts):
-        targets['targetid'][indx] = indx
         targets['ra'][indx] = t['ra']
         targets['dec'][indx] = t['dec']
         targets['pk'][indx] = t['pk']
         targets['program'][indx] = t['program']
         targets['cadence'][indx] = t['cadence']
         targets['type'][indx] = target_type[indx]
+
+    # HACK
+    program = np.array([p.decode().strip() for p in targets['program']])
+    inotrm = np.where(program != 'ReSpeQ_RM')[0]
+    targets = targets[inotrm]
+    print(len(targets))
+    fname = sdss_path.full('rsFields', observatory='apo', plan='straw-0')
+    f = fitsio.read(fname)
+    ftype = np.array([x.decode().strip() for x in f['type']])
+    irmfields = np.where(ftype == 'rm_north')[0]
+    for irmfield in irmfields:
+        maxpk = targets['pk'].max()
+        racen = f['racen'][irmfield]
+        deccen = f['deccen'][irmfield]
+        nnew = 800
+        thran = np.pi * 2. * np.random.random(size=nnew)
+        r2ran = (1.49**2) * np.random.random(size=nnew)
+        rran = np.sqrt(r2ran)
+        dra = rran * np.cos(thran)
+        ddec = rran * np.sin(thran)
+        new_targets = np.zeros(nnew, dtype=target0)
+        new_targets['ra'] = (racen + dra / np.cos(np.pi / 180. * deccen))
+        new_targets['dec'] = (deccen + ddec)
+        new_targets['pk'] = maxpk + 1 + np.arange(nnew)
+        new_targets['program'] = 'ReSpeQ_RM'
+        new_targets['cadence'] = 'bhm_rm_174x8'
+        new_targets['type'] = 'rm_north'
+        targets = np.append(targets, new_targets)
+
+    # HACK
+    fname = sdss_path.full('rsFields', observatory='lco', plan='straw-0')
+    f = fitsio.read(fname)
+    ftype = np.array([x.decode().strip() for x in f['type']])
+    irmfields = np.where(ftype == 'rm_south')[0]
+    for irmfield in irmfields:
+        maxpk = targets['pk'].max()
+        racen = f['racen'][irmfield]
+        deccen = f['deccen'][irmfield]
+        nnew = 800
+        thran = np.pi * 2. * np.random.random(size=nnew)
+        r2ran = (1.49**2) * np.random.random(size=nnew)
+        rran = np.sqrt(r2ran)
+        dra = rran * np.cos(thran)
+        ddec = rran * np.sin(thran)
+        new_targets = np.zeros(nnew, dtype=target0)
+        new_targets['ra'] = (racen + dra / np.cos(np.pi / 180. * deccen))
+        new_targets['dec'] = (deccen + ddec)
+        new_targets['pk'] = maxpk + 1 + np.arange(nnew)
+        new_targets['program'] = 'ReSpeQ_RM'
+        new_targets['cadence'] = 'bhm_rm_174x8'
+        new_targets['type'] = 'rm_south'
+        targets = np.append(targets, new_targets)
+
+    # HACK
+    program = np.array([p.decode().strip() for p in targets['program']])
+    irv = np.where((program == 'ATLaS_RV') &
+                   (targets['dec'] > -14))[0]
+    thran = np.pi * 2. * np.random.random(size=len(irv))
+    r2ran = (1.49**2) * np.random.random(size=len(irv))
+    rran = np.sqrt(r2ran)
+    dra = rran * np.cos(thran)
+    ddec = rran * np.sin(thran)
+    targets['ra'][irv] = (targets['ra'][irv] +
+                          dra / np.cos(np.pi / 180. * targets['dec'][irv]))
+    targets['dec'][irv] = (targets['dec'][irv] + ddec)
+
+    # HACK
+    irv = np.where((program == 'ATLaS_RV') &
+                   (targets['dec'] <= -14))[0]
+    thran = np.pi * 2. * np.random.random(size=len(irv))
+    r2ran = (0.95**2) * np.random.random(size=len(irv))
+    rran = np.sqrt(r2ran)
+    dra = rran * np.cos(thran)
+    ddec = rran * np.sin(thran)
+    targets['ra'][irv] = (targets['ra'][irv] +
+                          dra / np.cos(np.pi / 180. * targets['dec'][irv]))
+    targets['dec'][irv] = (targets['dec'][irv] + ddec)
+
+    targets['targetid'] = np.arange(len(targets), dtype=np.int32)
 
     return(targets)
 
