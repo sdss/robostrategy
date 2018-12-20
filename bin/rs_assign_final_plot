@@ -1,0 +1,119 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_assign_final_plot
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import robostrategy.field as field
+import robostrategy.allocate
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+matplotlib.rcParams['figure.figsize'] = [10, 10]
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Plot final assignments')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='first field id',
+                        required=False, default=-1)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='end field id',
+                        required=False, default=-1)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    fstart = args.start
+    fend = args.end
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file)
+
+    if(fstart == -1):
+        fstart = allocate.field_array['fieldid'].min()
+
+    if(fend == -1):
+        fend = allocate.field_array['fieldid'].max()
+
+    findx = np.where((allocate.field_array['fieldid'] >= fstart) &
+                     (allocate.field_array['fieldid'] <= fend))[0]
+
+    for indx in findx:
+        fieldid = allocate.field_array['fieldid'][indx]
+        cadence = allocate.field_array['cadence'][indx].decode().strip()
+
+        if((fieldid % 1) == 0):
+            print(fieldid)
+
+        f = field.Field(racen=allocate.fields['racen'][indx],
+                        deccen=allocate.fields['deccen'][indx],
+                        observatory=observatory)
+        field_assigned_file = sdss_path.full('rsFieldAssignments',
+                                             plan=plan,
+                                             observatory=observatory,
+                                             fieldid=fieldid)
+        f.fromfits(field_assigned_file)
+
+        isassigned = np.zeros(len(f.target_array), dtype=np.int32)
+        if(f.assignments is not None):
+            iassignments = np.where(f.assignments >= 0)
+            isassigned[f.assignments[iassignments]] = 1
+        iassigned = np.where(isassigned)[0]
+
+        if(f.assignments is not None):
+            assignments_flat = f.assignments.flatten()
+            isused = (assignments_flat >= 0) > 0
+            iused = np.where(isused)[0]
+        else:
+            iused = []
+
+        # May need to specify BOSS or APOGEE for covered?
+        covered = f.robot.covered(x=f.target_x, y=f.target_y)
+        icovered = np.where(covered)[0]
+
+        ireal = np.where(f.robot.fiducial == False)[0]
+        if(f.assignments is not None):
+            ntot = len(ireal) * f.assignments.shape[1]
+        else:
+            ntot = 0
+
+        f.plot()
+
+        title_template = "fieldid={fieldid} cadence={cadence} \n{nassigned}/{ncovered} targets, {nused}/{ntot} fiber-exposures"
+        title = title_template.format(fieldid=fieldid,
+                                      cadence=cadence,
+                                      nassigned=len(iassigned),
+                                      ncovered=len(icovered),
+                                      nused=len(iused),
+                                      ntot=ntot)
+        plt.title(title)
+
+        png_file = ".".join(field_assigned_file.split('.')[0:-1] + ["png"])
+        plt.savefig(png_file)
+        plt.clf()

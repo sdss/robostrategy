@@ -63,6 +63,26 @@ if __name__ == '__main__':
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     targets = fitsio.read(targets_file)
+    outtargets_dtype = np.dtype(targets.dtype.descr +
+                                np.dtype([('got', np.int32),
+                                          ('covered', np.int32)]).descr)
+    outtargets = np.zeros(len(targets), dtype=outtargets_dtype)
+    for name in targets.dtype.names:
+        outtargets[name] = targets[name]
+
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    fields = fitsio.read(fields_file)
+    ftype = np.array([t.decode().strip() for t in fields['type']])
+    if(observatory == 'apo'):
+        mindec = fields['deccen'][ftype != 'rm_north'].min()
+        icovered = np.where(outtargets['dec'] > mindec)[0]
+        outtargets['covered'][icovered] = 1
+    if(observatory == 'lco'):
+        maxdec = fields['deccen'][ftype != 'rm_south'].max()
+        icovered = np.where(outtargets['dec'] < maxdec)[0]
+        outtargets['covered'][icovered] = 1
+
     cadences = np.array([c.decode().strip() for c in targets['cadence']])
     base_cadences = np.array([c.split('-')[0] for c in cadences])
     base_cadences = np.array(["_".join(c.split('_')[0:-1])
@@ -76,6 +96,7 @@ if __name__ == '__main__':
     gotpk = np.zeros(targets['pk'].max() + 1, dtype=np.int8)
     gotpk[assigned['pk']] = 1
     got = gotpk[targets['pk']]
+    outtargets['got'] = got
 
     nside = 32
     hpix = healpy.pixelfunc.ang2pix(nside, targets['ra'],
@@ -86,7 +107,7 @@ if __name__ == '__main__':
 
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix, got=got)
 
-    ntargets = len(targets)
+    ntargets = len(np.where(outtargets['covered'])[0])
     ngot = np.int32(got.sum())
     fgot = np.float32(ngot) / np.float32(ntargets)
 
@@ -96,9 +117,10 @@ if __name__ == '__main__':
     hdr['NTARGETS'] = ntargets
     hdr['NGOT'] = ngot
     hdr['FGOT'] = fgot
-    fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
-    fitsio.write(completeness_file, ngot_map, clobber=False)
-    fitsio.write(completeness_file, fgot_map, clobber=False)
+    fitsio.write(completeness_file, outtargets, header=hdr, clobber=True)
+    fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=False)
+    fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
+    fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
 
     for indx in np.arange(len(unique_base_cadences)):
         unique_base_cadence = unique_base_cadences[indx]
@@ -107,7 +129,7 @@ if __name__ == '__main__':
         ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
                                                     got=got[icadence])
 
-        ntargets = len(icadence)
+        ntargets = len(np.where(outtargets['covered'][icadence])[0])
         ngot = np.int32(got[icadence].sum())
         fgot = np.float32(ngot) / np.float32(ntargets)
 

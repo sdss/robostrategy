@@ -44,22 +44,22 @@ if __name__ == '__main__':
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
 
-    ntargets_map, hdr = fitsio.read(completeness_file, header=True, ext=0)
+    ntargets_map, hdr = fitsio.read(completeness_file, header=True, ext=2)
     nside = np.int32(hdr['NSIDE'])
     ncadence = np.int32(hdr['NCADENCE'])
 
     for icadence in np.arange(ncadence + 1):
 
         ntargets_map, hdr = fitsio.read(completeness_file, header=True,
-                                        ext=icadence * 3 + 0)
+                                        ext=icadence * 3 + 2)
         if('CADENCE' in hdr):
-            cadence = hdr['CADENCE']
+            cadence = hdr['CADENCE'].strip()
         else:
             cadence = 'all'
         ngot_map = fitsio.read(completeness_file,
-                               ext=icadence * 3 + 1)
+                               ext=icadence * 3 + 3)
         fgot_map = fitsio.read(completeness_file,
-                               ext=icadence * 3 + 2)
+                               ext=icadence * 3 + 4)
 
         fig = plt.figure(figsize=(8, 4))
         healpy.mollview(

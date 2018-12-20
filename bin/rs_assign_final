@@ -64,18 +64,18 @@ if __name__ == '__main__':
                                            fieldid=fieldid)
         f.targets_fromfits(field_target_file)
 
-        for tindx in np.arange(f.ntarget):
-            if('mwm_rv' in f.target_cadence[tindx]):
-                f.target_x = f.target_x + 50. * np.random.random()
-                f.target_y = f.target_y + 50. * np.random.random()
-            if(f.target_cadence[tindx] == 'mwm_rv_16x1'):
-                f.target_cadence[tindx] = 'mwm_rv_15x1'
-            if(f.target_cadence[tindx] == 'mwm_rv_16x2'):
-                f.target_cadence[tindx] = 'mwm_rv_15x2'
-            if(f.target_cadence[tindx] == 'mwm_rv_16x3'):
-                f.target_cadence[tindx] = 'mwm_rv_15x3'
-            if(f.target_cadence[tindx] == 'mwm_rv_16x4'):
-                f.target_cadence[tindx] = 'mwm_rv_15x4'
+#        for tindx in np.arange(f.ntarget):
+#            if('mwm_rv' in f.target_cadence[tindx]):
+#                f.target_x = f.target_x + 50. * np.random.random()
+#                f.target_y = f.target_y + 50. * np.random.random()
+#            if(f.target_cadence[tindx] == 'mwm_rv_16x1'):
+#                f.target_cadence[tindx] = 'mwm_rv_15x1'
+#            if(f.target_cadence[tindx] == 'mwm_rv_16x2'):
+#                f.target_cadence[tindx] = 'mwm_rv_15x2'
+#            if(f.target_cadence[tindx] == 'mwm_rv_16x3'):
+#                f.target_cadence[tindx] = 'mwm_rv_15x3'
+#            if(f.target_cadence[tindx] == 'mwm_rv_16x4'):
+#                f.target_cadence[tindx] = 'mwm_rv_15x4'
 
         values = np.ones(f.ntarget)
 

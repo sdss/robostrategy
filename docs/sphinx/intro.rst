@@ -28,12 +28,17 @@ Things to do
 ============
 
  * Move all stuff to single directory
- * Fix instrument
- * Check RV cadence consistency
- * Correctly calculate fgot
- * Document how to get list of results for each target.
  * Document how to get list of results for each field.
+ * Make plots for each field
+ * Make HTML table of fields
+ * Why are some targets clearly not taken??
+ * Plot desired vs RA
+ * WD 100 pc cadences allow: in RM area.
+ * Add something to rsAllocation that is just 0 or 1, the field is observed.
+ * Use targetid not pk for checking completeness
+ * Fix instrument
  * Fix radec2xy for 0/360 and poles issues
+ * Check RV cadence consistency
  * How to make sure targets with field cadence are ensured
  * airmass cost
  * Fix hex grid pattern

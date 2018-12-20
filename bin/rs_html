@@ -19,6 +19,7 @@ import sys
 import numpy as np
 import fitsio
 import sdss_access.path
+import robostrategy.allocate
 
 sdss_path = sdss_access.path.Path()
 img_tag = "<a href='{png_file}'><img src='{png_file}' width=300px/></a>"
@@ -58,31 +59,109 @@ if __name__ == '__main__':
 
     fp.write("""<h2>Output files</h2>
 
-<p>The main results of the allocation process can be found here:</p>
+<p>The main results of the allocation process can be found in the following 
+files. The last two, the rsAllocation and rsCompleteness files, are
+the most useful ones to consult, so I put list their columns
+explicitly.</p>
 
 <ul> <li> <a href="rsTargets-{plan}-{observatory}.fits">rsTargets</a>:
 list of target inputs </li>
 
 <li> <a href="rsCadences-{plan}-{observatory}.fits">rsCadences</a>:
-list of cadence definitions </li>
-
-<li> <a
-href="rsAllocation-{plan}-{observatory}.fits">rsAllocation</a>:
-cadences chosen for each field, and the LST and LUNATION slots used.
-The <code>slots</code> column has a 24-by-2 array with the allocation
-of exposures by LST hour and lunation.</li>
+list of cadence definitions. This can be read into a CadenceList
+object (found in the robostrategy.cadence Python module)
+using the fromfits() method. </li>
 
 <li> <a
 href="rsAssignments-{plan}-{observatory}.fits">rsAssignments</a>: A
 list of assignments of fields to targets. The exposure number in the
 field cadence sequence is given (but the actual robot used is
-not). The <a href="targets">targets</a> directory has more complete
-information per field in a set of individual files.</li>
+not). </li>
+
+<li> rsFieldAssignments: <a href="rs-{observatory}-fields.html">Compiled
+here</a> is the list individual field assignments (in the <a href="targets">targets</a> directory), 
+in individual rsField Assignments files.
+Each of these files has the following HDUs:
+ <ul>
+ <li>HDU1: Table with list of targets. It has header keywords:
+  <ul>
+   <li><code>RACEN</code>: RA of field center, J2000 deg</li>
+   <li><code>DECCEN</code>: Dec of field center, J2000 deg</li>
+   <li><code>FCADENCE</code>: Name of field cadence</li>
+  </ul>
+  And columns:
+  <ul>
+   <li><code>ra</code>: RA of target, J2000 deg</li>
+   <li><code>dec</code>: Dec of target, J2000 deg</li>
+   <li><code>pk</code>: primary key in DB (munged for RM targets)</li>
+   <li><code>cadence</code>: name of cadence for target</li>
+   <li><code>type</code>: name of type of target (something like cadence, can ignore)</li>
+  </ul>
+ <li>HDU2: Image with assignments. It has a shape (546, nexposures),
+        and the value is the 0-indexed integer into the table in HDU1 for
+        target to be assigned to that positioner and exposure (or -1) if
+        none. </li>
+ </ul>
+</li>
+
+<li> <a
+href="rsAllocation-{plan}-{observatory}.fits">rsAllocation</a>:
+cadences chosen for each field, and the LST and LUNATION slots used.
+The <code>slots</code> column has a 24-by-2 array with the allocation
+of exposures by LST hour and lunation. If any of these values are
+non-zero, then the field cadence listed has been fully observed.
+<code>nfilled</code> will also be non-zero in this case. The
+columns of this file are:
+<ul>
+<li><code>fieldid</code>: unique ID number for field</li>
+<li><code>racen</code>: RA center of field (J2000 deg)</li>
+<li><code>deccen</code>: Dec center of field (J2000 deg)</li>
+<li><code>cadence</code>: Name of chosen cadence</li>
+<li><code>nfilled</code>: Number of observing exposures filled</li>
+<li><code>nneeded</code>: Number of observing exposures needed</li>
+<li><code>slots[2,24]</code>: Which lunation and LST slots to use.</li>
+</ul>
+</li>
 
 <li> <a
 href="rsCompleteness-{plan}-{observatory}.fits">rsCompleteness</a>:
-Completeness maps for all targets and for target cadence classes in
-healpix format.</li>
+Completeness information for all targets, and completeness maps for
+all targets and for target cadence classes in healpix format. The HDUs
+of the file are as follows:
+<ul>
+ <li>HDU1: Table with list of targets. It has header keywords:
+ <ul>
+  <li><code>NTARGETS</code>: number of targets covered (with "covered" set)</li>
+  <li><code>NGOT</code>: number of targets gotten (with "got" set)</li>
+  <li><code>FGOT</code>: fraction of targets gotten (with "got" set)</li>
+  <li><code>NCADENCE</code>: number of cadences in further HDUs</li>
+ </ul>
+ And columns:
+ <ul>
+  <li><code>targetid</code>: unique target ID (not 100% sure this is right)</li>
+  <li><code>pk</code>: primary key in DB (munged for RM targets)</li>
+  <li><code>ra</code>: RA of target, J2000 deg</li>
+  <li><code>dec</code>: Dec of target, J2000 deg</li>
+  <li><code>program</code>: name of program for target</li>
+  <li><code>cadence</code>: name of cadence for target</li>
+  <li><code>type</code>: name of type of target (something like cadence, can ignore)</li>
+  <li><code>got</code>: we got the target or not (1 or 0)</li>
+  <li><code>covered</code>: in the area we consider "covered" by this telescope</li>
+ </ul>
+ <li>HDU2: Healpix map of targets. This is an integer image. There are important
+   parameters in the header:
+   <ul>
+    <li><code>NSIDE</code>: "nside" value for healpix map, e.g. 32</li>
+    <li><code>NTARGETS</code>: number of targets covered (with "covered" set)</li>
+    <li><code>NGOT</code>: number of targets gotten (with "got" set)</li>
+    <li><code>FGOT</code>: fraction of targets gotten (with "got" set)</li>
+    <li><code>NCADENCE</code>: number of cadences in further HDUs</li>
+   </ul></li>
+ <li>HDU3: Healpix map of targets gotten. This is an integer image. It has a similar header as HDU2.</li>
+ <li>HDU4: Healpix map of the fraction of targets gotten. This is a floating point image. It has a similar header as HDU2.</li>
+ <li>Further HDUs come in triplets, one for each cadence. Each HDU has a header keyword <code>CADENCE</code> that tells you which cadence.</li>
+</ul>
+</li>
 
 </ul>
 """.format(plan=plan, observatory=observatory))
@@ -157,15 +236,16 @@ healpix format.</li>
 
     fp.write("<table>")
     ncad = np.int32(completeness_hdr['NCADENCE'])
-    for icad in np.arange(ncad):
+    for icad in np.arange(ncad + 1):
         fp.write("<tr>")
 
         ntargets_map, hdr = fitsio.read(completeness_file, header=True,
-                                        ext=icad * 3 + 0)
+                                        ext=icad * 3 + 2)
         if('CADENCE' in hdr):
-            cadence = hdr['CADENCE']
+            cadence = hdr['CADENCE'].strip()
         else:
             cadence = 'all'
+
         ntarget = hdr['NTARGETS']
         ngot = hdr['NGOT']
         fgot = hdr['FGOT']
@@ -201,6 +281,51 @@ healpix format.</li>
         fp.write("</td>")
 
         fp.write("</tr>")
+    fp.write("</table>")
+
+    fp.write("</body>")
+    fp.write("</html>")
+
+    fp.close()
+
+    html_file = os.path.join(html_path,
+                             'rs-{observatory}-fields.html'.format(observatory=observatory))
+
+    fp = open(html_file, "w")
+    fp.write("<html>")
+    fp.write("""<head>
+<style>
+table, th, td {
+  border: 1px solid black;
+  border-collapse: collapse;
+}
+</style>
+</head>
+""")
+    fp.write("<body>")
+    fp.write("<table>")
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file)
+
+    row_template = """<tr>
+<td>{fieldid}</td>
+<td>{cadence}</td>
+<td><a href="targets/rsFieldAssignments-{plan}-{obs}-{fieldid}.fits">FITS output</a></td>
+<td><a href="targets/rsFieldAssignments-{plan}-{obs}-{fieldid}.png">
+<img src="targets/rsFieldAssignments-{plan}-{obs}-{fieldid}.thumb.png" width=100px height=100px/>
+</a></td>
+</tr>
+"""
+
+    for indx in np.arange(len(allocate.field_array)):
+        field = allocate.field_array[indx]
+        row = row_template.format(fieldid=field['fieldid'],
+                                  cadence=field['cadence'].decode().strip(),
+                                  plan=plan, obs=observatory)
+        fp.write(row)
+
     fp.write("</table>")
 
     fp.write("</body>")

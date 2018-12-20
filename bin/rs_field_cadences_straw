@@ -34,15 +34,24 @@ def cadences_from_targets(target_cadences):
     if('mwm_100pc_faint_1x1' in target_cadences):
         field_cadences.append('dark_single-n')
 
+    if('mwm_100pc_bright_2x1' in target_cadences):
+        field_cadences.append('bright_single-n')
+
     if('bhm_spiders_1x1' in target_cadences):
         field_cadences.append('dark_single-n')
 
     direct_cadences = ['bhm_aqmes_medium_12x4',
                        'bhm_aqmes_wide_2x4',
-                       'bhm_aqmes_wide_3x4']
+                       'bhm_aqmes_wide_3x4',
+                       'mwm_100pc_bright_2x1',
+                       'mwm_100pc_faint_1x1',
+                       'mwm_wd_3x1']
     for direct_cadence in direct_cadences:
         if(direct_cadence in target_cadences):
             field_cadences.append(direct_cadence)
+
+    field_cadences = np.array(field_cadences)
+    field_cadences = np.unique(field_cadences)
 
     return(field_cadences)
 

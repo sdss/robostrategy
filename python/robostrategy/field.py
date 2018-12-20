@@ -108,7 +108,7 @@ class Field(object):
     targets_fromarray() : read targets from an ndarray
     targets_fromfits() : read targets from a FITS file
     targets_toarray() : write targets to an ndarray
-    targets_tofits() : write targets (and assignments) to a FITS file
+    tofits() : write targets (and assignments) to a FITS file
     assign() : assign targets to robots for cadence
     plot() : plot assignments of robots to targets
 
@@ -220,6 +220,25 @@ class Field(object):
         self.targets_fromarray(target_array)
         return
 
+    def fromfits(self, filename=None):
+        """Read field from a FITS file
+
+        Parameters:
+        ----------
+
+        filename : str
+            FITS file name, where HDU 2 has array of assignments
+
+"""
+        hdr = fitsio.read_header(filename, ext=1)
+        self.ra = np.float64(hdr['RACEN'])
+        self.dec = np.float64(hdr['DECCEN'])
+        self.field_cadence = hdr['FCADENCE'].strip()
+        if(self.field_cadence != 'none'):
+            self.assignments = fitsio.read(filename, ext=2)
+        self.targets_fromfits(filename)
+        return
+
     def targets_toarray(self):
         """Write targets to an ndarray
 
@@ -294,22 +313,26 @@ class Field(object):
             list of epochs to plot (integers)
 """
         if(epochs is None):
-            epochs = np.arange(self.assignments.shape[1])
+            if(self.assignments is not None):
+                epochs = np.arange(self.assignments.shape[1])
+            else:
+                epoch = np.arange(0)
         else:
             epochs = self._arrayify(epochs, dtype=np.int32)
         colors = ['black', 'green', 'blue', 'cyan', 'purple']
         plt.scatter(self.robot.xcen, self.robot.ycen, s=3, color='black')
         plt.scatter(self.target_x, self.target_y, s=3, color='red')
-        for irobot in np.arange(self.assignments.shape[0]):
-            for iepoch in np.array(epochs):
-                icolor = iepoch % len(colors)
-                itarget = self.assignments[irobot, iepoch]
-                if(itarget >= 0):
-                    xst = self.robot.xcen[irobot]
-                    yst = self.robot.ycen[irobot]
-                    xnd = self.target_x[itarget]
-                    ynd = self.target_y[itarget]
-                    plt.plot([xst, xnd], [yst, ynd], color=colors[icolor])
+        if(self.assignments is not None):
+            for irobot in np.arange(self.assignments.shape[0]):
+                for iepoch in np.array(epochs):
+                    icolor = iepoch % len(colors)
+                    itarget = self.assignments[irobot, iepoch]
+                    if(itarget >= 0):
+                        xst = self.robot.xcen[irobot]
+                        yst = self.robot.ycen[irobot]
+                        xnd = self.target_x[itarget]
+                        ynd = self.target_y[itarget]
+                        plt.plot([xst, xnd], [yst, ynd], color=colors[icolor])
 
     def assign(self):
         """Assign targets to robots within the field
