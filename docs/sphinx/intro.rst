@@ -27,28 +27,26 @@ Steps to run strategy
 Things to do
 ============
 
- * Move all stuff to single directory
- * Document how to get list of results for each field.
- * Make plots for each field
- * Make HTML table of fields
- * Why are some targets clearly not taken??
- * Plot desired vs RA
- * WD 100 pc cadences allow: in RM area.
- * Add something to rsAllocation that is just 0 or 1, the field is observed.
- * Use targetid not pk for checking completeness
  * Fix instrument
- * Fix radec2xy for 0/360 and poles issues
+ * WD 100 pc cadences allow: in RM area.
  * Check RV cadence consistency
- * How to make sure targets with field cadence are ensured
  * airmass cost
+ * How to make sure targets with field cadence are ensured
  * Fix hex grid pattern
  * Handle assignments in overlapping fields 
  * Mixed BOSS and APOGEE cadence
- * Fix radec2xy fully
- * Testbed
- * Incorporate kaiju constraints
+ * Incorporate kaiju constraints and real radec2xy
  * Combine LCO/APO constraints into single optimization
  * Put on constraints of number of certain targets to achieve.
+ * Testbed
+
+Minor things:
+
+ * Why are some targets clearly not taken??
+ * Plot desired vs RA
+ * Add something to rsAllocation that is just 0 or 1, the field is observed.
+ * Use targetid not pk for checking completeness
+ * Move all stuff to single directory
 
 Need from teams:
 

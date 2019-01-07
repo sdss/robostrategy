@@ -146,19 +146,50 @@ class Field(object):
             scale = 218.
         if(self.observatory == 'lco'):
             scale = 329.
-        x = (ra - self.racen) * np.cos(self.deccen * np.pi / 180.) * scale
-        y = (dec - self.deccen) * scale
+
+        # From Meeus Ch. 17
+        deccen_rad = self.deccen * np.pi / 180.
+        racen_rad = self.racen * np.pi / 180.
+        dec_rad = dec * np.pi / 180.
+        ra_rad = ra * np.pi / 180.
+        x = (np.cos(deccen_rad) * np.sin(dec_rad) -
+             np.sin(deccen_rad) * np.cos(dec_rad) *
+             np.cos(ra_rad - racen_rad))
+        y = np.cos(dec_rad) * np.sin(ra_rad - racen_rad)
+        z = (np.sin(deccen_rad) * np.sin(dec_rad) +
+             np.cos(deccen_rad) * np.cos(dec_rad) *
+             np.cos(ra_rad - racen_rad))
+        d_rad = np.arctan2(np.sqrt(x**2 + y**2), z)
+
+        pay = np.sin(ra_rad - racen_rad)
+        pax = (np.cos(deccen_rad) * np.tan(dec_rad) -
+               np.sin(deccen_rad) * np.cos(ra_rad - racen_rad))
+        pa_rad = np.arctan2(pay, pax)
+
+        x = d_rad * 180. / np.pi * scale * np.sin(pa_rad)
+        y = d_rad * 180. / np.pi * scale * np.cos(pa_rad)
+
         return(x, y)
 
-    def xy2radec(self, x=None, y=None):
-        # Yikes!
-        if(self.observatory == 'apo'):
-            scale = 218.
-        if(self.observatory == 'lco'):
-            scale = 329.
-        ra = self.racen + (x / scale) / np.cos(self.deccen * np.pi / 180.)
-        dec = self.deccen + (y / scale)
-        return(ra, dec)
+# def xy2radec_crude(self, x=None, y=None):
+#    # Yikes!
+#    if(self.observatory == 'apo'):
+#        scale = 218.
+#    if(self.observatory == 'lco'):
+#        scale = 329.
+#    ra = self.racen + (x / scale) / np.cos(self.deccen * np.pi / 180.)
+#    dec = self.deccen + (y / scale)
+#    return(ra, dec)
+#
+#    def xy2radec(self, x=None, y=None):
+#        # Yikes!
+#        if(self.observatory == 'apo'):
+#            scale = 218.
+#        if(self.observatory == 'lco'):
+#            scale = 329.
+#        ra = self.racen + (x / scale) / np.cos(self.deccen * np.pi / 180.)
+#        dec = self.deccen + (y / scale)
+#        return(ra, dec)
 
     def targets_fromarray(self, target_array=None):
         """Read targets from an ndarray
@@ -231,8 +262,8 @@ class Field(object):
 
 """
         hdr = fitsio.read_header(filename, ext=1)
-        self.ra = np.float64(hdr['RACEN'])
-        self.dec = np.float64(hdr['DECCEN'])
+        self.racen = np.float64(hdr['RACEN'])
+        self.deccen = np.float64(hdr['DECCEN'])
         self.field_cadence = hdr['FCADENCE'].strip()
         if(self.field_cadence != 'none'):
             self.assignments = fitsio.read(filename, ext=2)
