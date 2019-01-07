@@ -1,0 +1,130 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_field_cadences_straw
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import astropy.coordinates as coordinates
+import astropy.units as units
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+def cadences_from_targets(target_cadences):
+    field_cadences = []
+
+    if('mwm_galactic_1x1' in target_cadences):
+        field_cadences.append('bright_single-n')
+
+    if('mwm_100pc_faint_1x1' in target_cadences):
+        field_cadences.append('dark_single-n')
+
+    if('mwm_100pc_bright_2x1' in target_cadences):
+        field_cadences.append('bright_single-n')
+
+    if('bhm_spiders_1x1' in target_cadences):
+        field_cadences.append('dark_single-n')
+
+    direct_cadences = ['bhm_spiders_1x4',
+                       'bhm_aqmes_medium_12x4',
+                       'bhm_aqmes_wide_2x4',
+                       'bhm_aqmes_wide_3x4',
+                       'mwm_100pc_bright_2x1',
+                       'mwm_100pc_faint_1x1',
+                       'mwm_wd_3x1']
+    for direct_cadence in direct_cadences:
+        if(direct_cadence in target_cadences):
+            field_cadences.append(direct_cadence)
+
+    field_cadences = np.array(field_cadences)
+    field_cadences = np.unique(field_cadences)
+
+    return(field_cadences)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-n', '--ncadence', dest='ncadence',
+                        type=np.int32, help='max number of cadences',
+                        default=100)
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    fields_array = fitsio.read(fields_file)
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory=observatory)
+    targets_all = fitsio.read(targets_file)
+    targets_coord = coordinates.SkyCoord(ra=targets_all['ra'] * units.degree,
+                                         dec=targets_all['dec'] * units.degree)
+
+    all_field_cadences = []
+    for fields_entry in fields_array:
+        fieldid = fields_entry['fieldid']
+        fieldtype = fields_entry['type'].decode().strip()
+
+        field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
+                                           observatory=observatory,
+                                           fieldid=fieldid)
+        targets = fitsio.read(field_target_file)
+        cadences = np.array([c.decode().strip() for c in targets['cadence']])
+        target_cadences = np.unique(cadences)
+
+        field_cadences = []
+        if((fieldtype == 'allsky_north') | (fieldtype == 'allsky_south')):
+            field_cadences = cadences_from_targets(target_cadences)
+        if(fieldtype[0:2] == 'rm'):
+            field_cadences = ['bhm_rm_174x8']
+
+        all_field_cadences.append(np.array(field_cadences))
+
+    all_field_cadences_1d = []
+    for field_cadences in all_field_cadences:
+        for field_cadence in field_cadences:
+            all_field_cadences_1d.append(field_cadence)
+    unique_cadences = np.unique(all_field_cadences_1d)
+
+    cadence_mask = np.zeros((len(fields_array), len(unique_cadences)),
+                            dtype=np.int32)
+
+    for indx in np.arange(len(fields_array)):
+        for field_cadence in all_field_cadences[indx]:
+            icad = np.where(unique_cadences == field_cadence)[0]
+            cadence_mask[indx, icad] = 1
+
+    hdr = dict()
+    hdr['NCAD'] = len(unique_cadences)
+    for indx, cad in zip(np.arange(len(unique_cadences)), unique_cadences):
+        hdr['CAD{indx}'.format(indx=indx)] = cad
+
+    field_cadence_file = sdss_path.full('rsFieldCadences',
+                                        plan=plan, observatory=observatory)
+    fitsio.write(field_cadence_file, cadence_mask, header=hdr, clobber=True)
