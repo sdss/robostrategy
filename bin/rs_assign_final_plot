@@ -16,6 +16,7 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import subprocess
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -117,3 +118,8 @@ if __name__ == '__main__':
         png_file = ".".join(field_assigned_file.split('.')[0:-1] + ["png"])
         plt.savefig(png_file)
         plt.clf()
+
+        png_thumb_file = (".".join(field_assigned_file.split('.')[0:-1] +
+                                   ["thumb.png"]))
+        subprocess.run(['convert', png_file, '-geometry', '100',
+                        png_thumb_file])

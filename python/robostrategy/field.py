@@ -350,20 +350,44 @@ class Field(object):
                 epoch = np.arange(0)
         else:
             epochs = self._arrayify(epochs, dtype=np.int32)
-        colors = ['black', 'green', 'blue', 'cyan', 'purple']
-        plt.scatter(self.robot.xcen, self.robot.ycen, s=3, color='black')
-        plt.scatter(self.target_x, self.target_y, s=3, color='red')
-        if(self.assignments is not None):
-            for irobot in np.arange(self.assignments.shape[0]):
-                for iepoch in np.array(epochs):
-                    icolor = iepoch % len(colors)
-                    itarget = self.assignments[irobot, iepoch]
-                    if(itarget >= 0):
-                        xst = self.robot.xcen[irobot]
-                        yst = self.robot.ycen[irobot]
-                        xnd = self.target_x[itarget]
-                        ynd = self.target_y[itarget]
-                        plt.plot([xst, xnd], [yst, ynd], color=colors[icolor])
+
+        target_cadence = np.sort(np.unique(self.target_cadence))
+        colors = ['black', 'green', 'blue', 'cyan', 'purple', 'red',
+                  'magenta', 'grey']
+        for indx in np.arange(len(target_cadence)):
+            itarget = np.where(self.target_cadence ==
+                               target_cadence[indx])[0]
+            icolor = indx % len(colors)
+            plt.scatter(self.target_x[itarget],
+                        self.target_y[itarget], s=2, color=colors[icolor])
+
+        target_got = np.zeros(self.ntarget, dtype=np.int32)
+        iassigned = np.where(self.assignments.flatten() >= 0)[0]
+        itarget = self.assignments.flatten()[iassigned]
+        target_got[itarget] = 1
+        for indx in np.arange(len(target_cadence)):
+            itarget = np.where((target_got > 0) &
+                               (self.target_cadence ==
+                                target_cadence[indx]))[0]
+            icolor = indx % len(colors)
+            plt.scatter(self.target_x[itarget],
+                        self.target_y[itarget], s=20,
+                        color=colors[icolor],
+                        label=target_cadence[indx])
+
+        realrobot = self.robot.apogee | self.robot.boss
+        irobot = np.where(realrobot)[0]
+        plt.scatter(self.robot.xcen[irobot], self.robot.ycen[irobot], s=6,
+                    color='grey', label='Used robot')
+
+        used = self.assignments.sum(axis=1) > 0
+        inot = np.where((used == False) & realrobot)[0]
+        plt.scatter(self.robot.xcen[inot], self.robot.ycen[inot], s=20,
+                    color='grey', label='Unused robot')
+
+        plt.xlim([-370., 370.])
+        plt.ylim([-370., 370.])
+        plt.legend()
 
     def assign(self):
         """Assign targets to robots within the field

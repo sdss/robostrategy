@@ -28,6 +28,7 @@ Things to do
 ============
 
  * Fix instrument
+ * Make plotting faster
  * WD 100 pc cadences allow: in RM area.
  * Check RV cadence consistency
  * airmass cost
@@ -42,7 +43,6 @@ Things to do
 
 Minor things:
 
- * Why are some targets clearly not taken??
  * Plot desired vs RA
  * Add something to rsAllocation that is just 0 or 1, the field is observed.
  * Use targetid not pk for checking completeness

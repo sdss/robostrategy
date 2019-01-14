@@ -39,6 +39,9 @@ class Slots(object):
     nlst : int, np.int32
         number of LST bins
 
+    lst : ndarray of np.float32
+        centers of LST bins (hours)
+
     lunation : list of float or np.float32
         edges of lunation bins (N+1 length for N lunation bins)
 
@@ -76,6 +79,8 @@ class Slots(object):
     def __init__(self, nlst=24, lunation=[0., 0.35, 1.],
                  observatory='apo', duration=18 / 60.):
         self.nlst = nlst
+        self.lst = ((np.arange(nlst, dtype=np.float32) + 0.5) * 24. /
+                    np.float32(self.nlst))
         self.lunation = np.array(lunation)
         self.nlunation = len(lunation) - 1
         self.observatory = observatory

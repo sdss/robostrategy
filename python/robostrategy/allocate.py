@@ -15,6 +15,7 @@ import collections
 import matplotlib.pyplot as plt
 import robostrategy.slots
 import roboscheduler.cadence as rcadence
+import roboscheduler.scheduler as scheduler
 from ortools.linear_solver import pywraplp
 
 try:
@@ -74,6 +75,7 @@ class AllocateLST(object):
     Methods:
     -------
 
+    xfactor() : calculate time for exposure relative to nominal
     construct() : create allocinfo attribute organizing field info
     solve() : solve for allocation, create field_array attribute with results
     fromfits() : write field_array to a FITS file
@@ -100,7 +102,10 @@ class AllocateLST(object):
 
     We then impose the following constraints:
 
-      \sum_{ij} w_{ijk} < T_k, with T_k the maximum # exposures in each slot
+      \sum_{ij} w_{ijk} N_{ik} < T_k, 
+        with T_k the maximum # exposures in each slot,
+        and N_{ik} expressing the time taken relative to a nominal 
+        exposure of observing a particular field in a particular slot.
       0 <= w_{ijk} <= A_{ij}, with A_{ij} the total time necessary for the
                               field-cadence i-j
       \sum_k w_{ijk} <= A_{ij}
@@ -151,7 +156,8 @@ class AllocateLST(object):
     ratio.
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
-                 field_options=None, seed=100, filename=None):
+                 field_options=None, seed=100, filename=None,
+                 observatory=None):
         if(filename is None):
             self.slots = slots
             self.fields = fields
@@ -162,7 +168,46 @@ class AllocateLST(object):
             self.fromfits(filename=filename)
         self.seed = seed
         np.random.seed(self.seed)
+        self.observer = scheduler.Observer(observatory=observatory)
         return
+
+    def xfactor(self, racen=None, deccen=None, lst=None):
+        """Exposure time cost factor relative to nominal
+
+        Parameters:
+        ----------
+
+        racen : np.float64
+            RA center of field, degrees
+
+        deccen : np.float64
+            Dec center of field, degrees
+
+        lst : np.float32
+            LST of observation, hours
+
+        Returns:
+        -------
+
+        xfactor : np.float64
+            length of exposure relative to nominal
+
+        Comments:
+        --------
+
+        This function sets the cost of observing at high airmass.
+        Right now it just scales as airmass**2. Note the cost as a
+        function of airmass depends on the targets you are most
+        interested in ; since infrared spectra are barely affected by
+        transparency but the UV end of the optical spectra affected a
+        lot.
+"""
+        ha = self.observer.ralst2ha(ra=racen, lst=lst * 15.)
+        (alt, az) = self.observer.hadec2altaz(ha=ha, dec=deccen,
+                                              lat=self.observer.latitude)
+        airmass = self.observer.alt2airmass(alt=alt)
+        xfactor = airmass**2
+        return(xfactor)
 
     def construct(self):
         """Construct the allocinfo attribute with the problem definition
@@ -262,10 +307,16 @@ class AllocateLST(object):
             for ilunation in range(self.slots.nlunation):
                 slot_constraints[ilst][ilunation] = solver.Constraint(0., float(total[ilst, ilunation]))
                 for fieldid in self.allocinfo:
+                    ifield = np.where(fieldid == self.fields['fieldid'])[0]
+                    field_racen = self.fields['racen'][ifield]
+                    field_deccen = self.fields['deccen'][ifield]
                     for cadence in self.allocinfo[fieldid]:
                         ccadence = self.allocinfo[fieldid][cadence]
                         if(ccadence['slots'][ilst, ilunation]):
-                            slot_constraints[ilst][ilunation].SetCoefficient(ccadence['vars'][ilst * self.slots.nlunation + ilunation], 1.)
+                            xfactor = self.xfactor(racen=field_racen,
+                                                   deccen=field_deccen,
+                                                   lst=self.slots.lst[ilst])
+                            slot_constraints[ilst][ilunation].SetCoefficient(ccadence['vars'][ilst * self.slots.nlunation + ilunation], float(xfactor))
 
         # Solve the problem
         objective.SetMaximization()
