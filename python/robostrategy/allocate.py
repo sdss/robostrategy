@@ -69,7 +69,8 @@ class AllocateLST(object):
          'fieldid' - field identifier
          'cadence' - cadence name
          'nfilled' - number of exposures allocated
-         'slots' - exposures allocated for each slot
+         'slots_exposures' - number of exposures allocated for each slot
+         'slots_time' - time allocated for each slots (hours)
         (set by solve() method)
 
     Methods:
@@ -84,6 +85,9 @@ class AllocateLST(object):
 
     Notes:
     -----
+
+    The output in slots_time is the number of exposures, times the duration
+    of a nominal exposure, times the "xfactor" associated with its airmass.
 
     This class applies a linear programming approach to allocating
     field observations.
@@ -251,7 +255,8 @@ class AllocateLST(object):
         solver = pywraplp.Solver("allocate_lst",
                                  pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
 
-        # Set up variables
+        # Set up variables; these variables ('vars') will correspond to 
+        # the number of exposures in each slot for each field-cadence.
         objective = solver.Objective()
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
@@ -272,7 +277,8 @@ class AllocateLST(object):
                                              ilunation] = var
                             ccadence['nvars'] = ccadence['nvars'] + 1
 
-        # Cadences have limits
+        # Cadences have limits, which limit the total number of exposures 
+        # in the cadence to the total needed.
         cadence_constraints = []
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
@@ -286,7 +292,10 @@ class AllocateLST(object):
                             cadence_constraint.SetCoefficient(var, 1.)
             cadence_constraints.append(cadence_constraint)
 
-        # Only one cadence per field
+        # Maximum of one cadence per field. Note that because this is an 
+        # LP and not an integer problem, this constraint involves the 
+        # definition of "fractional" cadences. From the LP solution, 
+        # we will pick the largest value cadence. 
         field_constraints = []
         for fieldid in self.allocinfo:
             field_constraint = solver.Constraint(0., 1.)
@@ -301,7 +310,10 @@ class AllocateLST(object):
                             field_constraint.SetCoefficient(var, invneeded)
             field_constraints.append(field_constraint)
 
-        # Constrain sum of each slot to be less than total
+        # Constrain sum of each slot to be less than total. Here the 
+        # units are still in numbers of exposures, but we multiply by 
+        # a scaling factor (xfactor) that depends on airmass to account
+        # for the cost of high airmass observations.
         slot_constraints = [[0] * self.slots.nlunation] * self.slots.nlst
         for ilst in range(self.slots.nlst):
             for ilunation in range(self.slots.nlunation):
@@ -322,7 +334,8 @@ class AllocateLST(object):
         objective.SetMaximization()
         status = solver.Solve()
 
-        # Extract the solution
+        # Extract the solution.
+        # Here var is a number of exposures, and so is allocation.
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
@@ -342,8 +355,10 @@ class AllocateLST(object):
                              ('cadence', rcadence.fits_type),
                              ('nfilled', np.int32),
                              ('needed', np.int32),
-                             ('slots', np.float32, (self.slots.nlst,
-                                                    self.slots.nlunation))]
+                             ('slots_exposures', np.float32,
+                              (self.slots.nlst, self.slots.nlunation)),
+                             ('slots_time', np.float32,
+                              (self.slots.nlst, self.slots.nlunation))]
         field_array = np.zeros(len(self.allocinfo), dtype=field_array_dtype)
         for findx, fieldid in zip(np.arange(len(self.allocinfo)),
                                   self.allocinfo):
@@ -362,7 +377,9 @@ class AllocateLST(object):
                 cadence_totals[indx] = ccadence['allocation'].sum()
             field_total = cadence_totals.sum()
             field_array['cadence'][findx] = 'none'
-            field_array['slots'][findx] = (
+            field_array['slots_exposures'][findx] = (
+                self.allocinfo[fieldid][cadence]['slots'] * 0.)
+            field_array['slots_time'][findx] = (
                 self.allocinfo[fieldid][cadence]['slots'] * 0.)
             if(field_total > 0.):
                 cadence_totals = cadence_totals / field_total
@@ -374,12 +391,19 @@ class AllocateLST(object):
                 if(choose_field <
                    field_total / self.allocinfo[fieldid][cadence]['needed']):
                     field_array['cadence'][findx] = cadence
-                    field_array['slots'][findx] = slots_totals
+                    field_array['slots_exposures'][findx] = slots_totals
                     field_array['needed'][findx] = (
                         self.allocinfo[fieldid][cadence]['needed'])
 
             field_array['nfilled'][findx] = (
-                field_array['slots'][findx, :, :].sum())
+                field_array['slots_exposures'][findx, :, :].sum())
+
+        for field in field_array:
+            for ilst in np.arange(self.slots.nlst, dtype=np.int32):
+                lst = self.slots.lst[ilst]
+                xfactor = self.xfactor(racen=field['racen'],
+                                       deccen=field['deccen'], lst=lst)
+                field['slots_time'][ilst, :] = field['slots_exposures'][ilst, :] * xfactor * self.slots.duration
 
         self.field_array = field_array
 
@@ -429,19 +453,18 @@ class AllocateLST(object):
         return
 
     def _available_lst(self):
-        available = (self.slots.slots /
-                     self.slots.duration * self.slots.fclear)
+        available = self.slots.slots * self.slots.fclear
         return(available)
 
     def _used_lst(self):
-        used = self.field_array['slots'][:, :, :].sum(axis=0)
+        used = self.field_array['slots_time'][:, :, :].sum(axis=0)
         return(used)
 
     def _got_ra(self):
         got = np.zeros((self.slots.nlst, self.slots.nlunation),
                        dtype=np.float32)
         for ilunation in np.arange(self.slots.nlunation):
-            nfilled = self.field_array['slots'][:, :, ilunation].sum(axis=1)
+            nfilled = self.field_array['slots_time'][:, :, ilunation].sum(axis=1)
             rahist, rabinedges = np.histogram(self.field_array['racen'] / 15.,
                                               range=[0., 24.],
                                               weights=nfilled,
@@ -477,16 +500,16 @@ class AllocateLST(object):
             got = got[:, ilunation]
 
         plt.plot(used, color='red', linewidth=3, alpha=0.6,
-                 label='Exposures used per LST')
+                 label='Hours used per LST')
         plt.plot(available, color='red', linewidth=1,
-                 label='Exposures available per LST')
+                 label='Hours available per LST')
         print(used.sum())
         print(available.sum())
         plt.plot(got, color='blue', linewidth=3, alpha=0.6,
-                 label='Exposures achieved per RA')
+                 label='Hours observed per RA')
         print(got.sum())
         plt.xlabel('LST or RA (hours)')
-        plt.ylabel('Number of exposures')
+        plt.ylabel('Exposure hours')
         plt.ylim(np.array([-0.05, 1.2]) * np.array([got.max(), used.max(),
                                                     available.max()]).max())
         plt.legend(loc=1)

@@ -87,6 +87,9 @@ class Field(object):
     target_y : ndarray of np.float64
         y positions of targets, mm
 
+    target_priority : ndarray of np.int32
+        priorities of targets (lower is considered first)
+
     target_pk : ndarray of np.int64
         unique primary key for each target
 
@@ -198,14 +201,18 @@ class Field(object):
         ----------
 
         target_array : ndarray
-            ndarray with 'ra', 'dec', 'pk', 'cadence', and 'type' columns
+            ndarray with columns below
 
         Notes:
         ------
 
-        'ra', 'dec' should be np.float64
-        'pk' should be np.int64
-        'cadence', 'type' should be str or bytes
+        Required columns of array:
+         'ra', 'dec' should be np.float64
+         'pk' should be np.int64
+         'cadence', 'type' should be str or bytes
+
+        Optional columns of array:
+         'priority'
 """
         self.target_array = target_array
         self.ntarget = len(self.target_array)
@@ -220,6 +227,10 @@ class Field(object):
         except AttributeError:
             self.target_cadence = np.array(
                 [c.strip() for c in self.target_array['cadence']])
+        try:
+            self.target_priority = self.target_array['priority']
+        except AttributeError:
+            self.target_priority = np.ones(self.ntarget, dtype=np.int32)
 
         try:
             self.target_type = np.array(
@@ -237,15 +248,18 @@ class Field(object):
         ----------
 
         filename : str
-            FITS file name, for file with 'ra', 'dec', 'pk', 'cadence',
-            and 'type' columns
+            FITS file name, for file with columns listed below
 
         Notes:
         ------
 
-        'ra', 'dec' should be float64
-        'pk' should be int64
-        'cadence', 'type' should be strings
+        Required columns:
+         'ra', 'dec' should be np.float64
+         'pk' should be np.int64
+         'cadence', 'type' should be str or bytes
+
+        Optional columns:
+         'priority'
 """
         target_array = fitsio.read(filename)
         self.targets_fromarray(target_array)
@@ -259,7 +273,6 @@ class Field(object):
 
         filename : str
             FITS file name, where HDU 2 has array of assignments
-
 """
         hdr = fitsio.read_header(filename, ext=1)
         self.racen = np.float64(hdr['RACEN'])
@@ -281,12 +294,14 @@ class Field(object):
               'ra', 'dec' (np.float64)
               'pk' (np.int64)
               'cadence', 'type' ('a30')
+              'priority' (np.int32)
 """
         target_array_dtype = np.dtype([('ra', np.float64),
                                        ('dec', np.float64),
                                        ('pk', np.int64),
                                        ('cadence', cadence.fits_type),
-                                       ('type', np.dtype('a30'))])
+                                       ('type', np.dtype('a30')),
+                                       ('priority', np.int32)])
 
         target_array = np.zeros(self.ntarget, dtype=target_array_dtype)
         target_array['ra'] = self.target_ra
@@ -294,6 +309,7 @@ class Field(object):
         target_array['pk'] = self.target_pk
         target_array['cadence'] = self.target_cadence
         target_array['type'] = self.target_type
+        target_array['priority'] = self.target_priority
         return(target_array)
 
     def tofits(self, filename=None, clobber=True):
@@ -322,6 +338,7 @@ class Field(object):
             'ra', 'dec' (np.float64)
             'pk' (np.int64)
             'cadence', 'type' ('a30')
+            'priority' (np.int32)
 """
         hdr = dict()
         hdr['RACEN'] = self.racen
@@ -347,7 +364,7 @@ class Field(object):
             if(self.assignments is not None):
                 epochs = np.arange(self.assignments.shape[1])
             else:
-                epoch = np.arange(0)
+                epochs = np.arange(0)
         else:
             epochs = self._arrayify(epochs, dtype=np.int32)
 
@@ -361,26 +378,31 @@ class Field(object):
             plt.scatter(self.target_x[itarget],
                         self.target_y[itarget], s=2, color=colors[icolor])
 
-        target_got = np.zeros(self.ntarget, dtype=np.int32)
-        iassigned = np.where(self.assignments.flatten() >= 0)[0]
-        itarget = self.assignments.flatten()[iassigned]
-        target_got[itarget] = 1
-        for indx in np.arange(len(target_cadence)):
-            itarget = np.where((target_got > 0) &
-                               (self.target_cadence ==
-                                target_cadence[indx]))[0]
-            icolor = indx % len(colors)
-            plt.scatter(self.target_x[itarget],
-                        self.target_y[itarget], s=20,
-                        color=colors[icolor],
-                        label=target_cadence[indx])
+        if(self.assignments is not None):
+            target_got = np.zeros(self.ntarget, dtype=np.int32)
+            iassigned = np.where(self.assignments.flatten() >= 0)[0]
+            itarget = self.assignments.flatten()[iassigned]
+            target_got[itarget] = 1
+            for indx in np.arange(len(target_cadence)):
+                itarget = np.where((target_got > 0) &
+                                   (self.target_cadence ==
+                                    target_cadence[indx]))[0]
+                icolor = indx % len(colors)
+                plt.scatter(self.target_x[itarget],
+                            self.target_y[itarget], s=20,
+                            color=colors[icolor],
+                            label=target_cadence[indx])
 
         realrobot = self.robot.apogee | self.robot.boss
         irobot = np.where(realrobot)[0]
         plt.scatter(self.robot.xcen[irobot], self.robot.ycen[irobot], s=6,
                     color='grey', label='Used robot')
 
-        used = self.assignments.sum(axis=1) > 0
+        if(self.assignments is not None):
+            used = self.assignments.sum(axis=1) > 0
+        else:
+            used = np.zeros(len(self.robot.xcen), dtype=np.bool)
+
         inot = np.where((used == False) & realrobot)[0]
         plt.scatter(self.robot.xcen[inot], self.robot.ycen[inot], s=20,
                     color='grey', label='Unused robot')

@@ -54,7 +54,8 @@ if __name__ == '__main__':
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
 
     if(fstart == -1):
         fstart = allocate.field_array['fieldid'].min()

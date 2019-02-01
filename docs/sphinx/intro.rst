@@ -27,11 +27,9 @@ Steps to run strategy
 Things to do
 ============
 
- * Fix instrument
- * Make plotting faster
- * WD 100 pc cadences allow: in RM area.
+ * Add sky and standards at some level
+ * WD and 100 pc cadence changes
  * Check RV cadence consistency
- * airmass cost
  * How to make sure targets with field cadence are ensured
  * Fix hex grid pattern
  * Handle assignments in overlapping fields 
@@ -47,6 +45,8 @@ Minor things:
  * Add something to rsAllocation that is just 0 or 1, the field is observed.
  * Use targetid not pk for checking completeness
  * Move all stuff to single directory
+ * "instrument" in cadence is meaningless for field cadence; what to
+   do about that?
 
 Need from teams:
 

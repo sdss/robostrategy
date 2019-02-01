@@ -110,8 +110,11 @@ cadences chosen for each field, and the LST and LUNATION slots used.
 The <code>slots</code> column has a 24-by-2 array with the allocation
 of exposures by LST hour and lunation. If any of these values are
 non-zero, then the field cadence listed has been fully observed.
-<code>nfilled</code> will also be non-zero in this case. The
-columns of this file are:
+<code>nfilled</code> will also be non-zero in this case. Note that
+<code>slots_exposures</code> and <code>slots_time</code> differ
+by a factor of the duration of each exposure times some cost associated
+with the airmass of observation.
+The columns of this file are:
 <ul>
 <li><code>fieldid</code>: unique ID number for field</li>
 <li><code>racen</code>: RA center of field (J2000 deg)</li>
@@ -119,7 +122,8 @@ columns of this file are:
 <li><code>cadence</code>: Name of chosen cadence</li>
 <li><code>nfilled</code>: Number of observing exposures filled</li>
 <li><code>nneeded</code>: Number of observing exposures needed</li>
-<li><code>slots[2,24]</code>: Which lunation and LST slots to use.</li>
+<li><code>slots_exposures[2,24]</code>: How to distribute exposures across lunation and LST.</li>
+<li><code>slots_time[2,24]</code>: How to distribute time across lunation and LST (hours).</li>
 </ul>
 </li>
 
@@ -307,7 +311,8 @@ table, th, td {
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
 
     row_template = """<tr>
 <td>{fieldid}</td>
