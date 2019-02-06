@@ -255,7 +255,7 @@ class AllocateLST(object):
         solver = pywraplp.Solver("allocate_lst",
                                  pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
 
-        # Set up variables; these variables ('vars') will correspond to 
+        # Set up variables; these variables ('vars') will correspond to
         # the number of exposures in each slot for each field-cadence.
         objective = solver.Objective()
         for fieldid in self.allocinfo:
