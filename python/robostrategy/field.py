@@ -276,6 +276,11 @@ class Field(object):
             self.target_priority = np.ones(self.ntarget, dtype=np.int32)
 
         try:
+            self.target_value = self.target_array['value']
+        except ValueError:
+            self.target_value = np.ones(self.ntarget, dtype=np.int32)
+
+        try:
             self.target_category = np.array(
                 [c.decode().strip() for c in self.target_array['category']])
         except AttributeError:
@@ -358,6 +363,7 @@ class Field(object):
                                        ('cadence', cadence.fits_type),
                                        ('type', np.dtype('a30')),
                                        ('category', np.dtype('a30')),
+                                       ('value', np.int32),
                                        ('priority', np.int32)])
 
         target_array = np.zeros(self.ntarget, dtype=target_array_dtype)
@@ -367,6 +373,7 @@ class Field(object):
         target_array['cadence'] = self.target_cadence
         target_array['type'] = self.target_type
         target_array['category'] = self.target_category
+        target_array['value'] = self.target_value
         target_array['priority'] = self.target_priority
         return(target_array)
 
@@ -701,12 +708,14 @@ class Field(object):
                         epoch_targets, itarget = (
                             self.cadencelist.pack_targets(
                                 self.target_cadence[ifull],
-                                self.field_cadence))
+                                self.field_cadence,
+                                value=self.target_value[ifull]))
                     else:
                         epoch_targets, itarget = (
                             self.cadencelist.pack_targets_greedy(
                                 self.target_cadence[ifull],
-                                self.field_cadence))
+                                self.field_cadence,
+                                value=self.target_value[ifull]))
                     iassigned = np.where(itarget >= 0)[0]
                     nassigned = len(iassigned)
                     if(nassigned > 0):
@@ -714,13 +723,11 @@ class Field(object):
                         self.assignments[indx, 0:nassigned] = (
                             ifull[itarget[iassigned]])
 
-        print('before')
         if(include_calibration):
             self.assign_calibration(ttype='APOGEE', tcategory='SKY')
             self.assign_calibration(ttype='APOGEE', tcategory='STANDARD')
             self.assign_calibration(ttype='BOSS', tcategory='SKY')
             self.assign_calibration(ttype='BOSS', tcategory='STANDARD')
-        print('after')
 
         self.set_target_assignments()
 

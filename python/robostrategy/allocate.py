@@ -161,7 +161,7 @@ class AllocateLST(object):
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
-                 observatory=None):
+                 observatory=None, observe_all_fields=False):
         if(filename is None):
             self.slots = slots
             self.fields = fields
@@ -173,6 +173,7 @@ class AllocateLST(object):
         self.seed = seed
         np.random.seed(self.seed)
         self.observer = scheduler.Observer(observatory=observatory)
+        self.observe_all_fields = observe_all_fields
         return
 
     def xfactor(self, racen=None, deccen=None, lst=None):
@@ -250,6 +251,10 @@ class AllocateLST(object):
 
         Solves the linear programming problem.
 """
+        field_minimum_float = 0.
+        if(self.observe_all_fields):
+            field_minimum_float = 0.9
+
         total = self.slots.slots / self.slots.duration * self.slots.fclear
 
         solver = pywraplp.Solver("allocate_lst",
@@ -277,7 +282,7 @@ class AllocateLST(object):
                                              ilunation] = var
                             ccadence['nvars'] = ccadence['nvars'] + 1
 
-        # Cadences have limits, which limit the total number of exposures 
+        # Cadences have limits, which limit the total number of exposures
         # in the cadence to the total needed.
         cadence_constraints = []
         for fieldid in self.allocinfo:
@@ -292,13 +297,13 @@ class AllocateLST(object):
                             cadence_constraint.SetCoefficient(var, 1.)
             cadence_constraints.append(cadence_constraint)
 
-        # Maximum of one cadence per field. Note that because this is an 
-        # LP and not an integer problem, this constraint involves the 
-        # definition of "fractional" cadences. From the LP solution, 
-        # we will pick the largest value cadence. 
+        # Maximum of one cadence per field. Note that because this is an
+        # LP and not an integer problem, this constraint involves the
+        # definition of "fractional" cadences. From the LP solution,
+        # we will pick the largest value cadence.
         field_constraints = []
         for fieldid in self.allocinfo:
-            field_constraint = solver.Constraint(0., 1.)
+            field_constraint = solver.Constraint(field_minimum_float, 1.)
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
                 for ilst in range(self.slots.nlst):
@@ -310,8 +315,8 @@ class AllocateLST(object):
                             field_constraint.SetCoefficient(var, invneeded)
             field_constraints.append(field_constraint)
 
-        # Constrain sum of each slot to be less than total. Here the 
-        # units are still in numbers of exposures, but we multiply by 
+        # Constrain sum of each slot to be less than total. Here the
+        # units are still in numbers of exposures, but we multiply by
         # a scaling factor (xfactor) that depends on airmass to account
         # for the cost of high airmass observations.
         slot_constraints = [[0] * self.slots.nlunation] * self.slots.nlst
@@ -376,6 +381,8 @@ class AllocateLST(object):
                 slots_totals = slots_totals + ccadence['allocation']
                 cadence_totals[indx] = ccadence['allocation'].sum()
             field_total = cadence_totals.sum()
+            if(field_total == 0.):
+                print(cadence_totals)
             field_array['cadence'][findx] = 'none'
             field_array['slots_exposures'][findx] = (
                 self.allocinfo[fieldid][cadence]['slots'] * 0.)
@@ -388,12 +395,12 @@ class AllocateLST(object):
                 icadence = np.where(cadence_cumulative > choose)[0][0]
                 cadence = list(self.allocinfo[fieldid].keys())[icadence]
                 choose_field = np.random.random()
-                if(choose_field <
-                   field_total / self.allocinfo[fieldid][cadence]['needed']):
-                    field_array['cadence'][findx] = cadence
-                    field_array['slots_exposures'][findx] = slots_totals
-                    field_array['needed'][findx] = (
-                        self.allocinfo[fieldid][cadence]['needed'])
+                # if(choose_field <
+                 #   field_total / self.allocinfo[fieldid][cadence]['needed']):
+                field_array['cadence'][findx] = cadence
+                field_array['slots_exposures'][findx] = slots_totals
+                field_array['needed'][findx] = (
+                    self.allocinfo[fieldid][cadence]['needed'])
 
             field_array['nfilled'][findx] = (
                 field_array['slots_exposures'][findx, :, :].sum())

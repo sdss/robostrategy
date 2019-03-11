@@ -35,10 +35,15 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--observatory", dest="observatory", type=str,
                         required=False, help="observatory ('apo' or 'lco')",
                         default='apo')
+    parser.add_argument("-a", "--all-fields", dest="all_fields",
+                        required=False, help="observe all fields",
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    all_fields = args.all_fields
+    print(all_fields)
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
@@ -62,7 +67,8 @@ if __name__ == '__main__':
                                                  field_options=field_options,
                                                  field_slots=field_slots,
                                                  fields=fields_array,
-                                                 observatory=observatory)
+                                                 observatory=observatory,
+                                                 observe_all_fields=all_fields)
     allocate.construct()
     allocate.solve()
 
