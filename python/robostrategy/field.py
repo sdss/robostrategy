@@ -276,6 +276,11 @@ class Field(object):
             self.target_priority = np.ones(self.ntarget, dtype=np.int32)
 
         try:
+            self.target_value = self.target_array['value']
+        except ValueError:
+            self.target_value = np.ones(self.ntarget, dtype=np.int32)
+
+        try:
             self.target_category = np.array(
                 [c.decode().strip() for c in self.target_array['category']])
         except AttributeError:
@@ -333,8 +338,9 @@ class Field(object):
         self.field_cadence = hdr['FCADENCE'].strip()
         if((self.field_cadence != 'none') & (read_assignments)):
             self.assignments = fitsio.read(filename, ext=2)
-            self.set_target_assignments()
         self.targets_fromfits(filename)
+        if((self.field_cadence != 'none') & (read_assignments)):
+            self.set_target_assignments()
         return
 
     def targets_toarray(self):
@@ -357,6 +363,7 @@ class Field(object):
                                        ('cadence', cadence.fits_type),
                                        ('type', np.dtype('a30')),
                                        ('category', np.dtype('a30')),
+                                       ('value', np.int32),
                                        ('priority', np.int32)])
 
         target_array = np.zeros(self.ntarget, dtype=target_array_dtype)
@@ -366,6 +373,7 @@ class Field(object):
         target_array['cadence'] = self.target_cadence
         target_array['type'] = self.target_type
         target_array['category'] = self.target_category
+        target_array['value'] = self.target_value
         target_array['priority'] = self.target_priority
         return(target_array)
 
@@ -517,6 +525,20 @@ class Field(object):
         if(len(icalib) == 0):
             return
 
+        # Match robots to targets (indexed into icalib)
+        robot_targets = dict()
+        for indx in np.arange(self.robot.npositioner):
+            positionerid = self.robot.positionerid[indx]
+            requires_boss = (ttype == 'BOSS')
+            requires_apogee = (ttype == 'APOGEE')
+
+            it = self.robot.targets(positionerid=positionerid,
+                                    x=self.target_x[icalib],
+                                    y=self.target_y[icalib],
+                                    requires_apogee=requires_apogee,
+                                    requires_boss=requires_boss)
+            robot_targets[positionerid] = it
+
         ncalib = getattr(self, 'n{c}_{t}'.format(c=tcategory, t=ttype).lower())
 
         # Loop over exposures
@@ -532,32 +554,20 @@ class Field(object):
             robot_icalib = np.zeros(self.robot.npositioner, dtype=np.int32) - 1
             got_calib = np.zeros(len(icalib), dtype=np.int32)
             for indx in np.arange(self.robot.npositioner):
-                positionerid = self.robot.positionerid[indx]
-                requires_boss = (ttype == 'BOSS')
-                requires_apogee = (ttype == 'APOGEE')
-
                 # First try calibration targets not already taken
-                ileft = np.where(got_calib == 0)[0]
-                if(len(ileft) > 0):
-                    it = self.robot.targets(positionerid=positionerid,
-                                            x=self.target_x[icalib[ileft]],
-                                            y=self.target_y[icalib[ileft]],
-                                            requires_apogee=requires_apogee,
-                                            requires_boss=requires_boss)
-                    if(len(it) > 0):
-                        robot_icalib[indx] = icalib[ileft[it[0]]]
-                        got_calib[ileft[it[0]]] = 1
+                it = robot_targets[positionerid]
+                if(len(it) > 0):
+                    ileft = np.where(got_calib[it] == 0)[0]
+                    if(len(ileft) > 0):
+                        robot_icalib[indx] = icalib[it[ileft[0]]]
+                        got_calib[it[ileft[0]]] = 1
 
                 # Then try any calibration targets
                 if(robot_icalib[indx] == -1):
-                    it = self.robot.targets(positionerid=positionerid,
-                                            x=self.target_x[icalib[ileft]],
-                                            y=self.target_y[icalib[ileft]],
-                                            requires_apogee=requires_apogee,
-                                            requires_boss=requires_boss)
+                    it = robot_targets[positionerid]
                     if(len(it) > 0):
                         robot_icalib[indx] = icalib[it[0]]
-                        got_calib[ileft[it[0]]] = 1
+                        got_calib[it[0]] = 1
 
             # Now make ordered list of robots to use
             exposure_assignments = self.assignments[:, iexp]
@@ -698,12 +708,14 @@ class Field(object):
                         epoch_targets, itarget = (
                             self.cadencelist.pack_targets(
                                 self.target_cadence[ifull],
-                                self.field_cadence))
+                                self.field_cadence,
+                                value=self.target_value[ifull]))
                     else:
                         epoch_targets, itarget = (
                             self.cadencelist.pack_targets_greedy(
                                 self.target_cadence[ifull],
-                                self.field_cadence))
+                                self.field_cadence,
+                                value=self.target_value[ifull]))
                     iassigned = np.where(itarget >= 0)[0]
                     nassigned = len(iassigned)
                     if(nassigned > 0):

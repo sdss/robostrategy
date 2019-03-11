@@ -16,52 +16,26 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import roboscheduler.cadence as cadence
 import numpy as np
-import healpy
-import fitsio
-import sdss_access.path
-
-sdss_path = sdss_access.path.Path()
-
-
-def make_map(hpix=None, got=None):
-
-    igot = np.where(got)[0]
-
-    ntargets_map = np.bincount(hpix, minlength=healpy.nside2npix(nside))
-    ngot_map = np.bincount(hpix[igot], minlength=healpy.nside2npix(nside))
-
-    fgot_map = - np.ones(healpy.nside2npix(nside), dtype=np.float32)
-    inz = np.where(ntargets_map > 0)[0]
-    fgot_map[inz] = ngot_map[inz] / ntargets_map[inz]
-
-    return(ntargets_map, ngot_map, fgot_map)
-
-    hdr = dict()
-    hdr['NSIDE'] = nside
-    fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
-    fitsio.write(completeness_file, ngot_map, clobber=False)
-    fitsio.write(completeness_file, fgot_map, clobber=False)
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Evaluate completeness of target assignments')
+        description='Update cadences by name to new definitions')
 
-    parser.add_argument('-p', '--plan', dest='plan',
-                        type=str, help='name of plan', required=True)
-    parser.add_argument('-o', '--observatory', dest='observatory',
-                        type=str, help='apo or lco',
-                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-f', '--filename', dest='cadence_file',
+                        type=str, help='cadence file to use', required=True)
 
     args = parser.parse_args()
-    plan = args.plan
-    observatory = args.observatory
+    cadence_file = args.cadence_file
 
-    targets_file = sdss_path.full('rsTargets', plan=plan,
-                                  observatory=observatory)
+    clist = cadence.CadenceList()
+    clist.fromfits(clist)
+
+
     targets = fitsio.read(targets_file)
     outtargets_dtype = np.dtype(targets.dtype.descr +
                                 np.dtype([('got', np.int32),
@@ -88,8 +62,6 @@ if __name__ == '__main__':
     base_cadences = np.array(["_".join(c.split('_')[0:-1])
                               for c in base_cadences])
     unique_base_cadences = np.unique(base_cadences)
-    ikeep = np.where(unique_base_cadences != "")[0]
-    unique_base_cadences = unique_base_cadences[ikeep]
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
@@ -107,16 +79,10 @@ if __name__ == '__main__':
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
 
-    print(np.unique(cadences))
-    print(unique_base_cadences)
-    icadence = np.where(cadences != "none")[0]
-    print(len(icadence))
-    print(len(cadences))
-    ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
-                                                got=got[icadence])
+    ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix, got=got)
 
-    ntargets = len(np.where(outtargets['covered'][icadence])[0])
-    ngot = np.int32(got[icadence].sum())
+    ntargets = len(np.where(outtargets['covered'])[0])
+    ngot = np.int32(got.sum())
     fgot = np.float32(ngot) / np.float32(ntargets)
 
     hdr = dict()
@@ -132,7 +98,6 @@ if __name__ == '__main__':
 
     for indx in np.arange(len(unique_base_cadences)):
         unique_base_cadence = unique_base_cadences[indx]
-        print(unique_base_cadence)
 
         icadence = np.where(base_cadences == unique_base_cadence)[0]
         ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],

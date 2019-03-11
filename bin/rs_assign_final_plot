@@ -20,6 +20,7 @@ import subprocess
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import robostrategy.allocate
 import sdss_access.path
@@ -51,6 +52,11 @@ if __name__ == '__main__':
     observatory = args.observatory
     fstart = args.start
     fend = args.end
+
+    cadencelist = cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)

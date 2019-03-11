@@ -132,6 +132,8 @@ if __name__ == '__main__':
                     #f.target_cadence[indx] = 'mwm_rv_15x4'
 
             f.field_cadence = field_cadence
+            print(field_cadence)
+            print(f.ntarget)
             f.assign()
 
             if(field_cadence.split('-')[-1] == 'n'):
