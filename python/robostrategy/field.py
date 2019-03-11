@@ -103,7 +103,7 @@ class Field(object):
         target types ('BOSS' or 'APOGEE')
 
     target_assigned : ndarray of np.int32
-        (ntarget) array of 0 or 1, indicating whether target is assigned 
+        (ntarget) array of 0 or 1, indicating whether target is assigned
 
     target_assignments : ndarray of np.int32
         (ntarget, nexposure) array of positionerid for each target
