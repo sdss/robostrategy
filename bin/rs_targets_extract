@@ -13,6 +13,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
+import configparser
 import argparse
 import os
 import sys
@@ -25,113 +26,64 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path()
 
 
-def get_targets():
-    nt = targetdb.Target.select(targetdb.Target.ra,
-                                targetdb.Target.dec).count()
-
-    ts = (targetdb.Target.select(targetdb.Target.ra,
-                                 targetdb.Target.dec,
-                                 targetdb.Target.pk,
-                                 targetdb.Program.label.alias('program'),
-                                 targetdb.TargetCadence.name.alias('cadence'))
-          .join(targetdb.Program).switch(targetdb.Target)
-          .join(targetdb.TargetCadence).dicts())
-
-    target_type = np.array(['apogee'] * nt)
-
+def get_targets(cfg=None):
     target0 = [('targetid', np.int32),
                ('pk', np.int64),
                ('ra', np.float64),
                ('dec', np.float64),
                ('program', np.dtype('a30')),
                ('cadence', cadence.fits_type),
-               ('type', np.dtype('a30'))]
-    targets = np.zeros(nt, dtype=target0)
+               ('category', np.dtype('a30'))]
 
-    for indx, t in zip(np.arange(nt), ts):
-        targets['ra'][indx] = t['ra']
-        targets['dec'][indx] = t['dec']
-        targets['pk'][indx] = t['pk']
-        targets['program'][indx] = t['program']
-        targets['cadence'][indx] = t['cadence']
-        targets['type'][indx] = target_type[indx]
+    targets = np.zeros(0, dtype=target0)
 
-    # HACK
-    program = np.array([p.decode().strip() for p in targets['program']])
-    inotrm = np.where(program != 'ReSpeQ_RM')[0]
-    targets = targets[inotrm]
-    print(len(targets))
-    fname = sdss_path.full('rsFields', observatory='apo', plan='straw-0')
-    f = fitsio.read(fname)
-    ftype = np.array([x.decode().strip() for x in f['type']])
-    irmfields = np.where(ftype == 'rm_north')[0]
-    for irmfield in irmfields:
-        maxpk = targets['pk'].max()
-        racen = f['racen'][irmfield]
-        deccen = f['deccen'][irmfield]
-        nnew = 800
-        thran = np.pi * 2. * np.random.random(size=nnew)
-        r2ran = (1.49**2) * np.random.random(size=nnew)
-        rran = np.sqrt(r2ran)
-        dra = rran * np.cos(thran)
-        ddec = rran * np.sin(thran)
-        new_targets = np.zeros(nnew, dtype=target0)
-        new_targets['ra'] = (racen + dra / np.cos(np.pi / 180. * deccen))
-        new_targets['dec'] = (deccen + ddec)
-        new_targets['pk'] = maxpk + 1 + np.arange(nnew)
-        new_targets['program'] = 'ReSpeQ_RM'
-        new_targets['cadence'] = 'bhm_rm_174x8'
-        new_targets['type'] = 'rm_north'
-        targets = np.append(targets, new_targets)
+    for program in cfg['Programs']:
+        print(program)
 
-    # HACK
-    fname = sdss_path.full('rsFields', observatory='lco', plan='straw-0')
-    f = fitsio.read(fname)
-    ftype = np.array([x.decode().strip() for x in f['type']])
-    irmfields = np.where(ftype == 'rm_south')[0]
-    for irmfield in irmfields:
-        maxpk = targets['pk'].max()
-        racen = f['racen'][irmfield]
-        deccen = f['deccen'][irmfield]
-        nnew = 800
-        thran = np.pi * 2. * np.random.random(size=nnew)
-        r2ran = (1.49**2) * np.random.random(size=nnew)
-        rran = np.sqrt(r2ran)
-        dra = rran * np.cos(thran)
-        ddec = rran * np.sin(thran)
-        new_targets = np.zeros(nnew, dtype=target0)
-        new_targets['ra'] = (racen + dra / np.cos(np.pi / 180. * deccen))
-        new_targets['dec'] = (deccen + ddec)
-        new_targets['pk'] = maxpk + 1 + np.arange(nnew)
-        new_targets['program'] = 'ReSpeQ_RM'
-        new_targets['cadence'] = 'bhm_rm_174x8'
-        new_targets['type'] = 'rm_south'
-        targets = np.append(targets, new_targets)
+        nt = (targetdb.Target.select(targetdb.Target.pk)
+              .join(targetdb.Program)
+              .where(targetdb.Program.label == program)).count()
 
-    # HACK
-    program = np.array([p.decode().strip() for p in targets['program']])
-    irv = np.where((program == 'ATLaS_RV') &
-                   (targets['dec'] > -14))[0]
-    thran = np.pi * 2. * np.random.random(size=len(irv))
-    r2ran = (1.49**2) * np.random.random(size=len(irv))
-    rran = np.sqrt(r2ran)
-    dra = rran * np.cos(thran)
-    ddec = rran * np.sin(thran)
-    targets['ra'][irv] = (targets['ra'][irv] +
-                          dra / np.cos(np.pi / 180. * targets['dec'][irv]))
-    targets['dec'][irv] = (targets['dec'][irv] + ddec)
+        if(nt > 0):
+            tmp_targets = np.zeros(nt, dtype=target0)
 
-    # HACK
-    irv = np.where((program == 'ATLaS_RV') &
-                   (targets['dec'] <= -14))[0]
-    thran = np.pi * 2. * np.random.random(size=len(irv))
-    r2ran = (0.95**2) * np.random.random(size=len(irv))
-    rran = np.sqrt(r2ran)
-    dra = rran * np.cos(thran)
-    ddec = rran * np.sin(thran)
-    targets['ra'][irv] = (targets['ra'][irv] +
-                          dra / np.cos(np.pi / 180. * targets['dec'][irv]))
-    targets['dec'][irv] = (targets['dec'][irv] + ddec)
+            ts = (targetdb.Target.select(targetdb.Target.ra,
+                                         targetdb.Target.dec,
+                                         targetdb.Target.pk,
+                                         targetdb.Program.label.alias('program'),
+                                         targetdb.TargetCadence.name.alias('cadence'))
+                  .join(targetdb.Program).switch(targetdb.Target)
+                  .join(targetdb.TargetCadence)
+                  .where(targetdb.Program.label == program)).dicts()
+            
+            for indx, t in zip(np.arange(nt), ts):
+                tmp_targets['ra'][indx] = t['ra']
+                tmp_targets['dec'][indx] = t['dec']
+                tmp_targets['pk'][indx] = t['pk']
+                tmp_targets['program'][indx] = t['program']
+                tmp_targets['cadence'][indx] = t['cadence']
+                tmp_targets['category'][indx] = 'SCIENCE'
+
+            targets = np.append(targets, tmp_targets)
+
+    # Now add skies and standards
+    nrandom = 4000000
+    for skystandard in ['STANDARD', 'SKY']:
+        for instrument in ['APOGEE', 'BOSS']:
+            category = "{ss}_{inst}".format(ss=skystandard, inst=instrument)
+            print(category)
+            costhrandom = np.random.random(size=nrandom) * 2. - 1.
+            thrandom = np.arccos(costhrandom) * 180. / np.pi
+            decrandom = 90. - thrandom
+            rarandom = np.random.random(size=nrandom) * 360.
+            new_targets = np.zeros(nrandom, dtype=target0)
+            new_targets['ra'] = rarandom
+            new_targets['dec'] = decrandom
+            new_targets['pk'] = -1
+            new_targets['program'] = 'CALIBRATION'
+            new_targets['cadence'] = 'none'
+            new_targets['category'] = category
+            targets = np.append(targets, new_targets)
 
     targets['targetid'] = np.arange(len(targets), dtype=np.int32)
 
@@ -154,7 +106,12 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    targets = get_targets()
+    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+                           'robostrategy-{plan}.cfg'.format(plan=plan))
+    cfg = configparser.ConfigParser(allow_no_value=True)
+    cfg.read(cfgfile)
+
+    targets = get_targets(cfg=cfg)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
