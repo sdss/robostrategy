@@ -27,13 +27,10 @@ Steps to run strategy
 Things to do
 ============
 
- * Add sky and standards at some level
- * WD and 100 pc cadence changes
- * Check RV cadence consistency
+ * WD cadence changes
  * How to make sure targets with field cadence are ensured
  * Fix hex grid pattern
  * Handle assignments in overlapping fields 
- * Mixed BOSS and APOGEE cadence
  * Incorporate kaiju constraints and real radec2xy
  * Combine LCO/APO constraints into single optimization
  * Put on constraints of number of certain targets to achieve.
