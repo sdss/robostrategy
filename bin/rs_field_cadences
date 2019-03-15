@@ -1,0 +1,116 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_field_cadences_straw
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import configparser
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+def cadences_from_targets(cfg=None, target_cadences=None):
+    field_cadences = []
+
+    for target_cadence in cfg['CadencesFromTargets']:
+        if(target_cadence in target_cadences):
+            if(cfg['CadencesFromTargets'][target_cadence] is not None):
+                curr_cadences = cfg['CadencesFromTargets'][target_cadence].split()
+                for curr_cadence in curr_cadences:
+                    field_cadences.append(curr_cadence)
+            else:
+                field_cadences.append(target_cadence)
+
+    field_cadences = np.array(field_cadences)
+    field_cadences = np.unique(field_cadences)
+
+    return(field_cadences)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field assignment test for Galactic Genesis')
+
+    parser.add_argument('-n', '--ncadence', dest='ncadence',
+                        type=np.int32, help='max number of cadences',
+                        default=100)
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+                           'robostrategy-{plan}.cfg'.format(plan=plan))
+    cfg = configparser.ConfigParser(allow_no_value=True)
+    cfg.read(cfgfile)
+
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    fields_array = fitsio.read(fields_file)
+
+    all_field_cadences = []
+    for fields_entry in fields_array:
+        fieldid = fields_entry['fieldid']
+        fieldtype = fields_entry['type'].decode().strip()
+
+        field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
+                                           observatory=observatory,
+                                           fieldid=fieldid)
+        targets = fitsio.read(field_target_file)
+        cadences = np.array([c.decode().strip() for c in targets['cadence']])
+        target_cadences = np.unique(cadences)
+
+        cadences = np.array(cfg['Fields'][fieldtype].split())
+        if('FromTargets' in cadences):
+            field_cadences = cadences_from_targets(cfg=cfg, target_cadences=target_cadences)
+        else:
+            field_cadences = []
+        for cadence in cadences[cadences != 'FromTargets']:
+            field_cadences.append(cadence)
+
+        all_field_cadences.append(np.array(field_cadences))
+
+    all_field_cadences_1d = []
+    for field_cadences in all_field_cadences:
+        for field_cadence in field_cadences:
+            all_field_cadences_1d.append(field_cadence)
+    unique_cadences = np.unique(all_field_cadences_1d)
+
+    cadence_mask = np.zeros((len(fields_array), len(unique_cadences)),
+                            dtype=np.int32)
+
+    for indx in np.arange(len(fields_array)):
+        for field_cadence in all_field_cadences[indx]:
+            icad = np.where(unique_cadences == field_cadence)[0]
+            cadence_mask[indx, icad] = 1
+
+    hdr = dict()
+    hdr['NCAD'] = len(unique_cadences)
+    for indx, cad in zip(np.arange(len(unique_cadences)), unique_cadences):
+        hdr['CAD{indx}'.format(indx=indx)] = cad
+
+    field_cadence_file = sdss_path.full('rsFieldCadences',
+                                        plan=plan, observatory=observatory)
+    fitsio.write(field_cadence_file, cadence_mask, header=hdr, clobber=True)

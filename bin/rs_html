@@ -57,6 +57,14 @@ if __name__ == '__main__':
     fp.write("<html>")
     fp.write("<body>")
 
+    fp.write("""<h2>Description</h2>
+<p>This page describes the results of robostrategy for plan {plan},
+for the SDSS-V FPS program observing for the Milky Way Mapper and
+the Black Hole Mapper.
+
+</p>
+""")
+
     fp.write("""<h2>Output files</h2>
 
 <p>The main results of the allocation process can be found in the following 
