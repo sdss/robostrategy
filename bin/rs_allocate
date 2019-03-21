@@ -44,6 +44,7 @@ if __name__ == '__main__':
     cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
                            'robostrategy-{plan}.cfg'.format(plan=plan))
     cfg = configparser.ConfigParser(allow_no_value=True)
+    cfg.optionxform = str
     cfg.read(cfgfile)
     all_fields = 'AllFields' in cfg['Allocation']
 
