@@ -704,24 +704,17 @@ class Field(object):
                                         requires_boss=requires_boss)
                 if(len(it) > 0):
                     ifull = iscience[iok[ileft[it]]]
-                    if(nexposures < self.greedy_limit):
-                        epoch_targets, itarget = (
-                            self.cadencelist.pack_targets(
-                                self.target_cadence[ifull],
-                                self.field_cadence,
-                                value=self.target_value[ifull]))
-                    else:
-                        epoch_targets, itarget = (
-                            self.cadencelist.pack_targets_greedy(
-                                self.target_cadence[ifull],
-                                self.field_cadence,
-                                value=self.target_value[ifull]))
+                    p = cadence.Packing(self.field_cadence)
+                    p.pack_targets_greedy(
+                        target_ids=ifull,
+                        target_cadences=self.target_cadence[ifull],
+                        value=self.target_value[ifull])
+                    itarget = p.exposures  # make sure this returns targetid
                     iassigned = np.where(itarget >= 0)[0]
                     nassigned = len(iassigned)
                     if(nassigned > 0):
-                        got_target[ifull[itarget[iassigned]]] = 1
-                        self.assignments[indx, 0:nassigned] = (
-                            ifull[itarget[iassigned]])
+                        got_target[itarget[iassigned]] = 1
+                    self.assignments[indx, :] = itarget
 
         if(include_calibration):
             self.assign_calibration(ttype='APOGEE', tcategory='SKY')
