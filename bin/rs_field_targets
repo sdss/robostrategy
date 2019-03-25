@@ -17,8 +17,7 @@ import argparse
 import os
 import sys
 import numpy as np
-import astropy.coordinates as coordinates
-import astropy.units as units
+import healpy
 import fitsio
 import sdss_access.path
 
@@ -51,18 +50,43 @@ if __name__ == '__main__':
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     targets_all = fitsio.read(targets_file)
-    targets_coord = coordinates.SkyCoord(ra=targets_all['ra'] * units.degree,
-                                         dec=targets_all['dec'] * units.degree)
+
+    nside = 32
+    hpix = healpy.pixelfunc.ang2pix(nside, targets_all['ra'],
+                                    targets_all['dec'], lonlat=True)
 
     for fields_entry in fields_array:
         fieldid = fields_entry['fieldid']
         if((fieldid % 1) == 0):
             print(fieldid)
 
-        c = coordinates.SkyCoord(ra=fields_entry['racen'] * units.degree,
-                                 dec=fields_entry['deccen'] * units.degree)
-        indx = c.separation(targets_coord) < (1.5 * units.deg)
-        targets = targets_all[indx]
+        hpix_field = healpy.pixelfunc.ang2pix(nside, fields_entry['racen'],
+                                              fields_entry['deccen'],
+                                              lonlat=True)
+        neighbors = healpy.pixelfunc.get_all_neighbours(nside, hpix_field)
+        hpix_check = np.append(neighbors, np.array([hpix_field]))
+
+        keep = np.zeros(healpy.pixelfunc.nside2npix(nside), dtype=np.int32)
+        keep[hpix_check] = 1
+        icheck = np.where(keep[hpix])[0]
+
+        # From Meeus Ch. 17
+        deccen_rad = fields_entry['deccen'] * np.pi / 180.
+        racen_rad = fields_entry['racen'] * np.pi / 180.
+        dec_rad = targets_all['dec'][icheck] * np.pi / 180.
+        ra_rad = targets_all['ra'][icheck] * np.pi / 180.
+        x = (np.cos(deccen_rad) * np.sin(dec_rad) -
+             np.sin(deccen_rad) * np.cos(dec_rad) *
+             np.cos(ra_rad - racen_rad))
+        y = np.cos(dec_rad) * np.sin(ra_rad - racen_rad)
+        z = (np.sin(deccen_rad) * np.sin(dec_rad) +
+             np.cos(deccen_rad) * np.cos(dec_rad) *
+             np.cos(ra_rad - racen_rad))
+        d_rad = np.arctan2(np.sqrt(x**2 + y**2), z)
+        d_deg = d_rad * 180. / np.pi
+
+        indx = np.where(d_deg < 1.5)[0]
+        targets = targets_all[icheck[indx]]
 
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,

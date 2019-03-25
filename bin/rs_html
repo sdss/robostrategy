@@ -13,6 +13,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
+import configparser
 import argparse
 import os
 import sys
@@ -40,6 +41,12 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+                           'robostrategy-{plan}.cfg'.format(plan=plan))
+    cfg = configparser.ConfigParser(allow_no_value=True)
+    cfg.optionxform = str
+    cfg.read(cfgfile)
+
     field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
                                                          plan=plan, observatory=observatory))
     cadence_mask, cadence_hdr = fitsio.read(field_cadence_file, header=True)
@@ -55,7 +62,91 @@ if __name__ == '__main__':
 
     fp = open(html_file, "w")
     fp.write("<html>")
+    fp.write("""<head>
+<style>
+    table, th, tr, td {border: 1px solid black}
+</style>
+""")
     fp.write("<body>")
+
+    summary = cfg.get('Documentation', 'summary',
+                      fallback='No summary provided')
+    description = cfg.get('Documentation', 'description',
+                          fallback='No description provided')
+    fp.write("""<h2>Description</h2>
+<p>This page describes the results of robostrategy for plan {plan},
+for the SDSS-V FPS program observing for the Milky Way Mapper and
+the Black Hole Mapper. These results are for the operations at {obs}.</p>
+
+<p><b>Summary:</b>{summary}</p>
+
+<p><b>Description:</b>{description}</p>
+""".format(plan=plan, summary=summary, description=description,
+           obs=observatory.upper()))
+
+    fp.write("""<p><b>Settings:</b></p>
+<ul>""")
+    if('AllFields' in cfg['Allocation']):
+        fp.write("<li><i>AllFields</i>: All fields are guaranteed to get some observations.</li>")
+    fp.write("""</ul>""")
+
+    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>""")
+
+    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
+    <thead>
+        <tr>
+            <th>Programs included.</th>
+        </tr>
+    </thead>""")
+    fp.write("""<tbody>""")
+    for program in cfg['Programs']:
+        fp.write("<tr><td>{p}</td></tr>".format(p=program))
+    fp.write("""</tbody>""")
+    fp.write("""</table>""")
+
+    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
+    <thead>
+        <tr>
+            <th colspan="2">Field types included.</th>
+        </tr>
+        <tr>
+            <td><b>Fields</b></td> <td><b>Cadences</b></td>
+        </tr>
+    </thead>""")
+    fp.write("""<tbody>""")
+    exclude = ['NSDiv']
+    for field_type in cfg['Fields']:
+        if(field_type not in exclude):
+            fp.write("<tr><td>{ft}</td><td>{c}</td></tr>".format(ft=field_type,
+                                                                 c=cfg.get('Fields', field_type)))
+    fp.write("""</tbody>""")
+    fp.write("""</table>""")
+
+    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
+    <thead>
+        <tr>
+            <th colspan="2">How field cadences are selected from targets.</th>
+        </tr>
+        <tr>
+            <td><b>Target Cadence</b></td> <td><b>Field Cadences to Include</b></td>
+        </tr>
+    </thead>""")
+    fp.write("""<tbody>""")
+    exclude = []
+    for target_cadence in cfg['CadencesFromTargets']:
+        if(target_cadence not in exclude):
+            clist = cfg.get('CadencesFromTargets', target_cadence)
+            if(clist is None):
+                clist = target_cadence
+            fp.write("<tr><td>{tc}</td><td>{c}</td></tr>".format(tc=target_cadence,
+                                                                 c=clist))
+    fp.write("""</tbody>""")
+    fp.write("""</table>""")
+
+    fp.write("""<p>The full configuration file can be found on
+<a href="https://github.com/sdss/robostrategy/blob/master/etc/robostrategy-{plan}.cfg">github</a>.
+</p>
+""".format(plan=plan))
 
     fp.write("""<h2>Output files</h2>
 

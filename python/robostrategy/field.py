@@ -99,9 +99,6 @@ class Field(object):
     target_cadence : ndarray of np.int32
         cadences of targets
 
-    target_type : ndarray of strings
-        target types ('BOSS' or 'APOGEE')
-
     target_assigned : ndarray of np.int32
         (ntarget) array of 0 or 1, indicating whether target is assigned
 
@@ -289,13 +286,6 @@ class Field(object):
         except ValueError:
             self.target_category = np.array(['SCIENCE'] * self.ntarget)
 
-        try:
-            self.target_type = np.array(
-                [t.decode().strip() for t in self.target_array['type']])
-        except AttributeError:
-            self.target_type = np.array(
-                [t.strip() for t in self.target_array['type']])
-
         return
 
     def targets_fromfits(self, filename=None):
@@ -313,7 +303,7 @@ class Field(object):
         Required columns:
          'ra', 'dec' should be np.float64
          'pk' should be np.int64
-         'cadence', 'type' should be str or bytes
+         'cadence' should be str or bytes
 
         Optional columns:
          'priority'
@@ -353,7 +343,7 @@ class Field(object):
             Array of targets, with columns:
               'ra', 'dec' (np.float64)
               'pk' (np.int64)
-              'cadence', 'type' ('a30')
+              'cadence' ('a30')
               'priority' (np.int32)
               'category' ('a30')
 """
@@ -361,7 +351,6 @@ class Field(object):
                                        ('dec', np.float64),
                                        ('pk', np.int64),
                                        ('cadence', cadence.fits_type),
-                                       ('type', np.dtype('a30')),
                                        ('category', np.dtype('a30')),
                                        ('value', np.int32),
                                        ('priority', np.int32)])
@@ -371,7 +360,6 @@ class Field(object):
         target_array['dec'] = self.target_dec
         target_array['pk'] = self.target_pk
         target_array['cadence'] = self.target_cadence
-        target_array['type'] = self.target_type
         target_array['category'] = self.target_category
         target_array['value'] = self.target_value
         target_array['priority'] = self.target_priority
@@ -477,7 +465,7 @@ class Field(object):
         plt.ylim([-370., 370.])
         plt.legend()
 
-    def assign_calibration(self, tcategory=None, ttype=None):
+    def assign_calibration(self, category=None):
         """Assign calibration targets to robots within the field
 
         Notes:
@@ -487,7 +475,7 @@ class Field(object):
         is that a certain number will be assigned, according to the
         attribute:
 
-           n{category}_{type}
+           n{category}
 
         There is no guarantee regarding the spatial distribution.
         In addition, even the number is not guaranteed.
@@ -496,34 +484,35 @@ class Field(object):
 
           * For each unassigned robot, tries to match it to
             one of the calibration targets. Assigns up to
-            n{category}_{type} robots. It prefers robots used
+            n{category} robots. It prefers robots used
             for calibration in previous exposures, but beyond
             that picks randomly.
 
-          * If there are less than n{category}_{type} calibration
+          * If there are less than n{category} calibration
             targets assigned, for each robot assigned to a single
             exposure 'SCIENCE' target, tries to match it to one of the
             calibration targets. Assigns more calibration targets up
-            to a total of n{category}_{type}, randomly selected. If
+            to a total of n{category}, randomly selected. If
             there is more than one exposure in the field cadence,
             tries to assign the replaced targets back to their same
             fiber in an earlier (preferentially) or later exposure.
 
-          * If there are still less than n{category}_{type}
+          * If there are still less than n{category}
             calibration targets assigned, for each robot assigned to a
             any other 'SCIENCE' target, tries to match it to one of
             the calibration targets. Assigns more calibration targets
-            up to a total of n{category}_{type}. It prefers robots
+            up to a total of n{category}. It prefers robots
             used for calibration in previous exposures, but beyond
             that picks randomly. The replaced targets are lost.
 
         This method is a hack. It will usually get the right number of
         calibration targets but isn't optimized.
 """
-        icalib = np.where((self.target_category == tcategory) &
-                          (self.target_type == ttype))[0]
+        icalib = np.where(self.target_category == category)[0]
         if(len(icalib) == 0):
             return
+
+        ttype = category.split("_")[-1]
 
         # Match robots to targets (indexed into icalib)
         robot_targets = dict()
@@ -539,7 +528,7 @@ class Field(object):
                                     requires_boss=requires_boss)
             robot_targets[positionerid] = it
 
-        ncalib = getattr(self, 'n{c}_{t}'.format(c=tcategory, t=ttype).lower())
+        ncalib = getattr(self, 'n{c}'.format(c=category).lower())
 
         # Loop over exposures
         nexposures = self.cadencelist.cadences[self.field_cadence].nexposures
@@ -655,7 +644,7 @@ class Field(object):
         cadence categories.
 
         Then for each exposure it assigns 'STANDARD' and then 'SKY'
-        targets for 'APOGEE' and 'BOSS' fibers. It uses the 
+        targets for 'APOGEE' and 'BOSS' fibers. It uses the
         assign_calibration() method in each case.
 
         It does not use the target priorities yet.
@@ -717,10 +706,10 @@ class Field(object):
                     self.assignments[indx, :] = itarget
 
         if(include_calibration):
-            self.assign_calibration(ttype='APOGEE', tcategory='SKY')
-            self.assign_calibration(ttype='APOGEE', tcategory='STANDARD')
-            self.assign_calibration(ttype='BOSS', tcategory='SKY')
-            self.assign_calibration(ttype='BOSS', tcategory='STANDARD')
+            self.assign_calibration(category='SKY_APOGEE')
+            self.assign_calibration(category='STANDARD_APOGEE')
+            self.assign_calibration(category='SKY_BOSS')
+            self.assign_calibration(category='STANDARD_BOSS')
 
         self.set_target_assignments()
 

@@ -14,6 +14,7 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 
 import argparse
+import configparser
 import os
 import sys
 import numpy as np
@@ -43,9 +44,23 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+                           'robostrategy-{plan}.cfg'.format(plan=plan))
+    cfg = configparser.ConfigParser(allow_no_value=True)
+    cfg.optionxform = str
+    cfg.read(cfgfile)
+
     cadencelist = cadence.CadenceList()
     cadencelist.reset()
     cadencelist.fromdb()
+
+    for c in cfg['Cadences']:
+        adjustment = cfg.get('Cadences', c)
+        if(adjustment == 'NoDelta'):
+            for i in cadencelist.cadences[c].epoch_indx:
+                cadencelist.cadences[c].delta[i] = -1.
+                cadencelist.cadences[c].delta_min[i] = -1.
+                cadencelist.cadences[c].delta_max[i] = -1.
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)

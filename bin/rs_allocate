@@ -13,6 +13,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
+import configparser
 import argparse
 import os
 import sys
@@ -35,15 +36,17 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--observatory", dest="observatory", type=str,
                         required=False, help="observatory ('apo' or 'lco')",
                         default='apo')
-    parser.add_argument("-a", "--all-fields", dest="all_fields",
-                        required=False, help="observe all fields",
-                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
-    all_fields = args.all_fields
-    print(all_fields)
+
+    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+                           'robostrategy-{plan}.cfg'.format(plan=plan))
+    cfg = configparser.ConfigParser(allow_no_value=True)
+    cfg.optionxform = str
+    cfg.read(cfgfile)
+    all_fields = 'AllFields' in cfg['Allocation']
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
