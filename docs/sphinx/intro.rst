@@ -32,6 +32,7 @@ Things to do
  * Check RV cadence consistency
  * How to make sure targets with field cadence are ensured
  * Fix hex grid pattern
+ * twilight time as high lunation
  * Handle assignments in overlapping fields 
  * Mixed BOSS and APOGEE cadence
  * Incorporate kaiju constraints and real radec2xy
