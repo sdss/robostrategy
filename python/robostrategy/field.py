@@ -662,9 +662,9 @@ class Field(object):
         # Find which targets are viable at all
         ok_cadence = dict()
         for curr_cadence in np.unique(self.target_cadence[iscience]):
-            ok = self.cadencelist.cadence_consistency(curr_cadence,
+            ok, s = self.cadencelist.cadence_consistency(curr_cadence,
                                                       self.field_cadence,
-                                                      return_solutions=False)
+                                                      return_solutions=True)
             ok_cadence[curr_cadence] = (
                 ok | (self.cadencelist.cadences[curr_cadence].nepochs == 1))
         ok = [ok_cadence[tcadence]

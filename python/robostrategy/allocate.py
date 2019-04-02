@@ -381,8 +381,6 @@ class AllocateLST(object):
                 slots_totals = slots_totals + ccadence['allocation']
                 cadence_totals[indx] = ccadence['allocation'].sum()
             field_total = cadence_totals.sum()
-            if(field_total == 0.):
-                print(cadence_totals)
             field_array['cadence'][findx] = 'none'
             field_array['slots_exposures'][findx] = (
                 self.allocinfo[fieldid][cadence]['slots'] * 0.)
@@ -394,9 +392,9 @@ class AllocateLST(object):
                 choose = np.random.random()
                 icadence = np.where(cadence_cumulative > choose)[0][0]
                 cadence = list(self.allocinfo[fieldid].keys())[icadence]
-                choose_field = np.random.random()
+                # choose_field = np.random.random()
                 # if(choose_field <
-                 #   field_total / self.allocinfo[fieldid][cadence]['needed']):
+                #   field_total / self.allocinfo[fieldid][cadence]['needed']):
                 field_array['cadence'][findx] = cadence
                 field_array['slots_exposures'][findx] = slots_totals
                 field_array['needed'][findx] = (

@@ -81,18 +81,24 @@ if __name__ == '__main__':
                                        tmp_fields_south_array)
 
     if('RM' in cfg['Fields']):
-        tmp_fields_north_rm = np.zeros(3, dtype=fields_dtype)
-        tmp_fields_north_rm['racen'] = [150.1, 213.7, 270.0]
-        tmp_fields_north_rm['deccen'] = [2.2, 53.1, 66.6]
+        in_north_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                        'data', 'north-fields-RM.fits')
+        in_north_rm = fitsio.read(in_north_rm_file)
+        tmp_fields_north_rm = np.zeros(len(in_north_rm), dtype=fields_dtype)
+        tmp_fields_north_rm['racen'] = in_north_rm['RA']
+        tmp_fields_north_rm['deccen'] = in_north_rm['DEC']
         tmp_fields_north_rm['radius'] = [1.49] * 3
         tmp_fields_north_rm['type'] = 'RM'
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields_north_rm)
 
-        tmp_fields_south_rm = np.zeros(2, dtype=fields_dtype)
-        tmp_fields_south_rm['racen'] = [52.5, 36.4]
-        tmp_fields_south_rm['deccen'] = [- 28., - 4.6]
-        tmp_fields_south_rm['radius'] = [0.95] * 2
+        in_south_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                        'data', 'south-fields-RM.fits')
+        in_south_rm = fitsio.read(in_south_rm_file)
+        tmp_fields_south_rm = np.zeros(len(in_south_rm), dtype=fields_dtype)
+        tmp_fields_south_rm['racen'] = in_south_rm['RA']
+        tmp_fields_south_rm['deccen'] = in_south_rm['DEC']
+        tmp_fields_south_rm['radius'] = [1.49] * 3
         tmp_fields_south_rm['type'] = 'RM'
         fields_south_array = np.append(fields_south_array,
                                        tmp_fields_south_rm)

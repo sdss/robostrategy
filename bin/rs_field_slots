@@ -47,7 +47,7 @@ if __name__ == '__main__':
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    cadencelist.fromfits(cadences_file)
+    cadencelist.fromfits(cadences_file, unpickle=True)
 
     slots = robostrategy.slots.Slots(observatory=observatory)
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)

@@ -50,7 +50,7 @@ if __name__ == '__main__':
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    cadencelist.fromfits(filename=cadences_file)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
@@ -98,9 +98,6 @@ if __name__ == '__main__':
                                            observatory=observatory,
                                            fieldid=fieldid)
         targets = fitsio.read(field_target_file)
-        #cadences = np.array([c.decode().strip() for c in targets['cadence']])
-        #ikeep = np.where(cadences != 'mwm_galactic_1x1')[0]
-        #targets = targets[ikeep]
 
         values = np.ones(len(targets))
 
@@ -118,23 +115,10 @@ if __name__ == '__main__':
                             observatory=observatory)
             f.targets_fromarray(targets)
 
-            #for indx in np.arange(len(targets)):
-                #if('mwm_rv' in f.target_cadence[indx]):
-                    #f.target_x = f.target_x + 50. * np.random.random()
-                    #f.target_y = f.target_y + 50. * np.random.random()
-                #if(f.target_cadence[indx] == 'mwm_rv_16x1'):
-                    #f.target_cadence[indx] = 'mwm_rv_15x1'
-                #if(f.target_cadence[indx] == 'mwm_rv_16x2'):
-                    #f.target_cadence[indx] = 'mwm_rv_15x2'
-                #if(f.target_cadence[indx] == 'mwm_rv_16x3'):
-                    #f.target_cadence[indx] = 'mwm_rv_15x3'
-                #if(f.target_cadence[indx] == 'mwm_rv_16x4'):
-                    #f.target_cadence[indx] = 'mwm_rv_15x4'
-
             f.field_cadence = field_cadence
             print(field_cadence)
             print(f.ntarget)
-            f.assign()
+            f.assign(include_calibration=False)
 
             if(field_cadence.split('-')[-1] == 'n'):
                 field_cadence_base = field_cadence.split('-')[0]
