@@ -72,9 +72,11 @@ if __name__ == '__main__':
     slots = robostrategy.slots.Slots(observatory=observatory)
     slots.fromfits(filename=slots_file)
 
-    allocate_class = robostrategy.allocate.AllocateLST
-    if(cfg.get('Allocation', 'Cost') == 'A'):
-        allocate_class = robostrategy.allocate.AllocateLSTCostA
+    if('Cost' in cfg['Allocation']):
+        if(cfg.get('Allocation', 'Cost') == 'A'):
+            allocate_class = robostrategy.allocate.AllocateLSTCostA
+    else:
+        allocate_class = robostrategy.allocate.AllocateLST
     allocate = allocate_class(slots=slots,
                               field_options=field_options,
                               field_slots=field_slots,
