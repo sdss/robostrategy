@@ -20,6 +20,7 @@ import sys
 import fitsio
 import robostrategy.allocate
 import robostrategy.slots
+import roboscheduler.cadence as cadence
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -40,6 +41,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+
+    cadencelist = cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
                            'robostrategy-{plan}.cfg'.format(plan=plan))
@@ -66,12 +72,15 @@ if __name__ == '__main__':
     slots = robostrategy.slots.Slots(observatory=observatory)
     slots.fromfits(filename=slots_file)
 
-    allocate = robostrategy.allocate.AllocateLST(slots=slots,
-                                                 field_options=field_options,
-                                                 field_slots=field_slots,
-                                                 fields=fields_array,
-                                                 observatory=observatory,
-                                                 observe_all_fields=all_fields)
+    allocate_class = robostrategy.allocate.AllocateLST
+    if(cfg.get('Allocation', 'Cost') == 'A'):
+        allocate_class = robostrategy.allocate.AllocateLSTCostA
+    allocate = allocate_class(slots=slots,
+                              field_options=field_options,
+                              field_slots=field_slots,
+                              fields=fields_array,
+                              observatory=observatory,
+                              observe_all_fields=all_fields)
     allocate.construct()
     allocate.solve()
 

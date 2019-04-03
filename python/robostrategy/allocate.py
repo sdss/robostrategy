@@ -1,6 +1,6 @@
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: field_assign_gg
+# @Filename: allocate.py
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -174,9 +174,11 @@ class AllocateLST(object):
         np.random.seed(self.seed)
         self.observer = scheduler.Observer(observatory=observatory)
         self.observe_all_fields = observe_all_fields
+        self.cadencelist = rcadence.CadenceList()
         return
 
-    def xfactor(self, racen=None, deccen=None, lst=None):
+    def xfactor(self, racen=None, deccen=None, lunation=None, lst=None,
+                cadence=None):
         """Exposure time cost factor relative to nominal
 
         Parameters:
@@ -187,6 +189,12 @@ class AllocateLST(object):
 
         deccen : np.float64
             Dec center of field, degrees
+
+        cadence : str
+            cadence name
+
+        lunation : np.float32
+            maximum lunation of observation
 
         lst : np.float32
             LST of observation, hours
@@ -332,6 +340,8 @@ class AllocateLST(object):
                         if(ccadence['slots'][ilst, ilunation]):
                             xfactor = self.xfactor(racen=field_racen,
                                                    deccen=field_deccen,
+                                                   cadence=cadence,
+                                                   lunation=self.slots.lunation[ilunation + 1],
                                                    lst=self.slots.lst[ilst])
                             slot_constraints[ilst][ilunation].SetCoefficient(ccadence['vars'][ilst * self.slots.nlunation + ilunation], float(xfactor))
 
@@ -561,3 +571,59 @@ class AllocateLST(object):
         cb.set_label('$\log_{10} N$')
 
         return
+
+
+class AllocateLSTCostA(AllocateLST):
+    """LST allocation object for robostrategy, with cost model A
+
+    This class is exactly like AllocateLST, but it models the airmass
+    dependence differently. If the maximum lunation requirement of the
+    cadence is <= 0.4, then it assumes you are working in the optical
+    and care about blue throughput, and it scales exposure time with
+    airmass^2. If not, it scales the cost as airmass^0.5.
+"""
+    def xfactor(self, racen=None, deccen=None, lunation=None, lst=None,
+                cadence=None):
+        """Exposure time cost factor relative to nominal
+
+        Parameters:
+        ----------
+
+        racen : np.float64
+            RA center of field, degrees
+
+        deccen : np.float64
+            Dec center of field, degrees
+
+        cadence : str
+            cadence name
+
+        lunation : np.float32
+            maximum lunation of observation
+
+        lst : np.float32
+            LST of observation, hours
+
+        Returns:
+        -------
+
+        xfactor : np.float64
+            length of exposure relative to nominal
+
+        Comments:
+        --------
+
+        If the minimum lunation requirement of the cadence is <= 0.4,
+        then it assumes you are working in the optical and care about blue
+        throughput, and it scales exposure time with airmass^2. If not, it
+        scales the cost as airmass^0.5.
+"""
+        ha = self.observer.ralst2ha(ra=racen, lst=lst * 15.)
+        (alt, az) = self.observer.hadec2altaz(ha=ha, dec=deccen,
+                                              lat=self.observer.latitude)
+        airmass = self.observer.alt2airmass(alt=alt)
+        exponent = 0.5
+        if(self.cadencelist[cadence].lunation.min() < 0.4):
+            exponent = 2.
+        xfactor = airmass**exponent
+        return(xfactor)
