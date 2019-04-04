@@ -413,19 +413,28 @@ class AllocateLST(object):
             field_array['nfilled'][findx] = (
                 field_array['slots_exposures'][findx, :, :].sum())
 
-        for field in field_array:
-            for ilst in np.arange(self.slots.nlst, dtype=np.int32):
-                lst = self.slots.lst[ilst]
-                for ilun in np.arange(self.slots.nlunation, dtype=np.int32):
-                    lunation = self.slots.lunation[ilun + 1]
-                    fcadence = field['cadence'].decode().strip()
-                    if(fcadence != 'none'):
-                        xfactor = self.xfactor(racen=field['racen'],
-                                               deccen=field['deccen'],
-                                               cadence=fcadence,
-                                               lunation=lunation,
-                                               lst=lst)
-                        field['slots_time'][ilst, ilun] = field['slots_exposures'][ilst, ilun] * xfactor * self.slots.duration
+        fscadence = np.array([x.decode().strip()
+                              for x in self.field_slots['cadence']])
+        for findx in np.arange(len(field_array), dtype=np.int32):
+            field = field_array[findx]
+            fcadence = field['cadence'].decode().strip()
+            if(fcadence != 'none'):
+                islots = np.where((self.field_slots['fieldid'] ==
+                                   field['fieldid']) &
+                                  (fscadence == fcadence))[0][0]
+                curr_slots = self.field_slots[islots]['slots']
+                for ilst in np.arange(self.slots.nlst, dtype=np.int32):
+                    lst = self.slots.lst[ilst]
+                    for ilun in np.arange(self.slots.nlunation,
+                                          dtype=np.int32):
+                        lunation = self.slots.lunation[ilun + 1]
+                        if(curr_slots[ilst, ilun]):
+                            xfactor = self.xfactor(racen=field['racen'],
+                                                   deccen=field['deccen'],
+                                                   cadence=fcadence,
+                                                   lunation=lunation,
+                                                   lst=lst)
+                            field['slots_time'][ilst, ilun] = field['slots_exposures'][ilst, ilun] * xfactor * self.slots.duration
 
         self.field_array = field_array
 
@@ -623,14 +632,14 @@ class AllocateLSTCostA(AllocateLST):
         If the minimum lunation requirement of the cadence is <= 0.4,
         then it assumes you are working in the optical and care about blue
         throughput, and it scales exposure time with airmass^2. If not, it
-        scales the cost as airmass^0.5.
+        scales the cost as airmass^0.25.
 """
         ha = self.observer.ralst2ha(ra=racen, lst=lst * 15.)
         (alt, az) = self.observer.hadec2altaz(ha=ha, dec=deccen,
                                               lat=self.observer.latitude)
         airmass = self.observer.alt2airmass(alt=alt)
-        exponent = 0.5
+        exponent = 0.25
         if(self.cadencelist.cadences[cadence].lunation.min() < 0.4):
-            exponent = 2.
+            exponent = 2.0
         xfactor = airmass**exponent
         return(xfactor)
