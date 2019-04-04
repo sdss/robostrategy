@@ -89,7 +89,7 @@ the Black Hole Mapper. These results are for the operations at {obs}.</p>
     if('AllFields' in cfg['Allocation']):
         fp.write("<li><i>AllFields</i>: All fields are guaranteed to get some observations.</li>")
     if('Cost' in cfg['Allocation']):
-        fp.write("<li><i>Cost model</i>: uses cost model {m}</li>".format(m=cfg.get('Allocation', 'Cost'))
+        fp.write("<li><i>Cost model</i>: uses cost model {m}</li>".format(m=cfg.get('Allocation', 'Cost')))
     fp.write("""</ul>""")
 
     fp.write("""<table style="border: 1px solid black;" cellspacing=0px>""")

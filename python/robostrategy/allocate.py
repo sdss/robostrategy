@@ -416,9 +416,16 @@ class AllocateLST(object):
         for field in field_array:
             for ilst in np.arange(self.slots.nlst, dtype=np.int32):
                 lst = self.slots.lst[ilst]
-                xfactor = self.xfactor(racen=field['racen'],
-                                       deccen=field['deccen'], lst=lst)
-                field['slots_time'][ilst, :] = field['slots_exposures'][ilst, :] * xfactor * self.slots.duration
+                for ilun in np.arange(self.slots.nlunation, dtype=np.int32):
+                    lunation = self.slots.lunation[ilun + 1]
+                    fcadence = field['cadence'].decode().strip()
+                    if(fcadence != 'none'):
+                        xfactor = self.xfactor(racen=field['racen'],
+                                               deccen=field['deccen'],
+                                               cadence=fcadence,
+                                               lunation=lunation,
+                                               lst=lst)
+                        field['slots_time'][ilst, ilun] = field['slots_exposures'][ilst, ilun] * xfactor * self.slots.duration
 
         self.field_array = field_array
 
@@ -623,7 +630,7 @@ class AllocateLSTCostA(AllocateLST):
                                               lat=self.observer.latitude)
         airmass = self.observer.alt2airmass(alt=alt)
         exponent = 0.5
-        if(self.cadencelist[cadence].lunation.min() < 0.4):
+        if(self.cadencelist.cadences[cadence].lunation.min() < 0.4):
             exponent = 2.
         xfactor = airmass**exponent
         return(xfactor)

@@ -74,8 +74,10 @@ if __name__ == '__main__':
 
     if('Cost' in cfg['Allocation']):
         if(cfg.get('Allocation', 'Cost') == 'A'):
+            print("Use cost model A")
             allocate_class = robostrategy.allocate.AllocateLSTCostA
     else:
+        print("Use default cost model")
         allocate_class = robostrategy.allocate.AllocateLST
     allocate = allocate_class(slots=slots,
                               field_options=field_options,
