@@ -22,10 +22,10 @@ import astropy.units as units
 import fitsio
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
-
 
 if __name__ == '__main__':
 
@@ -46,6 +46,9 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
     ncadence = args.ncadence
+
+    rsParams = params.RobostrategyParams(plan=plan)
+    fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -143,7 +146,7 @@ if __name__ == '__main__':
                 else:
                     fgot = assign_entries['ngot'] / assign_entries['ngot'].max()
                     fgot_unique, iunique = np.unique(fgot, return_index=True)
-                    indx = np.where(fgot_unique > 0.5)[0]
+                    indx = np.where(fgot_unique > fgot_minimum)[0]
                     if(len(indx) > 0):
                         ikeep = iunique[indx]
                     else:

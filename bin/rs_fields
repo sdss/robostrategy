@@ -22,6 +22,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import fitsio
 import robostrategy.sloane as sloane
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -39,11 +40,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
 
-    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
-                           'robostrategy-{plan}.cfg'.format(plan=plan))
-    cfg = configparser.ConfigParser(allow_no_value=True)
-    cfg.optionxform = str
-    cfg.read(cfgfile)
+    rsParams = params.RobostrategyParams(plan=plan)
 
     fields_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
@@ -53,8 +50,8 @@ if __name__ == '__main__':
     fields_north_array = np.zeros(0, dtype=fields_dtype)
     fields_south_array = np.zeros(0, dtype=fields_dtype)
 
-    if('AllSkySloane' in cfg['Fields']):
-        nsdiv = np.float32(cfg['Fields']['NSDiv'])
+    if('AllSkySloane' in rsParams.cfg['Fields']):
+        nsdiv = np.float32(rsParams.cfg['Fields']['NSDiv'])
 
         fields_north = sloane.Sloane(n=7682, radius=1.49)
         fields_south = sloane.Sloane(n=18752, radius=0.95)
@@ -80,14 +77,14 @@ if __name__ == '__main__':
         fields_south_array = np.append(fields_south_array,
                                        tmp_fields_south_array)
 
-    if('RM' in cfg['Fields']):
+    if('RM' in rsParams.cfg['Fields']):
         in_north_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                         'data', 'north-fields-RM.fits')
         in_north_rm = fitsio.read(in_north_rm_file)
         tmp_fields_north_rm = np.zeros(len(in_north_rm), dtype=fields_dtype)
         tmp_fields_north_rm['racen'] = in_north_rm['RA']
         tmp_fields_north_rm['deccen'] = in_north_rm['DEC']
-        tmp_fields_north_rm['radius'] = [1.49] * 3
+        tmp_fields_north_rm['radius'] = [1.49] * len(in_north_rm)
         tmp_fields_north_rm['type'] = 'RM'
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields_north_rm)
@@ -98,10 +95,34 @@ if __name__ == '__main__':
         tmp_fields_south_rm = np.zeros(len(in_south_rm), dtype=fields_dtype)
         tmp_fields_south_rm['racen'] = in_south_rm['RA']
         tmp_fields_south_rm['deccen'] = in_south_rm['DEC']
-        tmp_fields_south_rm['radius'] = [1.49] * 3
+        tmp_fields_south_rm['radius'] = [0.95] * len(in_south_rm)
         tmp_fields_south_rm['type'] = 'RM'
         fields_south_array = np.append(fields_south_array,
                                        tmp_fields_south_rm)
+
+    if('RV' in rsParams.cfg['Fields']):
+        nsdiv = np.float32(rsParams.cfg['Fields']['NSDiv'])
+        in_rv_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                  'data', 'MWM-RV-FieldCenters-v05.fits')
+        in_rv = fitsio.read(in_rv_file)
+
+        inorth = np.where(in_rv['DECCEN'] > nsdiv)[0]
+        tmp_rv_north = np.zeros(len(inorth), dtype=fields_dtype)
+        tmp_rv_north['racen'] = in_rv['RACEN'][inorth]
+        tmp_rv_north['deccen'] = in_rv['DECCEN'][inorth]
+        tmp_rv_north['radius'] = [1.49] * len(inorth)
+        tmp_rv_north['type'] = 'RV'
+        fields_north_array = np.append(fields_north_array,
+                                       tmp_rv_north)
+
+        isouth = np.where(in_rv['DECCEN'] <= nsdiv)[0]
+        tmp_rv_south = np.zeros(len(isouth), dtype=fields_dtype)
+        tmp_rv_south['racen'] = in_rv['RACEN'][isouth]
+        tmp_rv_south['deccen'] = in_rv['DECCEN'][isouth]
+        tmp_rv_south['radius'] = [0.95] * len(isouth)
+        tmp_rv_south['type'] = 'RV'
+        fields_south_array = np.append(fields_south_array,
+                                       tmp_rv_south)
 
     fields_north_array['fieldid'] = np.arange(len(fields_north_array),
                                               dtype=np.int32) + 1

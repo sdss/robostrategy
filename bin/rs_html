@@ -223,7 +223,8 @@ The columns of this file are:
 <li> <a
 href="rsCompleteness-{plan}-{observatory}.fits">rsCompleteness</a>:
 Completeness information for all targets, and completeness maps for
-all targets and for target cadence classes in healpix format. The HDUs
+all targets, for targets sorted into cadence classes, and for targets
+sorted into programs, in healpix format. The HDUs
 of the file are as follows:
 <ul>
  <li>HDU1: Table with list of targets. It has header keywords:
@@ -253,10 +254,12 @@ of the file are as follows:
     <li><code>NGOT</code>: number of targets gotten (with "got" set)</li>
     <li><code>FGOT</code>: fraction of targets gotten (with "got" set)</li>
     <li><code>NCADENCE</code>: number of cadences in further HDUs</li>
+    <li><code>NPROGRAM</code>: number of programs in further HDUs</li>
    </ul></li>
  <li>HDU3: Healpix map of targets gotten. This is an integer image. It has a similar header as HDU2.</li>
  <li>HDU4: Healpix map of the fraction of targets gotten. This is a floating point image. It has a similar header as HDU2.</li>
  <li>Further HDUs come in triplets, one for each cadence. Each HDU has a header keyword <code>CADENCE</code> that tells you which cadence.</li>
+ <li>Yet further HDUs come in triplets, one for each program. Each HDU has a header keyword <code>PROGRAM</code> that tells you which program.</li>
 </ul>
 </li>
 
@@ -326,11 +329,12 @@ of the file are as follows:
 
     fp.write("""<h2>Target completeness</h2>
 
-    <p>These plots show the completeness as a function of target class. In this case we define the target class according to cadence groups (for example, defining cadences like mwm_rv_NxM to be all within the same group). Targets either get all the necessary exposures for their cadence, or they get none.</p>
+    <p>These plots show the completeness as a function of cadence group and also program. Cadence groups lump cadences with the same prefix (e.g. mwm_rv_NxM) to be all within the same group. Targets either get all the necessary exposures for their cadence, or they get none.</p>
 
     <p>The left column shows the total number of targets in each healpix pixel (scaled with asinh to be able to see the dynamic range. The middle column shows the number of targets completed (scaled with asinh again). The right column shows the fraction. If the fraction is shown as negative (the darkest color) then that means there were zero targets in the pixel to begin with.</p>
 """)
 
+    fp.write("<h3>Targets by cadence group</h3>")
     fp.write("<table>")
     ncad = np.int32(completeness_hdr['NCADENCE'])
     for icad in np.arange(ncad + 1):
@@ -348,22 +352,22 @@ of the file are as follows:
         fgot = hdr['FGOT']
 
         png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='ntargets-{c}'.format(c=cadence),
+            'rsAssignmentsPng', name='ntargets-cadence-{c}'.format(c=cadence),
             plan=plan, observatory=observatory))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
 
         png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='ngot-{c}'.format(c=cadence),
+            'rsAssignmentsPng', name='ngot-cadence-{c}'.format(c=cadence),
             plan=plan, observatory=observatory))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
 
         png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='fgot-{c}'.format(c=cadence), plan=plan,
-            observatory=observatory))
+            'rsAssignmentsPng', name='fgot-cadence-{c}'.format(c=cadence),
+            plan=plan, observatory=observatory))
         fp.write("<td>")
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
@@ -371,6 +375,53 @@ of the file are as follows:
         fp.write("<td>")
         fp.write("<table>")
         fp.write("<tr><td>Cadence group {c}</tr>".format(c=cadence))
+        fp.write("<tr><td>n<sub>target</sub> = {n}</td></tr>".format(n=ntarget))
+        fp.write("<tr><td>n<sub>got</sub> = {n}</td></tr>".format(n=ngot))
+        fp.write("<tr><td>f<sub>got</sub> = {n:4.3f}</td></tr>".format(n=fgot))
+        fp.write("</table>")
+        fp.write("</td>")
+
+        fp.write("</tr>")
+    fp.write("</table>")
+
+    fp.write("<h3>Targets by program</h3>")
+    fp.write("<table>")
+    nprog = np.int32(completeness_hdr['NPROGRAM'])
+    for iprog in np.arange(nprog):
+        fp.write("<tr>")
+
+        ntargets_map, hdr = fitsio.read(completeness_file, header=True,
+                                        ext=(ncad + 1 + iprog) * 3 + 2)
+        program = hdr['PROGRAM'].strip()
+
+        ntarget = hdr['NTARGETS']
+        ngot = hdr['NGOT']
+        fgot = hdr['FGOT']
+
+        png_file = os.path.basename(sdss_path.full(
+            'rsAssignmentsPng', name='ntargets-program-{c}'.format(c=program),
+            plan=plan, observatory=observatory))
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        png_file = os.path.basename(sdss_path.full(
+            'rsAssignmentsPng', name='ngot-program-{c}'.format(c=program),
+            plan=plan, observatory=observatory))
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        png_file = os.path.basename(sdss_path.full(
+            'rsAssignmentsPng', name='fgot-program-{c}'.format(c=program),
+            plan=plan, observatory=observatory))
+        fp.write("<td>")
+        fp.write(img_tag.format(png_file=png_file))
+        fp.write("</td>")
+
+        fp.write("<td>")
+        fp.write("<table>")
+        fp.write("<tr><td>Program {c}</tr>".format(c=program))
         fp.write("<tr><td>n<sub>target</sub> = {n}</td></tr>".format(n=ntarget))
         fp.write("<tr><td>n<sub>got</sub> = {n}</td></tr>".format(n=ngot))
         fp.write("<tr><td>f<sub>got</sub> = {n:4.3f}</td></tr>".format(n=fgot))

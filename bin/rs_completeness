@@ -91,6 +91,9 @@ if __name__ == '__main__':
     ikeep = np.where(unique_base_cadences != "")[0]
     unique_base_cadences = unique_base_cadences[ikeep]
 
+    programs = np.array([x.decode().strip() for x in targets['program']])
+    unique_programs = np.unique(programs)
+
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
     assigned = fitsio.read(assigned_file)
@@ -107,11 +110,7 @@ if __name__ == '__main__':
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
 
-    print(np.unique(cadences))
-    print(unique_base_cadences)
     icadence = np.where(cadences != "none")[0]
-    print(len(icadence))
-    print(len(cadences))
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
                                                 got=got[icadence])
 
@@ -122,6 +121,7 @@ if __name__ == '__main__':
     hdr = dict()
     hdr['NSIDE'] = nside
     hdr['NCADENCE'] = len(unique_base_cadences)
+    hdr['NPROGRAM'] = len(unique_programs)
     hdr['NTARGETS'] = ntargets
     hdr['NGOT'] = ngot
     hdr['FGOT'] = fgot
@@ -144,6 +144,28 @@ if __name__ == '__main__':
 
         hdr = dict()
         hdr['CADENCE'] = unique_base_cadence
+        hdr['NTARGETS'] = ntargets
+        hdr['NGOT'] = ngot
+        hdr['FGOT'] = fgot
+        fitsio.write(completeness_file, ntargets_map, header=hdr,
+                     clobber=False)
+        fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
+        fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
+
+    for indx in np.arange(len(unique_programs)):
+        unique_program = unique_programs[indx]
+        print(unique_program)
+
+        iprogram = np.where(programs == unique_program)[0]
+        ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[iprogram],
+                                                    got=got[iprogram])
+
+        ntargets = len(np.where(outtargets['covered'][iprogram])[0])
+        ngot = np.int32(got[iprogram].sum())
+        fgot = np.float32(ngot) / np.float32(ntargets)
+
+        hdr = dict()
+        hdr['PROGRAM'] = unique_program
         hdr['NTARGETS'] = ntargets
         hdr['NGOT'] = ngot
         hdr['FGOT'] = fgot

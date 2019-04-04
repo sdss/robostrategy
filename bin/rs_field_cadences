@@ -85,7 +85,8 @@ if __name__ == '__main__':
 
         cadences = np.array(cfg['Fields'][fieldtype].split())
         if('FromTargets' in cadences):
-            field_cadences = cadences_from_targets(cfg=cfg, target_cadences=target_cadences)
+            field_cadences = cadences_from_targets(cfg=cfg,
+                                                   target_cadences=target_cadences)
         else:
             field_cadences = []
         for cadence in cadences[cadences != 'FromTargets']:
