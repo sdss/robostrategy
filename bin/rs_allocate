@@ -20,6 +20,7 @@ import sys
 import fitsio
 import robostrategy.allocate
 import robostrategy.slots
+import robostrategy.params as params
 import roboscheduler.cadence as cadence
 import sdss_access.path
 
@@ -42,17 +43,15 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    rsParams = params.RobostrategyParams(plan=plan)
+
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
-    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
-                           'robostrategy-{plan}.cfg'.format(plan=plan))
-    cfg = configparser.ConfigParser(allow_no_value=True)
-    cfg.optionxform = str
-    cfg.read(cfgfile)
-    all_fields = 'AllFields' in cfg['Allocation']
+    all_fields = rsParams.cfg.get('Allocation', 'AllFields').split()
+    print(all_fields)
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
@@ -72,8 +71,8 @@ if __name__ == '__main__':
     slots = robostrategy.slots.Slots(observatory=observatory)
     slots.fromfits(filename=slots_file)
 
-    if('Cost' in cfg['Allocation']):
-        if(cfg.get('Allocation', 'Cost') == 'A'):
+    if('Cost' in rsParams.cfg['Allocation']):
+        if(rsParams.cfg.get('Allocation', 'Cost') == 'A'):
             print("Use cost model A")
             allocate_class = robostrategy.allocate.AllocateLSTCostA
     else:

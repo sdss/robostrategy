@@ -35,3 +35,4 @@ class RobostrategyParams(object, metaclass=RobostrategyParamsSingleton):
         self.cfg.optionxform = str
         self.cfg.read(cfgfile)
         self.cfg['DEFAULT'] = {'fgot_minimum': 0.5}
+        self.cfg['DEFAULT'] = {'AllFields': ''}

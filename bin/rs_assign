@@ -95,7 +95,7 @@ if __name__ == '__main__':
         fields_entry = fields_array[ifield]
         fieldid = fields_entry['fieldid']
         if((fieldid % 1) == 0):
-            print(fieldid)
+            print(fieldid, flush=True)
 
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
@@ -141,12 +141,17 @@ if __name__ == '__main__':
                     assign_entry['valuegot'] = values[tgot].sum()
                     assign_entries = np.append(assign_entries, assign_entry)
 
+                print(targets['cadence'])
+                print(assign_entries['nvisit'])
+                print(assign_entries['ntargets'])
+                print(assign_entries['ngot'])
+
                 if(assign_entries['ngot'].max() == 0):
                     ikeep = 0
                 else:
                     fgot = assign_entries['ngot'] / assign_entries['ngot'].max()
                     fgot_unique, iunique = np.unique(fgot, return_index=True)
-                    indx = np.where(fgot_unique > fgot_minimum)[0]
+                    indx = np.where(fgot_unique >= fgot_minimum)[0]
                     if(len(indx) > 0):
                         ikeep = iunique[indx]
                     else:

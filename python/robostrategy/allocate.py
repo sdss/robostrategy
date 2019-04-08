@@ -161,7 +161,7 @@ class AllocateLST(object):
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
-                 observatory=None, observe_all_fields=False):
+                 observatory=None, observe_all_fields=[]):
         if(filename is None):
             self.slots = slots
             self.fields = fields
@@ -259,9 +259,15 @@ class AllocateLST(object):
 
         Solves the linear programming problem.
 """
-        field_minimum_float = 0.
-        if(self.observe_all_fields):
-            field_minimum_float = 0.9
+        ftype = np.array([x.decode().strip() for x in self.fields['type']])
+        field_minimum_float = dict()
+        for indx in np.arange(len(self.fields)):
+            cftype = ftype[indx]
+            cfieldid = self.fields['fieldid'][indx]
+            if(cftype in self.observe_all_fields):
+                field_minimum_float[cfieldid] = 0.9
+            else:
+                field_minimum_float[cfieldid] = 0.
 
         total = self.slots.slots / self.slots.duration * self.slots.fclear
 
@@ -311,7 +317,8 @@ class AllocateLST(object):
         # we will pick the largest value cadence.
         field_constraints = []
         for fieldid in self.allocinfo:
-            field_constraint = solver.Constraint(field_minimum_float, 1.)
+            field_constraint = solver.Constraint(field_minimum_float[fieldid],
+                                                 1.)
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
                 for ilst in range(self.slots.nlst):
@@ -406,6 +413,7 @@ class AllocateLST(object):
                 # if(choose_field <
                 #   field_total / self.allocinfo[fieldid][cadence]['needed']):
                 field_array['cadence'][findx] = cadence
+                # NEED TO CHANGE THIS TO TOTAL NEEDED!!
                 field_array['slots_exposures'][findx] = slots_totals
                 field_array['needed'][findx] = (
                     self.allocinfo[fieldid][cadence]['needed'])
