@@ -199,9 +199,9 @@ Each of these files has the following HDUs:
 
 <li> <a
 href="rsAllocation-{plan}-{observatory}.fits">rsAllocation</a>:
-cadences chosen for each field, and the LST and LUNATION slots used.
+cadences chosen for each field, and the LST and SKYBRIGHTNESS slots used.
 The <code>slots</code> column has a 24-by-2 array with the allocation
-of exposures by LST hour and lunation. If any of these values are
+of exposures by LST hour and sky brightness. If any of these values are
 non-zero, then the field cadence listed has been fully observed.
 <code>nfilled</code> will also be non-zero in this case. Note that
 <code>slots_exposures</code> and <code>slots_time</code> differ
@@ -215,8 +215,8 @@ The columns of this file are:
 <li><code>cadence</code>: Name of chosen cadence</li>
 <li><code>nfilled</code>: Number of observing exposures filled</li>
 <li><code>nneeded</code>: Number of observing exposures needed</li>
-<li><code>slots_exposures[2,24]</code>: How to distribute exposures across lunation and LST.</li>
-<li><code>slots_time[2,24]</code>: How to distribute time across lunation and LST (hours).</li>
+<li><code>slots_exposures[2,24]</code>: How to distribute exposures across sky brightness and LST.</li>
+<li><code>slots_time[2,24]</code>: How to distribute time across sky brightness and LST (hours).</li>
 </ul>
 </li>
 
@@ -268,7 +268,7 @@ of the file are as follows:
 
     fp.write("""<h2>Allocation of time</h2>
 
-    <p> For both all time and for different lunations, the allocation of time as a function of LST.</p>
+    <p> For both all time and for different sky brightnesses, the allocation of time as a function of LST.</p>
 """)
 
     fp.write("<table>")

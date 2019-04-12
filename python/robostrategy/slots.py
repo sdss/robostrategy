@@ -15,7 +15,7 @@ import roboscheduler.scheduler
 
 
 class Slots(object):
-    """Slots of time, in LST and lunation
+    """Slots of time, in LST and sky brightness
 
     Parameters:
     ----------
@@ -23,8 +23,8 @@ class Slots(object):
     nlst : int, np.int32
         number of LST bins (default 24)
 
-    lunation : list of float or np.float32
-        edges of lunation bins (N+1 length for N lunation bins; default
+    skybrightness : list of float or np.float32
+        edges of sky brightness bins (N+1 length for N bins; default
         [0., 0.35, 1.])
 
     observatory : str
@@ -42,11 +42,11 @@ class Slots(object):
     lst : ndarray of np.float32
         centers of LST bins (hours)
 
-    lunation : list of float or np.float32
-        edges of lunation bins (N+1 length for N lunation bins)
+    skybrightness : list of float or np.float32
+        edges of sky brightness bins (N+1 length for N bins)
 
-    nlunation : int
-        number of lunation bins N
+    nskybrightness : int
+        number of sky brightness bins N
 
     observatory : str
         observatory to calculate slots for, 'apo' or 'lco'
@@ -58,8 +58,8 @@ class Slots(object):
         clear fraction to assume (0.5 for 'apo', 0.7 for 'lco')
 
     slots : ndarray of np.float32
-        number of available hours in LST, lunation slots [nlst, nlunation],
-        created only when fill() is called
+        number of available hours in LST, sky brightness slots 
+        [nlst, nskybrightness], created only when fill() is called
 
     Methods:
     -------
@@ -76,13 +76,13 @@ class Slots(object):
     better lives in roboscheduler somewhere.
 
 """
-    def __init__(self, nlst=24, lunation=[0., 0.35, 1.],
+    def __init__(self, nlst=24, skybrightness=[0., 0.35, 1.],
                  observatory='apo', duration=18 / 60.):
         self.nlst = nlst
         self.lst = ((np.arange(nlst, dtype=np.float32) + 0.5) * 24. /
                     np.float32(self.nlst))
-        self.lunation = np.array(lunation)
-        self.nlunation = len(lunation) - 1
+        self.skybrightness = np.array(skybrightness)
+        self.nskybrightness = len(skybrightness) - 1
         self.observatory = observatory
         if(self.observatory == 'apo'):
             self.fclear = 0.5
@@ -98,13 +98,14 @@ class Slots(object):
         ------
 
         Sets the attribute slots to an ndarray of np.float32 with
-        shape (nlst, nlunation).
+        shape (nlst, nskybrightness).
 
         Uses roboscheduler to step through every night of the survey
-        and count the number of hours per LST and lunation. (Does NOT
+        and count the number of hours per LST and skybrightness. (Does NOT
         apply the fclear factor).
         """
-        self.slots = np.zeros((self.nlst, self.nlunation), dtype=np.float32)
+        self.slots = np.zeros((self.nlst, self.nskybrightness),
+                              dtype=np.float32)
         scheduler = roboscheduler.scheduler.Scheduler(observatory=self.observatory)
         for mjd in scheduler.mjds:
             mjd_evening_twilight = scheduler.evening_twilight(mjd)
@@ -113,12 +114,16 @@ class Slots(object):
             while(curr_mjd < mjd_morning_twilight and
                   curr_mjd < scheduler.end_mjd()):
                 lst = scheduler.lst(curr_mjd)
-                lunation = scheduler.lunation(curr_mjd)
+                skybrightness = scheduler.skybrightness(curr_mjd)
                 ilst = np.int32(np.floor((lst / 15. / 24.) * self.nlst))
-                ilunation = np.where((lunation >= self.lunation[0:-1]) &
-                                     (lunation <= self.lunation[1:]))[0][0]
-                self.slots[ilst, ilunation] = (self.slots[ilst, ilunation] +
-                                               self.duration)
+                iskybrightness = np.where((skybrightness >=
+                                           self.skybrightness[0:-1]) &
+                                          (skybrightness <=
+                                           self.skybrightness[1:]))[0][0]
+                self.slots[ilst,
+                           iskybrightness] = (self.slots[ilst,
+                                                         iskybrightness] +
+                                              self.duration)
                 curr_mjd = curr_mjd + self.duration / 24.
         return
 
@@ -139,8 +144,8 @@ class Slots(object):
 
         Will fail if the slots attribute has not yet been set.
 
-        Writes header keywords (NLST, DURATION, FCLEAR, OBSERVAT, NLUN,
-        and LUN0..LUN[NLUN+1]) with object attributes.
+        Writes header keywords (NLST, DURATION, FCLEAR, OBSERVAT, NSB,
+        and SB0..SB[NSB+1]) with object attributes.
 
         Writes slots attribute as a binary image.
 
@@ -150,9 +155,9 @@ class Slots(object):
         hdr['DURATION'] = self.duration
         hdr['FCLEAR'] = self.fclear
         hdr['OBSERVAT'] = self.observatory
-        hdr['NLUN'] = self.nlunation
-        for indx in range(len(self.lunation)):
-            hdr['LUN{indx}'.format(indx=indx)] = self.lunation[indx]
+        hdr['NSB'] = self.nskybrightness
+        for indx in range(len(self.skybrightness)):
+            hdr['SB{indx}'.format(indx=indx)] = self.skybrightness[indx]
         fitsio.write(filename, self.slots, header=hdr, clobber=clobber)
         return
 
@@ -176,8 +181,9 @@ class Slots(object):
         self.duration = hdr['DURATION']
         self.fclear = hdr['FCLEAR']
         self.observatory = hdr['OBSERVAT']
-        self.nlunation = hdr['NLUN']
-        self.lunation = np.zeros(self.nlunation + 1, dtype=np.float32)
-        for indx in range(len(self.lunation)):
-            self.lunation[indx] = hdr['LUN{indx}'.format(indx=indx)]
+        self.nskybrightness = hdr['NSB']
+        self.skybrightness = np.zeros(self.nskybrightness + 1,
+                                      dtype=np.float32)
+        for indx in range(len(self.skybrightness)):
+            self.skybrightness[indx] = hdr['SB{indx}'.format(indx=indx)]
         return()

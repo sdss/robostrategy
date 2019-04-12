@@ -64,14 +64,14 @@ if __name__ == '__main__':
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-dark')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_full(ilunation=0, title='Dark time')
+    allocate.plot_full(iskybrightness=0, title='Dark time')
     plt.savefig(png_file)
     plt.clf()
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-bright')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_full(ilunation=1, title='Bright time')
+    allocate.plot_full(iskybrightness=1, title='Bright time')
     plt.savefig(png_file)
     plt.clf()
 
