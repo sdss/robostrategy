@@ -4,5 +4,7 @@ numpy
 pyyaml
 pygments
 matplotlib
+roboscheduler
+observesim
 sdss-tree>=2.15.2
 sdss-access>=0.2.3

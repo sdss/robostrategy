@@ -414,10 +414,10 @@ class AllocateLST(object):
                 # if(choose_field <
                 #   field_total / self.allocinfo[fieldid][cadence]['needed']):
                 field_array['cadence'][findx] = cadence
-                # NEED TO CHANGE THIS TO TOTAL NEEDED!!
-                field_array['slots_exposures'][findx] = slots_totals
                 field_array['needed'][findx] = (
                     self.allocinfo[fieldid][cadence]['needed'])
+                normalize = field_array['needed'][findx] / slots_totals.sum()
+                field_array['slots_exposures'][findx] = slots_totals * normalize
 
             field_array['nfilled'][findx] = (
                 field_array['slots_exposures'][findx, :, :].sum())
