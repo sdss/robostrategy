@@ -25,28 +25,37 @@ import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
 
-
+#function to extract targets from targeting database
 def get_targets(cfg=None):
+
+    #define the format target info will be stored in.
     target0 = [('targetid', np.int32),
-               ('pk', np.int64),
+               ('pk', np.int64),    #<--- primary key in database (how different from target ID?)
                ('ra', np.float64),
                ('dec', np.float64),
                ('program', np.dtype('a30')),
                ('cadence', cadence.fits_type),
                ('category', np.dtype('a30'))]
 
+    #set up a structure to hold targets.
     targets = np.zeros(0, dtype=target0)
 
+    #loop through each of the program types in the config/param file.
     for program in cfg['Programs']:
         print(program)
 
+        #find the number of targets of this program type.
         nt = (targetdb.Target.select(targetdb.Target.pk)
               .join(targetdb.Program)
               .where(targetdb.Program.label == program)).count()
 
+        #if there are any targets from this program, import them
         if(nt > 0):
+
+            #set up a temporary target structure
             tmp_targets = np.zeros(nt, dtype=target0)
 
+            #pull out the info for each target that we want to save per our format above
             ts = (targetdb.Target.select(targetdb.Target.ra,
                                          targetdb.Target.dec,
                                          targetdb.Target.pk,
@@ -55,7 +64,9 @@ def get_targets(cfg=None):
                   .join(targetdb.Program).switch(targetdb.Target)
                   .join(targetdb.TargetCadence)
                   .where(targetdb.Program.label == program)).dicts()
-            
+
+            #run through each of the targets we pulled in the step above
+            #and save it to our temporary structure
             for indx, t in zip(np.arange(nt), ts):
                 tmp_targets['ra'][indx] = t['ra']
                 tmp_targets['dec'][indx] = t['dec']
@@ -64,18 +75,29 @@ def get_targets(cfg=None):
                 tmp_targets['cadence'][indx] = t['cadence']
                 tmp_targets['category'][indx] = 'SCIENCE'
 
+            #add the temporary targets to the real target list.
             targets = np.append(targets, tmp_targets)
 
-    # Now add skies and standards
+    # Now add skies and standards; define the number to add 
     nrandom = 4000000
+
+    #loop through both flux and sky standards
     for skystandard in ['STANDARD', 'SKY']:
+        
+        #select standards for each instrument
         for instrument in ['APOGEE', 'BOSS']:
+
+            #save the type
             category = "{ss}_{inst}".format(ss=skystandard, inst=instrument)
             print(category)
+
+            #distribute them randomly (but evenly) across the sky
             costhrandom = np.random.random(size=nrandom) * 2. - 1.
             thrandom = np.arccos(costhrandom) * 180. / np.pi
             decrandom = 90. - thrandom
             rarandom = np.random.random(size=nrandom) * 360.
+
+            #save them as new targets
             new_targets = np.zeros(nrandom, dtype=target0)
             new_targets['ra'] = rarandom
             new_targets['dec'] = decrandom

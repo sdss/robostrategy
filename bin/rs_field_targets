@@ -43,33 +43,52 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    #read in the fields file.
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
     fields_array = fitsio.read(fields_file)
 
+    #read in the targets file
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     targets_all = fitsio.read(targets_file)
 
+    #define n_side for this healpix tesselation
+    # nside effectively defines how to scale different resolutions of the grid.
+    # specfically, nside gives the number of divisions along the side of a
+    #base-resolution pixel that is needed to reach a desired high-resolution partition.
     nside = 32
+
+    #now divide all the targets into a healpix map; hpix will contain the number of the healpix
+    #segment that each target lies within
     hpix = healpy.pixelfunc.ang2pix(nside, targets_all['ra'],
                                     targets_all['dec'], lonlat=True)
 
+    #loop through all the fields in question
     for fields_entry in fields_array:
+
+        #find the field ID
         fieldid = fields_entry['fieldid']
         if((fieldid % 1) == 0):
             print(fieldid)
 
+        #find the healpix number of the field center.
         hpix_field = healpy.pixelfunc.ang2pix(nside, fields_entry['racen'],
                                               fields_entry['deccen'],
                                               lonlat=True)
+        
+        #get the neighboring healpix IDs and add to an array along with the central ID
         neighbors = healpy.pixelfunc.get_all_neighbours(nside, hpix_field)
         hpix_check = np.append(neighbors, np.array([hpix_field]))
 
+        #set up an array to indicate if each healpix pixel is of interest for this field.
         keep = np.zeros(healpy.pixelfunc.nside2npix(nside), dtype=np.int32)
+
+        #flag the healpix containing the field center and its neighbors with a value of 1.
         keep[hpix_check] = 1
         icheck = np.where(keep[hpix])[0]
 
+        #calculate the distance between the field center and each of the targets in the relevant healpix pixels.
         # From Meeus Ch. 17
         deccen_rad = fields_entry['deccen'] * np.pi / 180.
         racen_rad = fields_entry['racen'] * np.pi / 180.
@@ -85,9 +104,11 @@ if __name__ == '__main__':
         d_rad = np.arctan2(np.sqrt(x**2 + y**2), z)
         d_deg = d_rad * 180. / np.pi
 
+        #identify sources that are within 1.5 degrees of the field center.
         indx = np.where(d_deg < 1.5)[0]
         targets = targets_all[icheck[indx]]
 
+        #write out the targets within this field
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
