@@ -30,6 +30,7 @@ sdss_path = sdss_access.path.Path()
 
 if __name__ == '__main__':
 
+    #commands to allow user to identify field list, plan name, etc.
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
         description='Field list creation for SDSS-V')
@@ -40,25 +41,37 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
 
+    #read in parameter file that helps drive this robo run.
     rsParams = params.RobostrategyParams(plan=plan)
 
+    #define the format for storing field info.
     fields_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('radius', np.float32),
                     ('type', np.dtype('a30'))]
+    
+    #set up arrays to save the northern and southern fields separately
     fields_north_array = np.zeros(0, dtype=fields_dtype)
     fields_south_array = np.zeros(0, dtype=fields_dtype)
 
+    #if requested, define an all-sky tiling based off Hardin, Sloane & Smith
+    #(see sloane.py for detailed code, and http://neilsloane.com/coverings/ for coverings)
     if('AllSkySloane' in rsParams.cfg['Fields']):
+
+        #find the declination corresponding to the NorthSouth Dividing line 
         nsdiv = np.float32(rsParams.cfg['Fields']['NSDiv'])
 
+        #set tiling for north and south given FOV of each telescope
+        #note that each case is a truly all-sky tiling for that radius; we'll discard unneeded fields shortly.
         fields_north = sloane.Sloane(n=7682, radius=1.49)
         fields_south = sloane.Sloane(n=18752, radius=0.95)
 
+        #discard unneeded fields for each hemisphere.
         fields_north.deccut(nsdiv)
         fields_south.deccut(nsdiv, above=False)
 
+        #append the saved fields for the Northern hemisphere into fields_north_array
         tmp_fields_north_array = np.zeros(len(fields_north.ra),
                                           dtype=fields_dtype)
         tmp_fields_north_array['racen'] = fields_north.ra
@@ -68,6 +81,7 @@ if __name__ == '__main__':
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields_north_array)
 
+        #append the saved fields for the Southern hemisphere into fields_south_array
         tmp_fields_south_array = np.zeros(len(fields_south.ra),
                                           dtype=fields_dtype)
         tmp_fields_south_array['racen'] = fields_south.ra
@@ -77,7 +91,11 @@ if __name__ == '__main__':
         fields_south_array = np.append(fields_south_array,
                                        tmp_fields_south_array)
 
+    #if requested, also add reverberation mapping fields.  These will be defined from
+    #user-submitted files (north-fields-RM.fits and south-fields-RM.fits)
     if('RM' in rsParams.cfg['Fields']):
+
+        #read in and add the northern RM fields to the master list of northern fields.
         in_north_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                         'data', 'north-fields-RM.fits')
         in_north_rm = fitsio.read(in_north_rm_file)
@@ -89,6 +107,7 @@ if __name__ == '__main__':
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields_north_rm)
 
+        #read in and add the southern RM fields to the master list of northern fields.
         in_south_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                         'data', 'south-fields-RM.fits')
         in_south_rm = fitsio.read(in_south_rm_file)
@@ -100,12 +119,19 @@ if __name__ == '__main__':
         fields_south_array = np.append(fields_south_array,
                                        tmp_fields_south_rm)
 
+    #if requested, also add RV fields.  These will be defined from
+    #user-submitted files (MWM-RV-FieldCenters-v05.fits).
     if('RV' in rsParams.cfg['Fields']):
+
+        #find the declination corresponding to the NorthSouth Dividing line 
         nsdiv = np.float32(rsParams.cfg['Fields']['NSDiv'])
+
+        #read in the RV field file
         in_rv_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                   'data', 'MWM-RV-FieldCenters-v05.fits')
         in_rv = fitsio.read(in_rv_file)
 
+        #find and append Northern RV fields. 
         inorth = np.where(in_rv['DECCEN'] > nsdiv)[0]
         tmp_rv_north = np.zeros(len(inorth), dtype=fields_dtype)
         tmp_rv_north['racen'] = in_rv['RACEN'][inorth]
@@ -115,6 +141,7 @@ if __name__ == '__main__':
         fields_north_array = np.append(fields_north_array,
                                        tmp_rv_north)
 
+        #find and append Southern RV fields. 
         isouth = np.where(in_rv['DECCEN'] <= nsdiv)[0]
         tmp_rv_south = np.zeros(len(isouth), dtype=fields_dtype)
         tmp_rv_south['racen'] = in_rv['RACEN'][isouth]
@@ -124,20 +151,24 @@ if __name__ == '__main__':
         fields_south_array = np.append(fields_south_array,
                                        tmp_rv_south)
 
+    #assign a counter to each field.
     fields_north_array['fieldid'] = np.arange(len(fields_north_array),
                                               dtype=np.int32) + 1
     fields_south_array['fieldid'] = (np.arange(len(fields_south_array),
                                                dtype=np.int32) +
                                      1 + fields_north_array['fieldid'].max())
 
+    #define where to write the fields files for the North and South.
     fields_north_file = sdss_path.full('rsFields', plan=plan,
                                        observatory='apo')
     fields_south_file = sdss_path.full('rsFields', plan=plan,
                                        observatory='lco')
 
+    #write the north and south files
     fitsio.write(fields_north_file, fields_north_array, clobber=True)
     fitsio.write(fields_south_file, fields_south_array, clobber=True)
 
+    #make plots showing the field tilings in each hemisphere
     matplotlib.rcParams['figure.figsize'] = (16.0, 8.0)
     fields_north.plot()
     fields_north_png = sdss_path.full('rsFieldsPng', plan=plan,
