@@ -77,13 +77,15 @@ class Slots(object):
 
 """
     def __init__(self, nlst=24, skybrightness=[0., 0.35, 1.],
-                 observatory='apo', duration=18 / 60.):
+                 observatory='apo', duration=18 / 60.,
+                 schedule='normal'):
         self.nlst = nlst
         self.lst = ((np.arange(nlst, dtype=np.float32) + 0.5) * 24. /
                     np.float32(self.nlst))
         self.skybrightness = np.array(skybrightness)
         self.nskybrightness = len(skybrightness) - 1
         self.observatory = observatory
+        self.schedule = schedule
         if(self.observatory == 'apo'):
             self.fclear = 0.5
         if(self.observatory == 'lco'):
@@ -106,7 +108,8 @@ class Slots(object):
         """
         self.slots = np.zeros((self.nlst, self.nskybrightness),
                               dtype=np.float32)
-        scheduler = roboscheduler.scheduler.Scheduler(observatory=self.observatory)
+        scheduler = roboscheduler.scheduler.Scheduler(observatory=self.observatory,
+                                                      schedule=self.schedule)
         for mjd in scheduler.mjds:
             mjd_evening_twilight = scheduler.evening_twilight(mjd)
             mjd_morning_twilight = scheduler.morning_twilight(mjd)

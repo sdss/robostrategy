@@ -17,6 +17,7 @@ import os
 import sys
 import argparse
 import robostrategy.slots
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -38,7 +39,11 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    slots = robostrategy.slots.Slots(observatory=observatory)
+    rsParams = params.RobostrategyParams(plan=plan)
+    schedule = rsParams.cfg.get('Allocation', 'Schedule')
+
+    slots = robostrategy.slots.Slots(observatory=observatory,
+                                     schedule=schedule)
     slots.fill()
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
     slots.tofits(filename=slots_file)

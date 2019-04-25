@@ -21,6 +21,7 @@ import fitsio
 import robostrategy.slots
 import roboscheduler.scheduler
 import roboscheduler.cadence as cadence
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -43,6 +44,8 @@ if __name__ == '__main__':
     observatory = args.observatory
     airmass_limit = 1.4
     airmass_pad = 0.2
+
+    rsParams = params.RobostrategyParams(plan=plan)
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
