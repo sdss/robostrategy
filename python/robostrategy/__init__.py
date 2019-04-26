@@ -34,6 +34,8 @@ config = yaml.load(open(config_file), Loader=yaml.FullLoader)
 # If there is a custom configuration file, updates the defaults using it.
 custom_config_fn = os.path.expanduser('~/.{0}/{0}.yml'.format(NAME))
 if os.path.exists(custom_config_fn):
-    config = merge(yaml.load(open(custom_config_fn)), config)
+    config = merge(yaml.load(open(custom_config_fn), Loader=yaml.FullLoader),
+                   config)
+
 
 __version__ = '0.1.0dev'
