@@ -83,6 +83,14 @@ if __name__ == '__main__':
     plt.savefig(png_file)
     plt.clf()
 
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='radec-labeled')
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+    allocate.plot_fields(label=True)
+    plt.title("All cadences")
+    plt.savefig(png_file)
+    plt.clf()
+
     ncad = np.int32(hdr['NCAD'])
     for icad in np.arange(ncad):
         field_cadence = hdr['CAD{icad}'.format(icad=icad)]
