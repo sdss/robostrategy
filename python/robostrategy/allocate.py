@@ -378,6 +378,8 @@ class AllocateLST(object):
                              ('cadence', rcadence.fits_type),
                              ('nfilled', np.int32),
                              ('needed', np.int32),
+                             ('xfactor', np.float32,
+                              (self.slots.nlst, self.slots.nskybrightness)),
                              ('slots_exposures', np.float32,
                               (self.slots.nlst, self.slots.nskybrightness)),
                              ('slots_time', np.float32,
@@ -444,6 +446,7 @@ class AllocateLST(object):
                                                    skybrightness=skybrightness,
                                                    lst=lst)
                             field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.duration
+                            field['xfactor'][ilst, isb] = xfactor
 
         self.field_array = field_array
 
@@ -561,7 +564,7 @@ class AllocateLST(object):
     def _convert_radec(self, m, ra, dec):
         return m(((360. - ra) + 180.) % 360., dec, inverse=False)
 
-    def plot_fields(self, indx=None):
+    def plot_fields(self, indx=None, label=False):
         """Plot the RA/Dec distribution of fields allocated
 
         Parameters:
@@ -573,6 +576,7 @@ class AllocateLST(object):
 
         if(indx is None):
             indx = np.arange(len(self.field_array), dtype=np.int32)
+
 
         if basemap is None:
             raise ImportError('basemap was not imported. Is it installed?')
@@ -589,11 +593,26 @@ class AllocateLST(object):
 
         ii = np.where(self.field_array['nfilled'][indx] > 0)[0]
         ii = indx[ii]
-        (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
-                                       self.field_array['deccen'][ii])
-        plt.scatter(xx, yy, s=4, c=np.log10(self.field_array['nfilled'][ii]))
-        cb = plt.colorbar()
-        cb.set_label('$\log_{10} N$')
+
+        if(label is False):
+            (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
+                                           self.field_array['deccen'][ii])
+            plt.scatter(xx, yy, s=4,
+                        c=np.log10(self.field_array['nfilled'][ii]))
+            cb = plt.colorbar()
+            cb.set_label('$\log_{10} N$')
+        else:
+            cadences = np.array(["_".join(x.decode().strip().split('-')[0].split('_')[0:-1])
+                                 for x in self.field_array['cadence'][ii]])
+            ucadences = np.unique(cadences)
+            for ucadence in ucadences:
+                jj = ii[np.where(cadences == ucadence)[0]]
+                (xx, yy) = self._convert_radec(m,
+                                               self.field_array['racen'][jj],
+                                               self.field_array['deccen'][jj])
+                plt.scatter(xx, yy, s=4, label=ucadence)
+
+            plt.legend(loc='lower center', fontsize=8, ncol=2)
 
         return
 
