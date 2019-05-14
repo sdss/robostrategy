@@ -86,6 +86,7 @@ if __name__ == '__main__':
         f.field_cadence = allocate.field_array['cadence'][indx].decode().strip()
 
         if(f.assignments is not None):
+            print("adfdf{fid}".format(fid=fieldid))
             nexposures = f.assignments.shape[1]
             for iexp in np.arange(nexposures):
                 iassigned = np.where(f.assignments[:, iexp] >= 0)[0]

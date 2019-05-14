@@ -56,16 +56,15 @@ if __name__ == '__main__':
         if((fieldid % 1) == 0):
             print(fieldid, flush=True)
 
-        f = field.Field(racen=allocate.fields['racen'][indx],
-                        deccen=allocate.fields['deccen'][indx],
+        f = field.Field(racen=allocate.field_array['racen'][indx],
+                        deccen=allocate.field_array['deccen'][indx],
                         observatory=observatory)
 
         field_target_file = sdss_path.full('rsFieldTargets',
                                            plan=plan, observatory=observatory,
                                            fieldid=fieldid)
         f.targets_fromfits(field_target_file)
-
-        values = np.ones(f.ntarget)
+        f.target_value = f.target_value * 0. + 1.
 
         f.field_cadence = allocate.field_array['cadence'][indx].decode().strip()
 
