@@ -29,13 +29,19 @@ NAME = 'robostrategy'
 
 # Loads config (general configuration)
 config_file = os.path.dirname(__file__) + '/etc/{0}.yml'.format(NAME)
-config = yaml.load(open(config_file), Loader=yaml.FullLoader)
+try:
+    config = yaml.load(open(config_file), Loader=yaml.FullLoader)
+except AttributeError:
+    config = yaml.load(open(config_file))
 
 # If there is a custom configuration file, updates the defaults using it.
 custom_config_fn = os.path.expanduser('~/.{0}/{0}.yml'.format(NAME))
 if os.path.exists(custom_config_fn):
-    config = merge(yaml.load(open(custom_config_fn), Loader=yaml.FullLoader),
-                   config)
+    try:
+        config = merge(yaml.load(open(custom_config_fn),
+                                 Loader=yaml.FullLoader), config)
+    except AttributeError:
+        config = merge(yaml.load(open(custom_config_fn), config))
 
 
 __version__ = '0.1.0dev'
