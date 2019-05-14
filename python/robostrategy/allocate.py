@@ -161,6 +161,22 @@ class AllocateLST(object):
     If this is greater than one, we accept the field, and if it is
     less than one we take the field with probability equal to the above
     ratio.
+
+    The construct() and solve() methods can also be used to decide
+    on time allocation at a fixed choice of cadences per field. This
+    can be done as a second step to the solution. The calling sequence
+    is:
+
+      allocate.construct()
+      allocate.solve()
+      allocate.construct(fix_cadence=True)
+      allocate.solve(minimize_time=True)
+
+    The first rounds stores its results in the attribute field_array.
+    The second round fixes the cadences to those stored in the
+    attribute field_array, and minimizes the total time taken. This
+    matters mostly if the problem is undersubscribed, so it will
+    minimize airmass.
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
@@ -462,9 +478,6 @@ class AllocateLST(object):
                 choose = np.random.random()
                 icadence = np.where(cadence_cumulative > choose)[0][0]
                 cadence = list(self.allocinfo[fieldid].keys())[icadence]
-                # choose_field = np.random.random()
-                # if(choose_field <
-                #   field_total / self.allocinfo[fieldid][cadence]['needed']):
                 field_array['cadence'][findx] = cadence
                 field_array['needed'][findx] = (
                     self.allocinfo[fieldid][cadence]['needed'])
