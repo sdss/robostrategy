@@ -90,7 +90,8 @@ if __name__ == '__main__':
         else:
             field_cadences = []
         for cadence in cadences[cadences != 'FromTargets']:
-            field_cadences.append(cadence)
+            if(cadence in target_cadences):
+                field_cadences.append(cadence)
 
         all_field_cadences.append(np.array(field_cadences))
 

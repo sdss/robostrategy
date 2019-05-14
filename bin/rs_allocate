@@ -16,6 +16,7 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import numpy as np
 import fitsio
 import robostrategy.allocate
 import robostrategy.slots
@@ -50,7 +51,10 @@ if __name__ == '__main__':
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     all_fields = rsParams.cfg.get('Allocation', 'AllFields').split()
-    print(all_fields)
+    if('DarkPrefer' in rsParams.cfg['Allocation']):
+        dark_prefer = np.float32(rsParams.cfg.get('Allocation', 'DarkPrefer'))
+    else:
+        dark_prefer = 1.
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
@@ -82,9 +86,13 @@ if __name__ == '__main__':
                               field_slots=field_slots,
                               fields=fields_array,
                               observatory=observatory,
-                              observe_all_fields=all_fields)
+                              observe_all_fields=all_fields,
+                              dark_prefer=dark_prefer)
     allocate.construct()
     allocate.solve()
+
+    allocate.construct(fix_cadence=True)
+    allocate.solve(minimize_time=True)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)

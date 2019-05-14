@@ -31,6 +31,7 @@ def get_targets(cfg=None):
                ('pk', np.int64),
                ('ra', np.float64),
                ('dec', np.float64),
+               ('value', np.int32),
                ('program', np.dtype('a30')),
                ('cadence', cadence.fits_type),
                ('category', np.dtype('a30'))]
@@ -50,6 +51,7 @@ def get_targets(cfg=None):
             ts = (targetdb.Target.select(targetdb.Target.ra,
                                          targetdb.Target.dec,
                                          targetdb.Target.pk,
+                                         targetdb.Target.value,
                                          targetdb.Program.label.alias('program'),
                                          targetdb.TargetCadence.name.alias('cadence'))
                   .join(targetdb.Program).switch(targetdb.Target)
@@ -62,6 +64,7 @@ def get_targets(cfg=None):
                 tmp_targets['pk'][indx] = t['pk']
                 tmp_targets['program'][indx] = t['program']
                 tmp_targets['cadence'][indx] = t['cadence']
+                tmp_targets['value'][indx] = t['value']
                 tmp_targets['category'][indx] = 'SCIENCE'
 
             targets = np.append(targets, tmp_targets)

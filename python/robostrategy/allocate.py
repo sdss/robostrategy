@@ -42,6 +42,9 @@ class AllocateLST(object):
     seed : int, np.int32
         random seed for solution selection (default 100)
 
+    dark_prefer : float, np.float32
+        factor by which to prefer a dark cadence (multiplies value)
+
     Attributes:
     ----------
 
@@ -158,10 +161,27 @@ class AllocateLST(object):
     If this is greater than one, we accept the field, and if it is
     less than one we take the field with probability equal to the above
     ratio.
+
+    The construct() and solve() methods can also be used to decide
+    on time allocation at a fixed choice of cadences per field. This
+    can be done as a second step to the solution. The calling sequence
+    is:
+
+      allocate.construct()
+      allocate.solve()
+      allocate.construct(fix_cadence=True)
+      allocate.solve(minimize_time=True)
+
+    The first rounds stores its results in the attribute field_array.
+    The second round fixes the cadences to those stored in the
+    attribute field_array, and minimizes the total time taken. This
+    matters mostly if the problem is undersubscribed, so it will
+    minimize airmass.
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
-                 observatory=None, observe_all_fields=[]):
+                 observatory=None, observe_all_fields=[],
+                 dark_prefer=1.):
         if(filename is None):
             self.slots = slots
             self.fields = fields
@@ -175,6 +195,7 @@ class AllocateLST(object):
         self.observer = scheduler.Observer(observatory=observatory)
         self.observe_all_fields = observe_all_fields
         self.cadencelist = rcadence.CadenceList()
+        self.dark_prefer = dark_prefer
         return
 
     def xfactor(self, racen=None, deccen=None, skybrightness=None,
@@ -222,8 +243,14 @@ class AllocateLST(object):
         xfactor = airmass**2
         return(xfactor)
 
-    def construct(self):
+    def construct(self, fix_cadence=False):
         """Construct the allocinfo attribute with the problem definition
+
+        Parameters:
+        ----------
+
+        fix_cadence : bool
+            If True, use already-determined field cadences (default False)
 
         Notes:
         ------
@@ -239,21 +266,53 @@ class AllocateLST(object):
             curr_slots = self.field_slots[icurr]
             curr_options = self.field_options[icurr]
 
+            curr_cadences = np.array([x.decode().strip()
+                                      for x in curr_slots['cadence']])
+
+            if(fix_cadence):
+                ifield = np.where(self.field_array['fieldid'] == fieldid)[0]
+                fcadence = self.field_array['cadence'][ifield][0].decode()
+                ic = np.where(curr_cadences == fcadence)[0]
+                if(len(ic) == 0):
+                    print("Inconsistency; no cadence.")
+                    print("curr_cadences = {cc}".format(cc=curr_cadences))
+                    print("fcadence = {fc}".format(fc=fcadence))
+                    return()
+                if(len(ic) > 1):
+                    print("Inconsistency; more than one cadence.")
+                    return()
+                curr_slots = curr_slots[ic]
+                curr_options = curr_options[ic]
+                curr_cadences = curr_cadences[ic]
+
             alloc = collections.OrderedDict()
-            for curr_slot, curr_option in zip(curr_slots, curr_options):
-                cadence = curr_slot['cadence'].decode().strip()
-                alloc[cadence] = collections.OrderedDict()
-                alloc[cadence]['slots'] = curr_slot['slots']
-                alloc[cadence]['vars'] = [0] * (self.slots.nskybrightness *
-                                                self.slots.nlst)
-                alloc[cadence]['needed'] = float(curr_option['nvisit'])
-                alloc[cadence]['value'] = float(curr_option['valuegot'])
+            curr_zip = zip(curr_slots, curr_options, curr_cadences)
+            for curr_slot, curr_option, curr_cadence in curr_zip:
+                minsb = self.cadencelist.cadences[curr_cadence].skybrightness.min()
+                if(minsb < 1.):
+                    prefer = self.dark_prefer
+                else:
+                    prefer = 1.
+                alloc[curr_cadence] = collections.OrderedDict()
+                alloc[curr_cadence]['slots'] = curr_slot['slots']
+                alloc[curr_cadence]['vars'] = ([0] *
+                                               (self.slots.nskybrightness *
+                                                self.slots.nlst))
+                alloc[curr_cadence]['needed'] = float(curr_option['nvisit'])
+                alloc[curr_cadence]['value'] = float(curr_option['valuegot'] *
+                                                     prefer)
 
             self.allocinfo[fieldid] = alloc
         return()
 
-    def solve(self):
+    def solve(self, minimize_time=False):
         """Solve the linear programming problem to allocate fields
+
+        Parameters:
+        ----------
+
+        minimize_time : bool
+            If True, minimize time and force all field-cadences (default False)
 
         Notes:
         ------
@@ -265,10 +324,13 @@ class AllocateLST(object):
         for indx in np.arange(len(self.fields)):
             cftype = ftype[indx]
             cfieldid = self.fields['fieldid'][indx]
-            if(cftype in self.observe_all_fields):
-                field_minimum_float[cfieldid] = 0.9
+            if(minimize_time):
+                field_minimum_float[cfieldid] = 0.99
             else:
-                field_minimum_float[cfieldid] = 0.
+                if(cftype in self.observe_all_fields):
+                    field_minimum_float[cfieldid] = 0.9
+                else:
+                    field_minimum_float[cfieldid] = 0.
 
         total = self.slots.slots / self.slots.duration * self.slots.fclear
 
@@ -290,9 +352,10 @@ class AllocateLST(object):
                                                              ssb=iskybrightness)
                         if(ccadence['slots'][ilst, iskybrightness]):
                             var = solver.NumVar(0.0, ccadence['needed'], name)
-                            objective.SetCoefficient(var,
-                                                     ccadence['value'] /
-                                                     ccadence['needed'])
+                            if(minimize_time is False):
+                                objective.SetCoefficient(var,
+                                                         ccadence['value'] /
+                                                         ccadence['needed'])
                             ccadence['vars'][ilst * self.slots.nskybrightness +
                                              iskybrightness] = var
                             ccadence['nvars'] = ccadence['nvars'] + 1
@@ -352,9 +415,14 @@ class AllocateLST(object):
                                                    skybrightness=self.slots.skybrightness[iskybrightness + 1],
                                                    lst=self.slots.lst[ilst])
                             slot_constraints[ilst][iskybrightness].SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
+                            if(minimize_time is True):
+                                objective.SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
 
         # Solve the problem
-        objective.SetMaximization()
+        if(minimize_time is True):
+            objective.SetMinimization()
+        else:
+            objective.SetMaximization()
         status = solver.Solve()
 
         # Extract the solution.
@@ -412,17 +480,15 @@ class AllocateLST(object):
                 choose = np.random.random()
                 icadence = np.where(cadence_cumulative > choose)[0][0]
                 cadence = list(self.allocinfo[fieldid].keys())[icadence]
-                # choose_field = np.random.random()
-                # if(choose_field <
-                #   field_total / self.allocinfo[fieldid][cadence]['needed']):
                 field_array['cadence'][findx] = cadence
                 field_array['needed'][findx] = (
                     self.allocinfo[fieldid][cadence]['needed'])
                 normalize = field_array['needed'][findx] / slots_totals.sum()
-                field_array['slots_exposures'][findx] = slots_totals * normalize
+                field_array['slots_exposures'][findx] = (slots_totals *
+                                                         normalize)
 
-            field_array['nfilled'][findx] = (
-                field_array['slots_exposures'][findx, :, :].sum())
+            field_array['nfilled'][findx] = np.int32(
+                field_array['slots_exposures'][findx, :, :].sum() + 0.001)
 
         fscadence = np.array([x.decode().strip()
                               for x in self.field_slots['cadence']])
@@ -667,6 +733,59 @@ class AllocateLSTCostA(AllocateLST):
                                               lat=self.observer.latitude)
         airmass = self.observer.alt2airmass(alt=alt)
         exponent = 0.25
+        if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
+            exponent = 2.0
+        xfactor = airmass**exponent
+        return(xfactor)
+
+
+class AllocateLSTCostB(AllocateLST):
+    """LST allocation object for robostrategy, with cost model B
+
+    This class is exactly like AllocateLSTCostA,
+    but with scaling in bright time of airmass^1.
+"""
+    def xfactor(self, racen=None, deccen=None, skybrightness=None, lst=None,
+                cadence=None):
+        """Exposure time cost factor relative to nominal
+
+        Parameters:
+        ----------
+
+        racen : np.float64
+            RA center of field, degrees
+
+        deccen : np.float64
+            Dec center of field, degrees
+
+        cadence : str
+            cadence name
+
+        skybrightness : np.float32
+            maximum sky brightness of observation
+
+        lst : np.float32
+            LST of observation, hours
+
+        Returns:
+        -------
+
+        xfactor : np.float64
+            length of exposure relative to nominal
+
+        Comments:
+        --------
+
+        If the minimum sky brightness requirement of the cadence is <= 0.4,
+        then it assumes you are working in the optical and care about blue
+        throughput, and it scales exposure time with airmass^2. If not, it
+        scales the cost as airmass^1.
+"""
+        ha = self.observer.ralst2ha(ra=racen, lst=lst * 15.)
+        (alt, az) = self.observer.hadec2altaz(ha=ha, dec=deccen,
+                                              lat=self.observer.latitude)
+        airmass = self.observer.alt2airmass(alt=alt)
+        exponent = 1.
         if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
             exponent = 2.0
         xfactor = airmass**exponent

@@ -58,7 +58,7 @@ class Slots(object):
         clear fraction to assume (0.5 for 'apo', 0.7 for 'lco')
 
     slots : ndarray of np.float32
-        number of available hours in LST, sky brightness slots 
+        number of available hours in LST, sky brightness slots
         [nlst, nskybrightness], created only when fill() is called
 
     Methods:

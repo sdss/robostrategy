@@ -87,8 +87,14 @@ class Field(object):
     target_y : ndarray of np.float64
         y positions of targets, mm
 
+    target_within : ndarray of np.int32
+        1 if target is within the robot hexagon, 0 otherwise
+
     target_priority : ndarray of np.int32
         priorities of targets (lower is considered first)
+
+    target_program : ndarray of strings
+        program of targets
 
     target_category : ndarray of strings
         category of targets ('SKY', 'STANDARD', 'SCIENCE')
@@ -98,6 +104,9 @@ class Field(object):
 
     target_cadence : ndarray of np.int32
         cadences of targets
+
+    target_incadence : ndarray of np.bool
+        whether each target is allowed in the field cadence (set by assign())
 
     target_assigned : ndarray of np.int32
         (ntarget) array of 0 or 1, indicating whether target is assigned
@@ -140,6 +149,7 @@ class Field(object):
         self.assignments = None
         self.target_assigned = None
         self.target_assignments = None
+        self.target_incadence = None
         self.greedy_limit = 100
         self.nsky_apogee = 20
         self.nstandard_apogee = 20
@@ -251,6 +261,7 @@ class Field(object):
         Optional columns of array:
          'priority'
          'category'
+         'program'
 """
         self.target_array = target_array
         self.ntarget = len(self.target_array)
@@ -286,6 +297,18 @@ class Field(object):
         except ValueError:
             self.target_category = np.array(['SCIENCE'] * self.ntarget)
 
+        try:
+            self.target_program = np.array(
+                [c.decode().strip() for c in self.target_array['program']])
+        except AttributeError:
+            self.target_program = np.array(
+                [c.strip() for c in self.target_array['program']])
+        except ValueError:
+            self.target_program = np.array(['PROGRAM'] * self.ntarget)
+
+        self.target_within = self.robot.within_corners(x=self.target_x,
+                                                       y=self.target_y)
+
         return
 
     def targets_fromfits(self, filename=None):
@@ -308,6 +331,7 @@ class Field(object):
         Optional columns:
          'priority'
          'category'
+         'program'
 """
         target_array = fitsio.read(filename)
         self.targets_fromarray(target_array)
@@ -346,12 +370,14 @@ class Field(object):
               'cadence' ('a30')
               'priority' (np.int32)
               'category' ('a30')
+              'program' ('a30')
 """
         target_array_dtype = np.dtype([('ra', np.float64),
                                        ('dec', np.float64),
                                        ('pk', np.int64),
                                        ('cadence', cadence.fits_type),
                                        ('category', np.dtype('a30')),
+                                       ('program', np.dtype('a30')),
                                        ('value', np.int32),
                                        ('priority', np.int32)])
 
@@ -361,6 +387,7 @@ class Field(object):
         target_array['pk'] = self.target_pk
         target_array['cadence'] = self.target_cadence
         target_array['category'] = self.target_category
+        target_array['program'] = self.target_program
         target_array['value'] = self.target_value
         target_array['priority'] = self.target_priority
         return(target_array)
@@ -393,6 +420,7 @@ class Field(object):
             'cadence', 'type' ('a30')
             'priority' (np.int32)
             'category' ('a30')
+            'program' ('a30')
 """
         hdr = dict()
         hdr['RACEN'] = self.racen
@@ -649,6 +677,8 @@ class Field(object):
 
         It does not use the target priorities yet.
 
+        assign() also sets the target_incadence attribute, which
+        tells you wich targets fit somehow into the field cadence.
 """
 
         # Initialize
@@ -663,13 +693,15 @@ class Field(object):
         ok_cadence = dict()
         for curr_cadence in np.unique(self.target_cadence[iscience]):
             ok, s = self.cadencelist.cadence_consistency(curr_cadence,
-                                                      self.field_cadence,
-                                                      return_solutions=True)
+                                                         self.field_cadence,
+                                                         return_solutions=True)
             ok_cadence[curr_cadence] = (
                 ok | (self.cadencelist.cadences[curr_cadence].nepochs == 1))
         ok = [ok_cadence[tcadence]
               for tcadence in self.target_cadence[iscience]]
+        self.target_incadence = np.zeros(self.ntarget, dtype=np.int32)
         iok = np.where(np.array(ok))[0]
+        self.target_incadence[iscience[iok]] = 1
         if(len(iok) == 0):
             return
 

@@ -26,6 +26,53 @@ import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
+cadencelist = cadence.CadenceList()
+
+
+def make_assign_entry(f, fields_entry, field_cadence, utcadences,
+                      utprograms, assign_dtype):
+    assign_entry = np.zeros(1, dtype=assign_dtype)
+
+    assign_entry['fieldid'] = fields_entry['fieldid']
+    assign_entry['racen'] = fields_entry['racen']
+    assign_entry['deccen'] = fields_entry['deccen']
+    assign_entry['cadence'] = field_cadence
+    nvisit = cadencelist.cadences[field_cadence].nexposures
+    assign_entry['nvisit'] = nvisit
+    assign_entry['ntargets'] = f.ntarget
+    target_got = np.zeros(f.ntarget, dtype=np.int32)
+    igot = np.where(f.assignments[:, 0:nvisit] >= 0)
+    tgot = np.unique(f.assignments[igot])
+    target_got[tgot] = 1
+    iok = np.where((f.target_incadence) & (f.target_within))[0]
+    assign_entry['nwithin'] = len(iok)
+    assign_entry['ngot'] = target_got.sum()
+    assign_entry['valuegot'] = f.target_value[tgot].sum()
+
+    for indx in np.arange(len(utcadences), dtype=np.int32):
+        utcadence = utcadences[indx]
+        ic = np.where((f.target_cadence == utcadence) &
+                      (f.target_incadence))[0]
+        assign_entry['nwithin_pc'][0, indx] = f.target_within[ic].sum()
+        assign_entry['ngot_pc'][0, indx] = target_got[ic].sum()
+        icg = np.where((f.target_cadence == utcadence) &
+                       (target_got > 0) &
+                       (f.target_incadence))[0]
+        assign_entry['valuegot_pc'][0, indx] = f.target_value[icg].sum()
+
+    for indx in np.arange(len(utprograms), dtype=np.int32):
+        utprogram = utprograms[indx]
+        ip = np.where((f.target_program == utprogram) &
+                      (f.target_incadence))[0]
+        assign_entry['nwithin_pp'][0, indx] = f.target_within[ip].sum()
+        assign_entry['ngot_pp'][0, indx] = target_got[ip].sum()
+        ipg = np.where((f.target_cadence == utcadence) &
+                       (target_got > 0) &
+                       (f.target_incadence))[0]
+        assign_entry['valuegot_pp'][0, indx] = f.target_value[ipg].sum()
+
+    return(assign_entry)
+
 
 if __name__ == '__main__':
 
@@ -49,8 +96,8 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
+    fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
 
-    cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
@@ -72,13 +119,22 @@ if __name__ == '__main__':
                                         plan=plan, observatory=observatory)
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
 
-    # cadence_mask = cadence_mask[ikeep, :]
-
+    # Make list of all field cadences
     ncad = np.int32(hdr['NCAD'])
     all_cadences = []
     for indx in np.arange(ncad):
         all_cadences.append(hdr['CAD{indx}'.format(indx=indx)])
     all_cadences = np.array(all_cadences)
+
+    # Make list of all unique target cadences
+    tcadences = [x.decode().strip() for x in targets_all['cadence']]
+    utcadences = np.unique(np.array(tcadences))
+    nutcadences = len(utcadences)
+
+    # Make list of all unique target programs
+    tprograms = [x.decode().strip() for x in targets_all['program']]
+    utprograms = np.unique(np.array(tprograms))
+    nutprograms = len(utprograms)
 
     assign_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
@@ -86,8 +142,15 @@ if __name__ == '__main__':
                     ('ntargets', np.int32),
                     ('cadence', cadence.fits_type),
                     ('nvisit', np.int32),
+                    ('nwithin', np.int32),
                     ('ngot', np.int32),
-                    ('valuegot', np.float32)]
+                    ('valuegot', np.float32),
+                    ('nwithin_pc', np.int32, nutcadences),
+                    ('ngot_pc', np.int32, nutcadences),
+                    ('valuegot_pc', np.float32, nutcadences),
+                    ('nwithin_pp', np.int32, nutprograms),
+                    ('ngot_pp', np.int32, nutprograms),
+                    ('valuegot_pp', np.float32, nutprograms)]
 
     assign_array = np.zeros(0, dtype=assign_dtype)
 
@@ -102,56 +165,45 @@ if __name__ == '__main__':
                                            fieldid=fieldid)
         targets = fitsio.read(field_target_file)
 
-        values = np.ones(len(targets))
-
         f = field.Field(racen=fields_entry['racen'],
                         deccen=fields_entry['deccen'],
                         observatory=observatory)
         f.targets_fromarray(targets)
+        f.target_value = f.target_value * 0. + 1.
 
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
         field_cadences = all_cadences[icadences]
 
         for field_cadence in field_cadences:
+            print(field_cadence)
             f = field.Field(racen=fields_entry['racen'],
                             deccen=fields_entry['deccen'],
                             observatory=observatory)
             f.targets_fromarray(targets)
+            f.target_value = f.target_value * 0. + 1.
 
             f.field_cadence = field_cadence
-            print(field_cadence)
-            print(f.ntarget)
             f.assign(include_calibration=False)
 
             if(field_cadence.split('-')[-1] == 'n'):
                 field_cadence_base = field_cadence.split('-')[0]
-                assign_entries = np.zeros(0, dtype=assign_dtype)
+                assign_entries = np.zeros(ncadence, dtype=assign_dtype)
                 for indx in np.arange(ncadence, dtype=np.int32) + 1:
-                    assign_entry = np.zeros(1, dtype=assign_dtype)
-                    assign_entry['fieldid'] = fields_entry['fieldid']
-                    assign_entry['racen'] = fields_entry['racen']
-                    assign_entry['deccen'] = fields_entry['deccen']
-                    assign_entry['cadence'] = (
-                        '{base}-{n}'.format(base=field_cadence_base, n=indx))
-                    assign_entry['nvisit'] = indx
-                    assign_entry['ntargets'] = len(targets)
-                    igot = np.where(f.assignments[:, 0:indx] >= 0)
-                    tgot = f.assignments[igot]
-                    assign_entry['ngot'] = igot[0].size
-                    assign_entry['valuegot'] = values[tgot].sum()
-                    assign_entries = np.append(assign_entries, assign_entry)
-
-                print(targets['cadence'])
-                print(assign_entries['nvisit'])
-                print(assign_entries['ntargets'])
-                print(assign_entries['ngot'])
+                    fcadence = '{base}-{n}'.format(base=field_cadence_base,
+                                                   n=indx)
+                    assign_entry = make_assign_entry(f, fields_entry,
+                                                     fcadence, utcadences,
+                                                     utprograms, assign_dtype)
+                    assign_entries[indx - 1] = assign_entry
 
                 if(assign_entries['ngot'].max() == 0):
                     ikeep = 0
                 else:
-                    fgot = assign_entries['ngot'] / assign_entries['ngot'].max()
+                    fgot = (assign_entries['ngot'] /
+                            assign_entries['ngot'].max())
                     fgot_unique, iunique = np.unique(fgot, return_index=True)
-                    indx = np.where(fgot_unique >= fgot_minimum)[0]
+                    indx = np.where((fgot_unique >= fgot_minimum) &
+                                    (fgot_unique <= fgot_maximum))[0]
                     if(len(indx) > 0):
                         ikeep = iunique[indx]
                     else:
@@ -159,19 +211,22 @@ if __name__ == '__main__':
 
                 assign_array = np.append(assign_array, assign_entries[ikeep])
             else:
-                assign_entry = np.zeros(1, dtype=assign_dtype)
-                assign_entry['fieldid'] = fields_entry['fieldid']
-                assign_entry['racen'] = fields_entry['racen']
-                assign_entry['deccen'] = fields_entry['deccen']
-                assign_entry['cadence'] = field_cadence
-                assign_entry['nvisit'] = cadencelist.cadences[field_cadence].nexposures
-                assign_entry['ntargets'] = len(targets)
-                igot = np.where(f.assignments[:, :] >= 0)
-                tgot = f.assignments[igot]
-                assign_entry['ngot'] = igot[0].size
-                assign_entry['valuegot'] = values[tgot].sum()
+                assign_entry = make_assign_entry(f, fields_entry,
+                                                 field_cadence,
+                                                 utcadences, utprograms,
+                                                 assign_dtype)
                 assign_array = np.append(assign_array, assign_entry)
 
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
     fitsio.write(options_file, assign_array, clobber=True)
+
+    cadence_dtype = [('cadence', cadence.fits_type)]
+    cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
+    cadence_arr['cadence'] = utcadences
+    fitsio.write(options_file, cadence_arr, clobber=False)
+
+    program_dtype = [('program', cadence.fits_type)]
+    program_arr = np.zeros(len(utprograms), dtype=program_dtype)
+    program_arr['program'] = utprograms
+    fitsio.write(options_file, program_arr, clobber=False)
