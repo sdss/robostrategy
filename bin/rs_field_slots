@@ -47,6 +47,11 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
+    if('BrightOnlyBright' in rsParams.cfg['Allocation']):
+        bright_only_bright = True
+    else:
+        bright_only_bright = False
+
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
@@ -91,11 +96,17 @@ if __name__ == '__main__':
         airmass = observer.alt2airmass(alt=alt)
         airmass_min = observer.alt2airmass(alt=alt_max)
         for iskybrightness in np.arange(slots.nskybrightness):
-            iok = np.where((alt > 0) &
-                           ((airmass < airmass_limit) |
-                            (airmass < airmass_min + airmass_pad)) &
-                           (field_min_skybrightness >=
-                            slots.skybrightness[iskybrightness + 1]))[0]
+            okalt = ((alt > 0) &
+                     ((airmass < airmass_limit) |
+                      (airmass < airmass_min + airmass_pad)))
+            if(bright_only_bright):
+                oksky = (np.abs(field_min_skybrightness -
+                                slots.skybrightness[iskybrightness + 1]) <
+                         1.e-2)
+            else:
+                oksky = (field_min_skybrightness >=
+                         slots.skybrightness[iskybrightness + 1])
+            iok = np.where(okalt & oksky)[0]
             field_slots['slots'][iok, ilst, iskybrightness] = 1.
 
     slots_file = sdss_path.full('rsFieldSlots', plan=plan,
