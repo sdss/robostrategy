@@ -652,11 +652,8 @@ class Field(object):
         positioner, it searches for targets that are covered and that
         have not been assigned yet for a previous robot.
 
-        It usually uses the pack_targets() method of CadenceList to
-        pack the target cadences into the field cadence optimally.
-        If the total number of exposures is greater than the value
-        of the attribute "greedy_limit" (default 100) then it uses
-        pack_targets_greedy().
+        It uses the pack_targets_greedy() method of CadenceList to
+        pack the target cadences into the field cadence greedily.
 
         The results are stored in the attribute assignments, which is
         an (nposition, nexposures) array with the target index to
@@ -714,7 +711,7 @@ class Field(object):
              for c in self.target_cadence[iscience]], dtype=np.int8)
         for indx in np.arange(self.robot.npositioner):
             positionerid = self.robot.positionerid[indx]
-            ileft = np.where(got_target[iok] == 0)[0]
+            ileft = np.where(got_target[iscience[iok]] == 0)[0]
             if(len(ileft) > 0):
                 requires_apogee = target_requires_apogee[iok[ileft]]
                 requires_boss = target_requires_boss[iok[ileft]]
@@ -744,5 +741,40 @@ class Field(object):
             self.assign_calibration(category='STANDARD_BOSS')
 
         self.set_target_assignments()
+
+        return
+
+    def add_observations(self):
+        """For assigned targets, add observations if possible
+
+        Notes:
+        -----
+
+        The assign() method needs to have been run so that the
+        assignments attribute is set.
+
+        The code then adds as many more observations as it can of
+        the targets already observed by this fiber. Note that it is
+        looking for full new observations.
+
+        It does not use the target priorities yet.
+"""
+
+        # Assign the robots
+        for indx in np.arange(self.robot.npositioner):
+            targetids = np.unique(self.assignments[indx, :])[0]
+            igd = np.where(targetids != -1)[0]
+            igd2 = np.where(self.target_category[igd] != 'CALIBRATION')[0]
+            targetids = targetids[igd[igd2]]
+            tcs = self.target_cadence[targetids]
+            if(len(targetids) > 0):
+                p = cadence.Packing(self.field_cadence)
+                p.import_exposures(self.assignments[indx, :])
+                ok = True
+                while(ok):
+                    ok = False
+                    for tc in tcs:
+                        if(p.add_target(tc)):
+                            ok = True
 
         return
