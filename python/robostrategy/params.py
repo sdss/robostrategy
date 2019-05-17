@@ -34,7 +34,7 @@ class RobostrategyParams(object, metaclass=RobostrategyParamsSingleton):
         self.cfg = configparser.ConfigParser(allow_no_value=True)
         self.cfg.optionxform = str
         self.cfg.read(cfgfile)
-        self.cfg['DEFAULT'] = {'fgot_minimum': 0.5}
-        self.cfg['DEFAULT'] = {'fgot_maximum': 1.5}
-        self.cfg['DEFAULT'] = {'AllFields': ''}
-        self.cfg['DEFAULT'] = {'Schedule': 'normal'}
+        self.cfg['DEFAULT'] = {'fgot_minimum': 0.5,
+                               'fgot_maximum': 1.5,
+                               'AllFields': '',
+                               'Schedule': 'normal'}
