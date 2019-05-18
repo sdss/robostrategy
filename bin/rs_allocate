@@ -78,6 +78,12 @@ if __name__ == '__main__':
         if(rsParams.cfg.get('Allocation', 'Cost') == 'A'):
             print("Use cost model A")
             allocate_class = robostrategy.allocate.AllocateLSTCostA
+        if(rsParams.cfg.get('Allocation', 'Cost') == 'B'):
+            print("Use cost model B")
+            allocate_class = robostrategy.allocate.AllocateLSTCostB
+        if(rsParams.cfg.get('Allocation', 'Cost') == 'C'):
+            print("Use cost model C")
+            allocate_class = robostrategy.allocate.AllocateLSTCostC
     else:
         print("Use default cost model")
         allocate_class = robostrategy.allocate.AllocateLST
