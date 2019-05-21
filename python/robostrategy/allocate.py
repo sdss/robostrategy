@@ -272,6 +272,9 @@ class AllocateLST(object):
             if(fix_cadence):
                 ifield = np.where(self.field_array['fieldid'] == fieldid)[0]
                 fcadence = self.field_array['cadence'][ifield][0].decode()
+                if(fcadence == 'none'):
+                    self.allocinfo[fieldid] = collections.OrderedDict()
+                    continue
                 ic = np.where(curr_cadences == fcadence)[0]
                 if(len(ic) == 0):
                     print("Inconsistency; no cadence.")
@@ -325,10 +328,16 @@ class AllocateLST(object):
             cftype = ftype[indx]
             cfieldid = self.fields['fieldid'][indx]
             if(minimize_time):
-                field_minimum_float[cfieldid] = 0.99
+                ifield = np.where(self.field_array['fieldid'] == cfieldid)[0]
+                if((len(ifield) == 0)):
+                    field_minimum_float[cfieldid] = 0.0
+                elif (self.field_array['cadence'][ifield[0]].decode().strip() == 'none'):
+                    field_minimum_float[cfieldid] = 0.0
+                else:
+                    field_minimum_float[cfieldid] = 0.97
             else:
                 if(cftype in self.observe_all_fields):
-                    field_minimum_float[cfieldid] = 0.9
+                    field_minimum_float[cfieldid] = 0.99
                 else:
                     field_minimum_float[cfieldid] = 0.
 
@@ -373,7 +382,7 @@ class AllocateLST(object):
                             var = ccadence['vars'][ilst * self.slots.nskybrightness +
                                                    iskybrightness]
                             cadence_constraint.SetCoefficient(var, 1.)
-            cadence_constraints.append(cadence_constraint)
+                cadence_constraints.append(cadence_constraint)
 
         # Maximum of one cadence per field. Note that because this is an
         # LP and not an integer problem, this constraint involves the
@@ -381,18 +390,19 @@ class AllocateLST(object):
         # we will pick the largest value cadence.
         field_constraints = []
         for fieldid in self.allocinfo:
-            field_constraint = solver.Constraint(field_minimum_float[fieldid],
-                                                 1.)
-            for cadence in self.allocinfo[fieldid]:
-                ccadence = self.allocinfo[fieldid][cadence]
-                for ilst in range(self.slots.nlst):
-                    for iskybrightness in range(self.slots.nskybrightness):
-                        if(ccadence['slots'][ilst, iskybrightness]):
-                            var = ccadence['vars'][ilst * self.slots.nskybrightness +
-                                                   iskybrightness]
-                            invneeded = 1. / ccadence['needed']
-                            field_constraint.SetCoefficient(var, invneeded)
-            field_constraints.append(field_constraint)
+            if(len(self.allocinfo[fieldid]) > 0):
+                field_constraint = solver.Constraint(field_minimum_float[fieldid],
+                                                     1.)
+                for cadence in self.allocinfo[fieldid]:
+                    ccadence = self.allocinfo[fieldid][cadence]
+                    for ilst in range(self.slots.nlst):
+                        for iskybrightness in range(self.slots.nskybrightness):
+                            if(ccadence['slots'][ilst, iskybrightness]):
+                                var = ccadence['vars'][ilst * self.slots.nskybrightness +
+                                                       iskybrightness]
+                                invneeded = 1. / ccadence['needed']
+                                field_constraint.SetCoefficient(var, invneeded)
+                field_constraints.append(field_constraint)
 
         # Constrain sum of each slot to be less than total. Here the
         # units are still in numbers of exposures, but we multiply by
@@ -471,9 +481,11 @@ class AllocateLST(object):
             field_total = cadence_totals.sum()
             field_array['cadence'][findx] = 'none'
             field_array['slots_exposures'][findx] = (
-                self.allocinfo[fieldid][cadence]['slots'] * 0.)
+                np.zeros((self.slots.nlst, self.slots.nskybrightness),
+                         dtype=np.float32))
             field_array['slots_time'][findx] = (
-                self.allocinfo[fieldid][cadence]['slots'] * 0.)
+                np.zeros((self.slots.nlst, self.slots.nskybrightness),
+                         dtype=np.float32))
             if(field_total > 0.):
                 cadence_totals = cadence_totals / field_total
                 cadence_cumulative = cadence_totals.cumsum()
