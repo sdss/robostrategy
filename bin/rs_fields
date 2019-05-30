@@ -78,7 +78,7 @@ if __name__ == '__main__':
 
     if('RM' in rsParams.cfg['Fields']):
         in_north_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                        'data', 'north-fields-RM.fits')
+                                        'data', 'north-fields-RM-v2.fits')
         in_north_rm = fitsio.read(in_north_rm_file)
         tmp_fields_north_rm = np.zeros(len(in_north_rm), dtype=fields_dtype)
         tmp_fields_north_rm['racen'] = in_north_rm['RA']
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                                        tmp_fields_north_rm)
 
         in_south_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                        'data', 'south-fields-RM.fits')
+                                        'data', 'south-fields-RM-v2.fits')
         in_south_rm = fitsio.read(in_south_rm_file)
         tmp_fields_south_rm = np.zeros(len(in_south_rm), dtype=fields_dtype)
         tmp_fields_south_rm['racen'] = in_south_rm['RA']

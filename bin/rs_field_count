@@ -1,0 +1,130 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: May 20, 2019
+# @Filename: rs_field_count
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import robostrategy.field as field
+import roboscheduler.cadence as cadence
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path()
+
+
+def make_count_entry(f, fields_entry, utcadences,
+                     utprograms, count_dtype):
+    count_entry = np.zeros(1, dtype=count_dtype)
+
+    count_entry['fieldid'] = fields_entry['fieldid']
+    count_entry['racen'] = fields_entry['racen']
+    count_entry['deccen'] = fields_entry['deccen']
+    count_entry['ntargets'] = f.ntarget
+    iok = np.where(f.target_within)[0]
+    count_entry['nwithin'] = len(iok)
+
+    for indx in np.arange(len(utcadences), dtype=np.int32):
+        utcadence = utcadences[indx]
+        ic = np.where(f.target_cadence == utcadence)[0]
+        count_entry['nwithin_pc'][0, indx] = f.target_within[ic].sum()
+
+    for indx in np.arange(len(utprograms), dtype=np.int32):
+        utprogram = utprograms[indx]
+        ip = np.where(f.target_program == utprogram)[0]
+        count_entry['nwithin_pp'][0, indx] = f.target_within[ip].sum()
+
+    return(count_entry)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Counts of targets in each field')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    fields_array = fitsio.read(fields_file)
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory=observatory)
+    targets_all = fitsio.read(targets_file)
+
+    # Make list of all unique target cadences
+    tcadences = [x.decode().strip() for x in targets_all['cadence']]
+    utcadences = np.unique(np.array(tcadences))
+    nutcadences = len(utcadences)
+
+    # Make list of all unique target programs
+    tprograms = [x.decode().strip() for x in targets_all['program']]
+    utprograms = np.unique(np.array(tprograms))
+    nutprograms = len(utprograms)
+
+    count_dtype = [('fieldid', np.int32),
+                   ('racen', np.float64),
+                   ('deccen', np.float64),
+                   ('ntargets', np.int32),
+                   ('nwithin', np.int32),
+                   ('nwithin_pc', np.int32, nutcadences),
+                   ('nwithin_pp', np.int32, nutprograms)]
+
+    count_array = np.zeros(len(fields_array), dtype=count_dtype)
+
+    for ifield in np.arange(len(fields_array)):
+        fields_entry = fields_array[ifield]
+        fieldid = fields_entry['fieldid']
+        if((fieldid % 1) == 0):
+            print(fieldid, flush=True)
+
+        field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
+                                           observatory=observatory,
+                                           fieldid=fieldid)
+        targets = fitsio.read(field_target_file)
+
+        f = field.Field(racen=fields_entry['racen'],
+                        deccen=fields_entry['deccen'],
+                        observatory=observatory)
+        f.targets_fromarray(targets)
+
+        ce = make_count_entry(f, fields_entry, utcadences,
+                              utprograms, count_dtype)[0]
+        count_array[ifield] = ce
+
+    outdir = os.path.dirname(fields_file)
+    cfilebase = 'rsFieldCount-{plan}-{obs}.fits'.format(plan=plan,
+                                                        obs=observatory)
+    count_file = os.path.join(outdir, cfilebase)
+    fitsio.write(count_file, count_array, clobber=True)
+
+    cadence_dtype = [('cadence', cadence.fits_type)]
+    cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
+    cadence_arr['cadence'] = utcadences
+    fitsio.write(count_file, cadence_arr, clobber=False)
+
+    program_dtype = [('program', cadence.fits_type)]
+    program_arr = np.zeros(len(utprograms), dtype=program_dtype)
+    program_arr['program'] = utprograms
+    fitsio.write(count_file, program_arr, clobber=False)

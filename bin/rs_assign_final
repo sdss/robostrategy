@@ -64,7 +64,6 @@ if __name__ == '__main__':
                                            plan=plan, observatory=observatory,
                                            fieldid=fieldid)
         f.targets_fromfits(field_target_file)
-        f.target_value = f.target_value * 0. + 1.
 
         f.field_cadence = allocate.field_array['cadence'][indx].decode().strip()
 

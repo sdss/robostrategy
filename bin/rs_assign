@@ -169,7 +169,6 @@ if __name__ == '__main__':
                         deccen=fields_entry['deccen'],
                         observatory=observatory)
         f.targets_fromarray(targets)
-        f.target_value = f.target_value * 0. + 1.
 
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
         field_cadences = all_cadences[icadences]
@@ -180,7 +179,6 @@ if __name__ == '__main__':
                             deccen=fields_entry['deccen'],
                             observatory=observatory)
             f.targets_fromarray(targets)
-            f.target_value = f.target_value * 0. + 1.
 
             f.field_cadence = field_cadence
             f.assign(include_calibration=False)

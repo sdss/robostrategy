@@ -855,3 +855,57 @@ class AllocateLSTCostC(AllocateLST):
             exponent = 1.0
         xfactor = airmass**exponent
         return(xfactor)
+
+
+class AllocateLSTCostD(AllocateLST):
+    """LST allocation object for robostrategy, with cost model D
+
+    This class is exactly like AllocateLSTCostD,
+    but with xfactor scaling in dark time of airmass^1,
+    and in bright time of airmass^0.05.
+"""
+    def xfactor(self, racen=None, deccen=None, skybrightness=None, lst=None,
+                cadence=None):
+        """Exposure time cost factor relative to nominal
+
+        Parameters:
+        ----------
+
+        racen : np.float64
+            RA center of field, degrees
+
+        deccen : np.float64
+            Dec center of field, degrees
+
+        cadence : str
+            cadence name
+
+        skybrightness : np.float32
+            maximum sky brightness of observation
+
+        lst : np.float32
+            LST of observation, hours
+
+        Returns:
+        -------
+
+        xfactor : np.float64
+            length of exposure relative to nominal
+
+        Comments:
+        --------
+
+        If the minimum sky brightness requirement of the cadence is <= 0.4,
+        then it assumes you are working in the optical and care about blue
+        throughput, and it scales exposure time with airmass^1. If not, it
+        scales the cost as airmass^0.05.
+"""
+        ha = self.observer.ralst2ha(ra=racen, lst=lst * 15.)
+        (alt, az) = self.observer.hadec2altaz(ha=ha, dec=deccen,
+                                              lat=self.observer.latitude)
+        airmass = self.observer.alt2airmass(alt=alt)
+        exponent = 0.05
+        if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
+            exponent = 1.0
+        xfactor = airmass**exponent
+        return(xfactor)

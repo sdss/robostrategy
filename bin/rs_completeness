@@ -116,7 +116,10 @@ if __name__ == '__main__':
 
     ntargets = len(np.where(outtargets['covered'][icadence])[0])
     ngot = np.int32(got[icadence].sum())
-    fgot = np.float32(ngot) / np.float32(ntargets)
+    if(ntargets > 0):
+        fgot = np.float32(ngot) / np.float32(ntargets)
+    else:
+        fgot = np.float32(-1.)
 
     hdr = dict()
     hdr['NSIDE'] = nside
@@ -140,7 +143,10 @@ if __name__ == '__main__':
 
         ntargets = len(np.where(outtargets['covered'][icadence])[0])
         ngot = np.int32(got[icadence].sum())
-        fgot = np.float32(ngot) / np.float32(ntargets)
+        if(ntargets > 0):
+            fgot = np.float32(ngot) / np.float32(ntargets)
+        else:
+            fgot = np.float32(-1.)
 
         hdr = dict()
         hdr['CADENCE'] = unique_base_cadence
@@ -162,7 +168,10 @@ if __name__ == '__main__':
 
         ntargets = len(np.where(outtargets['covered'][iprogram])[0])
         ngot = np.int32(got[iprogram].sum())
-        fgot = np.float32(ngot) / np.float32(ntargets)
+        if(ntargets > 0):
+            fgot = np.float32(ngot) / np.float32(ntargets)
+        else:
+            fgot = np.float32(-1.)
 
         hdr = dict()
         hdr['PROGRAM'] = unique_program
