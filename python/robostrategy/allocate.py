@@ -427,6 +427,7 @@ class AllocateLST(object):
                             slot_constraints[ilst][iskybrightness].SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
                             if(minimize_time is True):
                                 objective.SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
+            
 
         # Solve the problem
         if(minimize_time is True):

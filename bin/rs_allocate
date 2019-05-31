@@ -63,7 +63,23 @@ if __name__ == '__main__':
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
     field_options = fitsio.read(options_file)
+    foarr = fitsio.read(options_file, ext=2)
+    focadences = np.array([x.decode().strip() for x in foarr['cadence']])
     nfields = len(field_options)
+
+    # Alterations to values in field options here
+    try:
+        scales = np.ones(len(focadences))
+        for c in rsParams.cfg['ValueRescale']:
+            indx = np.where(c == focadences)[0]
+            if(len(indx) > 0):
+                scale = np.float32(rsParams.cfg.get('ValueRescale', c))
+                scales[indx] = scale
+        for indx in np.arange(len(field_options)):
+            field_options['valuegot'][indx] = (
+                field_options['valuegot_pc'][indx, :] * scales).sum()
+    except KeyError:
+        print("No ValueRescale")
 
     field_slots_file = sdss_path.full('rsFieldSlots', plan=plan,
                                       observatory=observatory)

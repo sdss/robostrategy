@@ -66,7 +66,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
                       (f.target_incadence))[0]
         assign_entry['nwithin_pp'][0, indx] = f.target_within[ip].sum()
         assign_entry['ngot_pp'][0, indx] = target_got[ip].sum()
-        ipg = np.where((f.target_cadence == utcadence) &
+        ipg = np.where((f.target_program == utprogram) &
                        (target_got > 0) &
                        (f.target_incadence))[0]
         assign_entry['valuegot_pp'][0, indx] = f.target_value[ipg].sum()

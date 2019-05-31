@@ -20,6 +20,7 @@ import sys
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
+import robostrategy.params as params
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdss_access.path
 
@@ -109,6 +110,8 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    rsParams = params.RobostrategyParams(plan=plan)
+
     cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
                            'robostrategy-{plan}.cfg'.format(plan=plan))
     cfg = configparser.ConfigParser(allow_no_value=True)
@@ -116,6 +119,16 @@ if __name__ == '__main__':
     cfg.read(cfgfile)
 
     targets = get_targets(cfg=cfg)
+
+    try:
+        for c in rsParams.cfg['TargetValueRescale']:
+            indx = np.where(targets['cadence'] == c)[0]
+            if(len(indx) > 0):
+                scale = np.float32(rsParams.cfg.get('ValueRescale', c))
+                targets['value'][indx] = targets['value'][indx] * scale
+    except KeyError:
+        print("No TargetValueRescale")
+    
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
