@@ -71,7 +71,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
                        (f.target_incadence))[0]
         assign_entry['valuegot_pp'][0, indx] = f.target_value[ipg].sum()
 
-    return(assign_entry)
+    return(assign_entry[0])
 
 
 if __name__ == '__main__':

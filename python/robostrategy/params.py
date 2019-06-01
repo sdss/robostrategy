@@ -33,8 +33,8 @@ class RobostrategyParams(object, metaclass=RobostrategyParamsSingleton):
                                'robostrategy-{plan}.cfg'.format(plan=plan))
         self.cfg = configparser.ConfigParser(allow_no_value=True)
         self.cfg.optionxform = str
+        self.cfg.read_dict = {'Assignment': {'fgot_minimum': 0.5,
+                                             'fgot_maximum': 1.5},
+                              'Allocation': {'AllFields': '',
+                                             'Schedule': 'normal'}}
         self.cfg.read(cfgfile)
-        self.cfg['DEFAULT'] = {'fgot_minimum': 0.5,
-                               'fgot_maximum': 1.5,
-                               'AllFields': '',
-                               'Schedule': 'normal'}

@@ -180,13 +180,16 @@ class AllocateLST(object):
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
-                 observatory=None, observe_all_fields=[],
-                 dark_prefer=1.):
+                 observatory=None, programs=None,
+                 observe_all_fields=[], dark_prefer=1.,
+                 minimum_ntargets={}):
         if(filename is None):
             self.slots = slots
             self.fields = fields
             self.field_slots = field_slots
             self.field_options = field_options
+            self.programs = programs
+            self.minimum_ntargets = minimum_ntargets
             self.nfields = len(self.field_options)
         else:
             self.fromfits(filename=filename)
@@ -302,6 +305,7 @@ class AllocateLST(object):
                                                (self.slots.nskybrightness *
                                                 self.slots.nlst))
                 alloc[curr_cadence]['needed'] = float(curr_option['nvisit'])
+                alloc[curr_cadence]['ngot_pp'] = curr_option['ngot_pp']
                 alloc[curr_cadence]['value'] = float(curr_option['valuegot'] *
                                                      prefer)
 
@@ -384,6 +388,15 @@ class AllocateLST(object):
                             cadence_constraint.SetCoefficient(var, 1.)
                 cadence_constraints.append(cadence_constraint)
 
+        # Constraints on numbers
+        mint_constraints = dict()
+        mint_index = dict()
+        for cname in self.minimum_ntargets:
+            index = np.where(self.programs == cname)[0]
+            mint_constraints[cname] = solver.Constraint(float(self.minimum_ntargets[cname]),
+                                                        float(10000000.))
+            mint_index[cname] = index[0]
+
         # Maximum of one cadence per field. Note that because this is an
         # LP and not an integer problem, this constraint involves the
         # definition of "fractional" cadences. From the LP solution,
@@ -402,6 +415,11 @@ class AllocateLST(object):
                                                        iskybrightness]
                                 invneeded = 1. / ccadence['needed']
                                 field_constraint.SetCoefficient(var, invneeded)
+                                for cname in self.minimum_ntargets:
+                                    imint = mint_index[cname]
+                                    mint_constraints[cname].SetCoefficient(
+                                        var, invneeded *
+                                        float(ccadence['ngot_pp'][imint]))
                 field_constraints.append(field_constraint)
 
         # Constrain sum of each slot to be less than total. Here the
@@ -550,6 +568,9 @@ class AllocateLST(object):
         fitsio.write(filename, self.fields, clobber=False)
         fitsio.write(filename, self.field_slots, clobber=False)
         fitsio.write(filename, self.field_options, clobber=False)
+        programs_arr = np.zeros(len(self.programs),
+                                dtype=[('program', 'a40')])
+        fitsio.write(filename, programs_arr, clobber=False)
         return
 
     def fromfits(self, filename=None):
@@ -572,6 +593,7 @@ class AllocateLST(object):
         self.fields = fitsio.read(filename, ext=3)
         self.field_slots = fitsio.read(filename, ext=4)
         self.field_options = fitsio.read(filename, ext=5)
+        self.programs = fitsio.read(filename, ext=6)
         return
 
     def _available_lst(self):
