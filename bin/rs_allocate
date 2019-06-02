@@ -84,10 +84,11 @@ if __name__ == '__main__':
         print("No ValueRescale")
 
     minimum_ntargets = dict()
-    if('AllocationMinimumTargets' in rsParams.cfg):
+    amtstr = 'AllocationMinimumTargetsAt{obs}'.format(obs=observatory.upper())
+    if(amtstr in rsParams.cfg):
         for program in rsParams.cfg['Programs']:
-            if(program in rsParams.cfg['AllocationMinimumTargets']):
-                minnum = rsParams.cfg.get('AllocationMinimumTargets', program)
+            if(program in rsParams.cfg[amtstr]):
+                minnum = rsParams.cfg.get(amtstr, program)
                 minimum_ntargets[program] = minnum
 
     field_slots_file = sdss_path.full('rsFieldSlots', plan=plan,
