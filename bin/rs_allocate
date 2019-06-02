@@ -90,6 +90,7 @@ if __name__ == '__main__':
             if(program in rsParams.cfg[amtstr]):
                 minnum = rsParams.cfg.get(amtstr, program)
                 minimum_ntargets[program] = minnum
+    print(minimum_ntargets)
 
     field_slots_file = sdss_path.full('rsFieldSlots', plan=plan,
                                       observatory=observatory)

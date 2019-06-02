@@ -452,6 +452,7 @@ class AllocateLST(object):
             objective.SetMinimization()
         else:
             objective.SetMaximization()
+        
         status = solver.Solve()
 
         # Extract the solution.
