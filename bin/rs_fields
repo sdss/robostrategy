@@ -50,13 +50,45 @@ if __name__ == '__main__':
     fields_south_array = np.zeros(0, dtype=fields_dtype)
 
     if('AllSkySloane' in rsParams.cfg['Fields']):
-        nsdiv = np.float32(rsParams.cfg['Fields']['NSDiv'])
+        nsdiv = np.float32(rsParams.cfg.get('Fields', 'NSDiv'))
+        if('lcoextend_gp' in rsParams.cfg['Fields']):
+            lcoextend_gp = True
+            lcoextend = rsParams.cfg.get('Fields', 'lcoextend_gp')
+            lcoextend_words = lcoextend.split()
+            lcoextend_nsdiv = np.float32(lcoextend_words[0])
+            lcoextend_bmax = np.float32(lcoextend_words[1])
+        else:
+            lcoextend_gp = False
+        if('lcoextend_ngc' in rsParams.cfg['Fields']):
+            lcoextend_ngc = True
+            lcoextend = rsParams.cfg.get('Fields', 'lcoextend_ngc')
+            lcoextend_words = lcoextend.split()
+            lcoextend_nsdiv = np.float32(lcoextend_words[0])
+        else:
+            lcoextend_ngc = False
 
         fields_north = sloane.Sloane(n=7682, radius=1.49)
         fields_south = sloane.Sloane(n=18752, radius=0.95)
 
-        fields_north.deccut(nsdiv)
-        fields_south.deccut(nsdiv, above=False)
+        if(lcoextend_gp):
+            fields_north.deccut_lcoextend(nsdiv, lcoextend_nsdiv,
+                                          lcoextend_bmax, above=True)
+            fields_south.deccut_lcoextend(nsdiv, lcoextend_nsdiv,
+                                          lcoextend_bmax, above=False)
+        elif(lcoextend_ngc):
+            ikeep = np.where((fields_south.dec < nsdiv) |
+                             (((fields_south.l % 360) > 180.) &
+                              (fields_south.dec < lcoextend_nsdiv) &
+                              (fields_south.b > 10.)))[0]
+            fields_south.trim(indx=ikeep)
+            ikeep = np.where((fields_north.dec > nsdiv) &
+                             (((fields_north.l % 360) < 180.) |
+                              (fields_north.dec > lcoextend_nsdiv) |
+                              (fields_north.b < 10)))[0]
+            fields_north.trim(indx=ikeep)
+        else:
+            fields_north.deccut(nsdiv)
+            fields_south.deccut(nsdiv, above=False)
 
         tmp_fields_north_array = np.zeros(len(fields_north.ra),
                                           dtype=fields_dtype)

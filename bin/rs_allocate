@@ -100,6 +100,8 @@ if __name__ == '__main__':
                                 observatory=observatory)
     slots = robostrategy.slots.Slots(observatory=observatory)
     slots.fromfits(filename=slots_file)
+    extra = rsParams.cfg.get('Allocation', 'ExtraTimeFactor')
+    slots.slots = slots.slots * np.float32(extra)
 
     if('Cost' in rsParams.cfg['Allocation']):
         if(rsParams.cfg.get('Allocation', 'Cost') == 'A'):
@@ -127,7 +129,11 @@ if __name__ == '__main__':
                               programs=foprograms,
                               minimum_ntargets=minimum_ntargets)
     allocate.construct()
-    allocate.solve()
+    status = allocate.solve()
+
+    if(status != 0):
+        print("Allocation failed.")
+        sys.exit(1)
 
     allocate.construct(fix_cadence=True)
     allocate.solve(minimize_time=True)

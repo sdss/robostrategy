@@ -36,5 +36,6 @@ class RobostrategyParams(object, metaclass=RobostrategyParamsSingleton):
         self.cfg.read_dict({'Assignment': {'fgot_minimum': 0.5,
                                            'fgot_maximum': 1.5},
                             'Allocation': {'AllFields': '',
-                                           'Schedule': 'normal'}})
+                                           'Schedule': 'normal',
+                                           'ExtraTimeFactor': 1.0}})
         self.cfg.read(cfgfile)

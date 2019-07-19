@@ -97,6 +97,7 @@ if __name__ == '__main__':
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
     fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
+    fgot_program = 'mwm_galactic'
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
@@ -134,6 +135,11 @@ if __name__ == '__main__':
     # Make list of all unique target programs
     tprograms = [x.decode().strip() for x in targets_all['program']]
     utprograms = np.unique(np.array(tprograms))
+    ifgotprogram = np.where(utprograms == fgot_program)[0]
+    if(len(ifgotprogram) == 1):
+        ifgotprogram = ifgotprogram[0]
+    else:
+        ifgotprogram = -1
     nutprograms = len(utprograms)
 
     assign_dtype = [('fieldid', np.int32),
@@ -197,15 +203,22 @@ if __name__ == '__main__':
                 if(assign_entries['ngot'].max() == 0):
                     ikeep = 0
                 else:
-                    fgot = (assign_entries['ngot'] /
-                            assign_entries['ngot'].max())
-                    fgot_unique, iunique = np.unique(fgot, return_index=True)
-                    indx = np.where((fgot_unique >= fgot_minimum) &
-                                    (fgot_unique <= fgot_maximum))[0]
-                    if(len(indx) > 0):
-                        ikeep = iunique[indx]
+                    if(ifgotprogram != -1):
+                        ngot_pp = assign_entries['ngot_pp'][:, ifgotprogram]
                     else:
-                        ikeep = [iunique[-1]]
+                        ngot_pp = np.array([0.])
+                    if(ngot_pp.max() > 0):
+                        fgot = ngot_pp / ngot_pp.max()
+                        fgot_unique, iunique = np.unique(fgot,
+                                                         return_index=True)
+                        indx = np.where((fgot_unique >= fgot_minimum) &
+                                        (fgot_unique <= fgot_maximum))[0]
+                        if(len(indx) > 0):
+                            ikeep = iunique[indx]
+                        else:
+                            ikeep = [iunique[-1]]
+                    else:
+                        ikeep = np.arange(len(assign_entries))
 
                 assign_array = np.append(assign_array, assign_entries[ikeep])
             else:

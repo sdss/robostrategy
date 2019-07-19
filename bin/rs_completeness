@@ -70,18 +70,14 @@ if __name__ == '__main__':
     for name in targets.dtype.names:
         outtargets[name] = targets[name]
 
-    fields_file = sdss_path.full('rsFields', plan=plan,
-                                 observatory=observatory)
-    fields = fitsio.read(fields_file)
-    ftype = np.array([t.decode().strip() for t in fields['type']])
-    if(observatory == 'apo'):
-        mindec = fields['deccen'][ftype != 'rm_north'].min()
-        icovered = np.where(outtargets['dec'] > mindec)[0]
-        outtargets['covered'][icovered] = 1
-    if(observatory == 'lco'):
-        maxdec = fields['deccen'][ftype != 'rm_south'].max()
-        icovered = np.where(outtargets['dec'] < maxdec)[0]
-        outtargets['covered'][icovered] = 1
+    targets_covered_base = 'rsTargetsCovered-{plan}-{obs}.fits'
+    targets_covered_base = targets_covered_base.format(plan=plan,
+                                                       obs=observatory)
+    targets_covered_file = os.path.join(os.path.dirname(targets_file),
+                                        targets_covered_base)
+    targets_covered = fitsio.read(targets_covered_file)
+    icovered = np.where(targets_covered['within_hex'] > 0)[0]
+    outtargets['covered'][icovered] = 1
 
     cadences = np.array([c.decode().strip() for c in targets['cadence']])
     base_cadences = np.array([c.split('-')[0] for c in cadences])

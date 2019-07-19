@@ -20,6 +20,7 @@ import numpy as np
 import healpy
 import fitsio
 import sdss_access.path
+import robostrategy.field as field
 
 sdss_path = sdss_access.path.Path()
 
@@ -50,6 +51,20 @@ if __name__ == '__main__':
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     targets_all = fitsio.read(targets_file)
+
+    targets_covered_dtype = [('targetid', np.int32),
+                             ('pk', np.int32),
+                             ('ra', np.float64),
+                             ('dec', np.float64),
+                             ('within_circle', np.int32),
+                             ('within_circle_fields', np.int32, 30),
+                             ('within_hex', np.int32),
+                             ('within_hex_fields', np.int32, 30)]
+    targets_covered = np.zeros(len(targets_all), dtype=targets_covered_dtype)
+    targets_covered['targetid'] = targets_all['targetid']
+    targets_covered['pk'] = targets_all['pk']
+    targets_covered['ra'] = targets_all['ra']
+    targets_covered['dec'] = targets_all['dec']
 
     nside = 32
     hpix = healpy.pixelfunc.ang2pix(nside, targets_all['ra'],
@@ -85,10 +100,33 @@ if __name__ == '__main__':
         d_rad = np.arctan2(np.sqrt(x**2 + y**2), z)
         d_deg = d_rad * 180. / np.pi
 
-        indx = np.where(d_deg < 1.5)[0]
-        targets = targets_all[icheck[indx]]
+        indx = np.where(d_deg < fields_entry['radius'])[0]
+        icircle = icheck[indx]
+
+        targets = targets_all[icircle]
+
+        within_circle = targets_covered['within_circle'][icircle]
+        targets_covered['within_circle_fields'][icircle,
+                                                within_circle] = fieldid
+        targets_covered['within_circle'][icircle] = within_circle + 1
+
+        f = field.Field(racen=fields_entry['racen'],
+                        deccen=fields_entry['deccen'],
+                        observatory=observatory)
+        f.targets_fromarray(target_array=targets)
+        ihex = icheck[indx[np.where(f.target_within)[0]]]
+        within_hex = targets_covered['within_hex'][ihex]
+        targets_covered['within_hex_fields'][ihex, within_hex] = fieldid
+        targets_covered['within_hex'][ihex] = within_hex + 1
 
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
         fitsio.write(field_target_file, targets, clobber=True)
+
+    targets_covered_base = 'rsTargetsCovered-{plan}-{obs}.fits'
+    targets_covered_base = targets_covered_base.format(plan=plan,
+                                                       obs=observatory)
+    targets_covered_file = os.path.join(os.path.dirname(targets_file),
+                                        targets_covered_base)
+    fitsio.write(targets_covered_file, targets_covered, clobber=True)

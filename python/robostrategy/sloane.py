@@ -109,6 +109,9 @@ class Sloane(object):
             (ra, dec) = (lon, lat)
         self.ra = ra
         self.dec = dec
+        l, b = _radec2lb(ra=self.ra, dec=self.dec)
+        self.l = l
+        self.b = b
         self.radius = radius
         return
 
@@ -156,14 +159,15 @@ class Sloane(object):
         By default, squashes just in b to make denser tiling
         in Galactic plane.
 """
-        l, b = _radec2lb(ra=self.ra, dec=self.dec)
         if(func is None):
-            (newl, newb) = self._squash_func(l=l, b=b)
+            (newl, newb) = self._squash_func(l=self.l, b=self.b)
         else:
-            (newl, newb) = func(l=l, b=b)
+            (newl, newb) = func(l=self.l, b=self.b)
         ra, dec = _lb2radec(l=newl, b=newb)
         self.ra = ra
         self.dec = dec
+        self.l = newl
+        self.b = newb
         return
 
     def deccut(self, dec=None, above=True):
@@ -173,6 +177,33 @@ class Sloane(object):
             ikeep = np.where(self.dec < dec)[0]
         self.ra = self.ra[ikeep]
         self.dec = self.dec[ikeep]
+        self.l = self.l[ikeep]
+        self.b = self.b[ikeep]
+        return
+
+    def deccut_lcoextend(self, dec=None, decextend=None, bmax=None,
+                         above=True):
+        if(above is True):
+            keep = (self.dec > dec) & ((self.dec > decextend) |
+                                       (np.abs(self.b) > bmax) |
+                                       (np.abs(self.l) > 180.))
+        else:
+            keep = (self.dec < dec) | ((self.dec < decextend) &
+                                       (np.abs(self.b) < bmax) &
+                                       (np.abs(self.l) < 180.))
+        ikeep = np.where(keep)[0]
+        self.ra = self.ra[ikeep]
+        self.dec = self.dec[ikeep]
+        self.l = self.l[ikeep]
+        self.b = self.b[ikeep]
+        return
+
+    def trim(self, indx):
+        self.ra = self.ra[indx]
+        self.dec = self.dec[indx]
+        self.l = self.l[indx]
+        self.b = self.b[indx]
+        return
 
     def _convert_radec(self, m, ra, dec):
         return m(((360. - ra) + 180.) % 360., dec, inverse=False)

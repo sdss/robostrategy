@@ -446,7 +446,6 @@ class AllocateLST(object):
                             if(minimize_time is True):
                                 objective.SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
             
-
         # Solve the problem
         if(minimize_time is True):
             objective.SetMinimization()
@@ -454,6 +453,11 @@ class AllocateLST(object):
             objective.SetMaximization()
         
         status = solver.Solve()
+        if(status != 0):
+            print("Solver failed: {status}.".format(status=status))
+            return(status)
+        else:
+            print("Solver succeeded.")
 
         # Extract the solution.
         # Here var is a number of exposures, and so is allocation.
