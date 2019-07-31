@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_cadence_html
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import configparser
+import argparse
+import os
+import sys
+import re
+import fitsio
+import sdss_access.path
+import roboscheduler.cadence as cadence
+
+sdss_path = sdss_access.path.Path()
+img_tag = "<a href='{png_file}'><img src='{png_file}' width=300px/></a>"
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Make page with cadence listings')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+                           'robostrategy-{plan}.cfg'.format(plan=plan))
+    cfg = configparser.ConfigParser(allow_no_value=True)
+    cfg.optionxform = str
+    cfg.read(cfgfile)
+
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist = cadence.CadenceList()
+    cadencelist.reset()
+    cadencelist.fromfits(cadences_file)
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory=observatory)
+    targets = fitsio.read(targets_file)
+    cadence_targets = [c.decode().strip() for c in targets['cadence']]
+
+    options_file = sdss_path.full('rsOptions', plan=plan,
+                                  observatory=observatory)
+    field_options = fitsio.read(options_file)
+    cadence_fields = [c.decode().strip() for c in field_options['cadence']]
+    cadence_fields.append('bright_single-100')
+    cadence_fields.append('dark_single-100')
+    cadence_fields.append('mixed_single-100')
+
+    cnames = list(cadencelist.cadences.keys())
+    cnames.sort()
+
+    html_file = ".".join(cadences_file.split('.')[0:-1])
+    html_file = html_file + '.html'
+
+    fp = open(html_file, "w")
+    fp.write("<html")
+    fp.write("""<head>
+<style>
+    table, th, tr, td {border: 1px solid black}
+    table {table-layout: fixed;}
+    div.scrollable { width: 600px; height: 100%; margin: 0; padding: 0; overflow: auto; }
+</style>
+""")
+    fp.write("<body>")
+    fp.write("<h2>Cadences used for {plan}</h2>".format(plan=plan))
+    fp.write("""<p>The cadences listed are those found in the
+rsCadences file that are requested for any target in rsTargets or
+are given as an option for the field in rsOptions. However, we
+<i>exclude</i> those of the form "[skybrightness]_single-[N]", where
+skybrightness is "dark", "bright", or "mixed" and N is between 1 and 99;
+these cases are just subsets of dark_single-100, bright_single-100,
+and mixed_single-100.</p>""")
+    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>""")
+    fp.write("<tbody>")
+    for cname in cnames:
+        if(((cname not in cadence_targets) &
+            (cname not in cadence_fields)) |
+           (re.match("dark_single-\d\d?$", cname) is not None) |
+           (re.match("bright_single-\d\d?$", cname) is not None) |
+           (re.match("mixed_single-\d\d?$", cname) is not None)):
+            continue
+        txt = cadencelist.cadences[cname].epoch_text()
+        fp.write("<td><div class=scrollable><p><b>{cname} (epochs)</b></p><pre>{txt}</pre></div></td>".format(txt=txt, cname=cname))
+        txt = cadencelist.cadences[cname].exposure_text()
+        fp.write("<td><div class=scrollable><p><b>{cname} (exposures)</b></p><pre>{txt}</pre></div></td>".format(txt=txt, cname=cname))
+        fp.write("</tr>")
+    fp.write("</tbody>")
+    fp.write("</table>")
+
+    fp.write("</body>")
+    fp.write("</html>")
+
+    fp.close()

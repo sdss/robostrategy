@@ -84,6 +84,11 @@ the Black Hole Mapper. These results are for the operations at {obs}.</p>
 """.format(plan=plan, summary=summary, description=description,
            obs=observatory.upper()))
 
+    fp.write("""<p><b>Cadences:</b>The detailed description of all 
+cadences used can be found <a href="rsCadences-{plan}-{obs}.html">
+here</a>.</p>
+""".format(plan=plan, obs=observatory))
+
     fp.write("""<p><b>Settings:</b></p>
 <ul>""")
     if('AllFields' in cfg['Allocation']):
@@ -144,6 +149,7 @@ the Black Hole Mapper. These results are for the operations at {obs}.</p>
                                                                  c=clist))
     fp.write("""</tbody>""")
     fp.write("""</table>""")
+
 
     fp.write("""<p>The full configuration file can be found on
 <a href="https://github.com/sdss/robostrategy/blob/master/etc/robostrategy-{plan}.cfg">github</a>.
