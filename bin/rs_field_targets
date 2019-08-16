@@ -21,8 +21,10 @@ import healpy
 import fitsio
 import sdss_access.path
 import robostrategy.field as field
+import roboscheduler.cadence as cadence
 
 sdss_path = sdss_access.path.Path()
+cadencelist = cadence.CadenceList()
 
 
 if __name__ == '__main__':
@@ -43,6 +45,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
