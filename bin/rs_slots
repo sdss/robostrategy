@@ -41,9 +41,13 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
     schedule = rsParams.cfg.get('Allocation', 'Schedule')
+    if(observatory == 'apo'):
+        fclear = rsParams.cfg.get('Allocation', 'fClearAPO')
+    else:
+        fclear = rsParams.cfg.get('Allocation', 'fClearLCO')
 
     slots = robostrategy.slots.Slots(observatory=observatory,
-                                     schedule=schedule)
+                                     schedule=schedule, fclear=fclear)
     slots.fill()
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
     slots.tofits(filename=slots_file)

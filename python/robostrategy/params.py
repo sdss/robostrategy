@@ -37,5 +37,7 @@ class RobostrategyParams(object, metaclass=RobostrategyParamsSingleton):
                                            'fgot_maximum': 1.5},
                             'Allocation': {'AllFields': '',
                                            'Schedule': 'normal',
-                                           'ExtraTimeFactor': 1.0}})
+                                           'ExtraTimeFactor': 1.0,
+                                           'fClearAPO': 0.5,
+                                           'fClearLCO': 0.7}})
         self.cfg.read(cfgfile)

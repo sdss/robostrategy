@@ -78,7 +78,7 @@ class Slots(object):
 """
     def __init__(self, nlst=24, skybrightness=[0., 0.35, 1.],
                  observatory='apo', duration=18 / 60.,
-                 schedule='normal'):
+                 schedule='normal', fclear=None):
         self.nlst = nlst
         self.lst = ((np.arange(nlst, dtype=np.float32) + 0.5) * 24. /
                     np.float32(self.nlst))
@@ -86,10 +86,13 @@ class Slots(object):
         self.nskybrightness = len(skybrightness) - 1
         self.observatory = observatory
         self.schedule = schedule
-        if(self.observatory == 'apo'):
-            self.fclear = 0.5
-        if(self.observatory == 'lco'):
-            self.fclear = 0.7
+        if(fclear is None):
+            if(self.observatory == 'apo'):
+                self.fclear = 0.5
+            if(self.observatory == 'lco'):
+                self.fclear = 0.7
+        else:
+            self.fclear = fclear
         self.duration = duration
         return
 
