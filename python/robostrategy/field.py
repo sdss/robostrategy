@@ -25,7 +25,7 @@ Dependencies:
  fitsio
  matplotlib
  roboscheduler
- observesim
+ kaiju
 
 """
 
@@ -756,32 +756,47 @@ class Field(object):
 
         # Assign the robots
         allRobots = self.mastergrid.allRobots
+        doneRobots = np.zeros(self.mastergrid.nRobots, dtype=np.bool)
         for indx in np.arange(self.mastergrid.nRobots, dtype=np.int32):
-            if(len(allRobots[indx].targetList) > 0):
-                itargets = np.array([t.id for t in allRobots[indx].targetList])
+            irobot = self._next_robot(allRobots=allRobots,
+                                      doneRobots=doneRobots,
+                                      got_target=got_target)
+            doneRobots[irobot] = True
+            if(len(allRobots[irobot].targetList) > 0):
+                itargets = np.array([t.id
+                                     for t in allRobots[irobot].targetList])
                 it = np.where((got_target[itargets] == 0) &
                               (self.target_incadence[itargets] > 0) &
                               ((self.target_requires_boss[itargets] == 0) |
-                               (allRobots[indx].hasBoss > 0)) &
+                               (allRobots[irobot].hasBoss > 0)) &
                               ((self.target_requires_apogee[itargets] == 0) |
-                               (allRobots[indx].hasApogee > 0)))[0]
+                               (allRobots[irobot].hasApogee > 0)))[0]
                 if(len(it) > 0):
                     ifull = itargets[it]
                     # For each target, here determine whether it is collided
-                    # in each exposure. Pass mask to pack_targets_greedy() to
-                    # exclude that as a solution. This needs some special
-                    # treatment in dealing with epochs in pack_targets_greedy().
+                    # in each exposure.
+                    nexp = self.cadencelist.cadences[self.field_cadence].nexposures
+                    # Create mask to pass to pack_targets_greedy() based
+                    # on collisions
+                    emask = np.ones((len(ifull), nexp), dtype=np.bool)
+                    for tindx, itarget in enumerate(ifull):
+                        for iexp in np.arange(nexp, dtype=np.int32):
+                            itarget = robotgrids[iexp].assignRobot2Target(indx,
+                                                                          itarget)
+                            if(robotgrids[iexp].allRobots[indx].isCollided()):
+                                emask[itarget, iexp] = False
                     p = cadence.Packing(self.field_cadence)
                     p.pack_targets_greedy(
                         target_ids=ifull,
                         target_cadences=self.target_cadence[ifull],
-                        value=self.target_value[ifull])
+                        value=self.target_value[ifull],
+                        exposure_mask=emask)
                     itarget = p.exposures  # make sure this returns targetid
                     iassigned = np.where(itarget >= 0)[0]
                     nassigned = len(iassigned)
                     if(nassigned > 0):
                         got_target[itarget[iassigned]] = 1
-                    self.assignments[indx, :] = itarget
+                    self.assignments[irobot, :] = itarget
 
         if(include_calibration):
             self.assign_calibration(category='SKY_APOGEE')
@@ -792,6 +807,20 @@ class Field(object):
         self.set_target_assignments()
 
         return
+
+    def _next_robot(self, allRobots=None, doneRobots=None, got_target=None):
+        """Get next robot in order of highest priority of remaining targets"""
+        maxPriority = np.zeros(len(allRobots), dtype=np.int32) - 9999
+        for indx, robot in enumerate(allRobots):
+            if(doneRobots[indx] is False):
+                if(len(robot.targetList) > 0):
+                    itargets = np.array([t.id for t in robot.targetList])
+                    inot = np.where(got_target[itargets] == 0)[0]
+                    if(len(inot) > 0):
+                        it = itargets[inot]
+                        maxPriority[indx] = self.target_priority[it].max()
+        imax = np.argmax(maxPriority)
+        return(imax)
 
     def add_observations(self):
         """For assigned targets, add observations if possible
