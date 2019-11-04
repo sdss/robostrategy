@@ -20,6 +20,8 @@ import numpy as np
 import astropy.coordinates as coordinates
 import astropy.units as units
 import fitsio
+import robostrategy
+import robostrategy.utils.memory as memory
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import robostrategy.params as params
@@ -94,11 +96,13 @@ if __name__ == '__main__':
     observatory = args.observatory
     ncadence = args.ncadence
 
+    print("1mem= {m}".format(m=memory.memory()))
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
     fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
     fgot_program = 'mwm_galactic'
 
+    print("2mem= {m}".format(m=memory.memory()))
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
@@ -106,20 +110,24 @@ if __name__ == '__main__':
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
     fields_array = fitsio.read(fields_file)
-    
+
     # ikeep = np.where(fields_array['fieldid'] == 11938)[0]
     # fields_array = fields_array[ikeep]
 
+    print("3mem= {m}".format(m=memory.memory()))
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     targets_all = fitsio.read(targets_file)
+    print("4mem= {m}".format(m=memory.memory()))
     targets_coord = coordinates.SkyCoord(ra=targets_all['ra'] * units.degree,
                                          dec=targets_all['dec'] * units.degree)
 
+    print("5mem= {m}".format(m=memory.memory()))
     field_cadence_file = sdss_path.full('rsFieldCadences',
                                         plan=plan, observatory=observatory)
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
 
+    print("6mem= {m}".format(m=memory.memory()))
     # Make list of all field cadences
     ncad = np.int32(hdr['NCAD'])
     all_cadences = []
@@ -127,11 +135,13 @@ if __name__ == '__main__':
         all_cadences.append(hdr['CAD{indx}'.format(indx=indx)])
     all_cadences = np.array(all_cadences)
 
+    print("7mem= {m}".format(m=memory.memory()))
     # Make list of all unique target cadences
     tcadences = [x.decode().strip() for x in targets_all['cadence']]
     utcadences = np.unique(np.array(tcadences))
     nutcadences = len(utcadences)
 
+    print("8mem= {m}".format(m=memory.memory()))
     # Make list of all unique target programs
     tprograms = [x.decode().strip() for x in targets_all['program']]
     utprograms = np.unique(np.array(tprograms))
@@ -142,6 +152,7 @@ if __name__ == '__main__':
         ifgotprogram = -1
     nutprograms = len(utprograms)
 
+    print("9mem= {m}".format(m=memory.memory()))
     assign_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
                     ('deccen', np.float64),
@@ -160,9 +171,11 @@ if __name__ == '__main__':
 
     assign_array = np.zeros(0, dtype=assign_dtype)
 
+    print("10mem= {m}".format(m=memory.memory()))
     for ifield in np.arange(len(fields_array)):
         fields_entry = fields_array[ifield]
         fieldid = fields_entry['fieldid']
+        print("mem= {m}".format(m=memory.memory()))
         if((fieldid % 1) == 0):
             print(fieldid, flush=True)
 
@@ -187,7 +200,9 @@ if __name__ == '__main__':
             f.targets_fromarray(targets)
 
             f.field_cadence = field_cadence
-            f.assign(include_calibration=False)
+            print("amem= {m}".format(m=memory.memory()))
+            f.assign(include_calibration=False, kaiju=False)
+            print("bmem= {m}".format(m=memory.memory()))
 
             if(field_cadence.split('-')[-1] == 'n'):
                 field_cadence_base = field_cadence.split('-')[0]
@@ -209,14 +224,21 @@ if __name__ == '__main__':
                         ngot_pp = np.array([0.])
                     if(ngot_pp.max() > 0):
                         fgot = ngot_pp / ngot_pp.max()
+                        print(ngot_pp)
+                        print(fgot)
                         fgot_unique, iunique = np.unique(fgot,
                                                          return_index=True)
+                        print(fgot_unique)
                         indx = np.where((fgot_unique >= fgot_minimum) &
                                         (fgot_unique <= fgot_maximum))[0]
                         if(len(indx) > 0):
                             ikeep = iunique[indx]
                         else:
                             ikeep = [iunique[-1]]
+                        print(ngot_pp[ikeep])
+                        print(fgot[ikeep])
+                        print(fgot_minimum)
+                        print(fgot_maximum)
                     else:
                         ikeep = np.arange(len(assign_entries))
 
@@ -227,10 +249,12 @@ if __name__ == '__main__':
                                                  utcadences, utprograms,
                                                  assign_dtype)
                 assign_array = np.append(assign_array, assign_entry)
+        print("mem= {m}".format(m=memory.memory()))
 
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
-    fitsio.write(options_file, assign_array, clobber=True)
+    hd = {'RSTVER': robostrategy.__version__}
+    fitsio.write(options_file, assign_array, header=hd, clobber=True)
 
     cadence_dtype = [('cadence', cadence.fits_type)]
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)

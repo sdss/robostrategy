@@ -18,6 +18,7 @@ import os
 import sys
 import numpy as np
 import fitsio
+import robostrategy
 import robostrategy.slots
 import roboscheduler.scheduler
 import roboscheduler.cadence as cadence
@@ -111,4 +112,5 @@ if __name__ == '__main__':
 
     slots_file = sdss_path.full('rsFieldSlots', plan=plan,
                                 observatory=observatory)
-    fitsio.write(slots_file, field_slots, clobber=True)
+    hd = {'RSTVER': robostrategy.__version__}
+    fitsio.write(slots_file, field_slots, header=hd, clobber=True)

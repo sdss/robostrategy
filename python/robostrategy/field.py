@@ -9,6 +9,7 @@ import numpy as np
 import fitsio
 import matplotlib.pyplot as plt
 
+import robostrategy.utils.memory as memory
 import roboscheduler.cadence as cadence
 import kaiju
 import kaiju.utils
@@ -176,6 +177,8 @@ class Field(object):
         """Return a RobotGrid instance"""
         rg = kaiju.utils.robotGridFromFilledHex(self.stepSize,
                                                 self.collisionBuffer)
+        for r in rg.allRobots:
+            r.setAlphaBeta(0., 180.)
         return(rg)
 
     def set_target_assignments(self):
@@ -346,7 +349,7 @@ class Field(object):
                                fiberID])
 
         self.mastergrid.setTargetList(self.tlist)
-        self.target_within = np.array([(len(t.validRobots) > 0)
+        self.target_within = np.array([(len(t.robotInds) > 0)
                                        for t in self.mastergrid.targetList],
                                       dtype=np.bool)
 
@@ -539,7 +542,7 @@ class Field(object):
         plt.ylim([-370., 370.])
         plt.legend()
 
-    def assign_calibration(self, category=None):
+    def assign_calibration(self, category=None, kaiju=True):
         """Assign calibration targets to robots within the field
 
         Notes:
@@ -597,7 +600,8 @@ class Field(object):
 
             curr_robot_targets[rindx] = np.zeros(0, dtype=np.int32)
             if(len(robot.targetList) > 0):
-                robot_targets = np.array([t.id for t in robot.targetList])
+                robot_targets = np.array([self.mastergrid.targetList[t].id
+                                          for t in robot.targetList])
                 curr_icalib = np.where((iscalib[robot_targets] > 0) &
                                        ((requires_boss == 0) |
                                         (robot.hasBoss > 0)) &
@@ -612,30 +616,40 @@ class Field(object):
         nexposures = self.cadencelist.cadences[self.field_cadence].nexposures
 
         robot_used = np.zeros(self.mastergrid.nRobots, dtype=np.int32)
-        for iexp in np.arange(nexposures, dtype=np.int32):
+        for iexp, rg in enumerate(self.robotgrids):
             calibration_assignments = (np.zeros(self.mastergrid.nRobots,
                                                 dtype=np.int32) - 1)
 
+            # Initial consistency check
+            if(kaiju):
+                for indx in np.arange(rg.nRobots):
+                    if(rg.allRobots[indx].isAssigned() is False):
+                        if(self.assignments[indx, iexp] >= 0):
+                            print("PRECHECK {i}: UH OH DID NOT ASSIGN ROBOT".format(i=iexp))
+                    elif(rg.targetList[rg.allRobots[indx].assignedTarget].id !=
+                         self.assignments[indx, iexp]):
+                        print("PRECHECK: UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
+
             # First, associate a calibration target with each robot
             # (preferentially but not necessarily one-to-one)
-            robot_icalib = (np.zeros(self.mastergrid.nRobots,
-                                     dtype=np.int32) - 1)
-            got_calib = np.zeros(self.ntarget, dtype=np.int32)
-            for indx in np.arange(self.mastergrid.nRobots):
-                # First try calibration targets not already taken
-                it = curr_robot_targets[indx]
-                if(len(it) > 0):
-                    ileft = np.where(got_calib[it] == 0)[0]
-                    if(len(ileft) > 0):
-                        robot_icalib[indx] = it[ileft[0]]
-                        got_calib[it[ileft[0]]] = 1
-
-                # Then try any calibration targets
-                if(robot_icalib[indx] == -1):
-                    it = curr_robot_targets[indx]
-                    if(len(it) > 0):
-                        robot_icalib[indx] = it[0]
-                        got_calib[it[0]] = 1
+            # robot_icalib = (np.zeros(self.mastergrid.nRobots,
+                                     # dtype=np.int32) - 1)
+            # got_calib = np.zeros(self.ntarget, dtype=np.int32)
+            # for indx in np.arange(self.mastergrid.nRobots):
+                # # First try calibration targets not already taken
+                # it = curr_robot_targets[indx]
+                # if(len(it) > 0):
+                    # ileft = np.where(got_calib[it] == 0)[0]
+                    # if(len(ileft) > 0):
+                        # robot_icalib[indx] = it[ileft[0]]
+                        # got_calib[it[ileft[0]]] = 1
+# 
+                # # Then try any calibration targets
+                # if(robot_icalib[indx] == -1):
+                    # it = curr_robot_targets[indx]
+                    # if(len(it) > 0):
+                        # robot_icalib[indx] = it[0]
+                        # got_calib[it[0]] = 1
 
             # Now make ordered list of robots to use
             exposure_assignments = self.assignments[:, iexp]
@@ -656,39 +670,73 @@ class Field(object):
             indx_order = np.argsort(sortby)[::-1]
 
             # Set up calibration assignments in that priority
+            got_calib = np.zeros(self.ntarget, dtype=np.int32)
             nassigned = 0
             for indx in indx_order:
-                if((robot_icalib[indx] >= 0) & (nassigned < ncalib) &
-                   (assignment_nexp[indx] != -1)):
-                    calibration_assignments[indx] = robot_icalib[indx]
-                    robot_used[indx] = 1
-                    nassigned = nassigned + 1
+                icalib = curr_robot_targets[indx]
+                for itry in icalib:
+                    if(got_calib[itry] == 0):
+                        got = True
+                        if(kaiju):
+                            rg.assignRobot2Target(indx, itry)
+                            if(rg.isCollidedWithAssignedInd(indx) == False):
+                                got = True
+                        if(got):
+                            calibration_assignments[indx] = itry
+                            got_calib[itry] = 1
+                            robot_used[indx] = 1
+                            nassigned = nassigned + 1
+                            break
+                        if(kaiju):
+                            rg.unassignRobot(indx)
+                if(nassigned >= ncalib):
+                    break
 
             # If there is a conflict with a single observation
+            # swap with another exposure (need to check collision)
             conflicts = ((calibration_assignments >= 0) &
                          (self.assignments[:, iexp] >= 0))
             single = (assignment_nexp == 1)
             isingle = np.where(conflicts & single)[0]
             for indx in isingle:
                 ifree = np.sort(np.where(self.assignments[indx, :] == -1)[0])
-                if(len(ifree) > 0):
+                for itry in ifree:
                     itarget = self.assignments[indx, iexp]
-                    self.assignments[indx, ifree] = itarget
-                    self.assignments[indx, iexp] = -1
+                    if(kaiju):
+                        self.robotgrids[itry].assignRobot2Target(indx, itarget)
+                        ica = self.robotgrids[itry].isCollidedWithAssigned(indx)
+                    else:
+                        ica = False
+                    if(ica == False):
+                        self.assignments[indx, itry] = itarget
+                        self.assignments[indx, iexp] = -1
+                        break
+                    if(kaiju):
+                        self.robotgrids[itry].unassignRobot(indx)
 
             # If there is a conflict with a multi-exposure observation
+            # just completely unassign (need to actually unassign)
             multi = (assignment_nexp > 1)
             imulti = np.where(conflicts & multi)[0]
             for indx in imulti:
                 iother = np.where(self.assignments[indx, :] ==
                                   self.assignments[indx, iexp])[0]
-                if(len(iother) > 0):
-                    self.assignments[indx, iother] = -1
-
+                for iun in iother:
+                    self.assignments[indx, iun] = -1
+                    self.robotgrids[iun].unassignRobot(indx)
+                    
             iassign = np.where(calibration_assignments >= 0)[0]
             self.assignments[iassign, iexp] = calibration_assignments[iassign]
+            if(kaiju):
+                for indx in np.arange(rg.nRobots):
+                    if(rg.allRobots[indx].isAssigned() is False):
+                        if(self.assignments[indx, iexp] >= 0):
+                            print("UH OH DID NOT ASSIGN ROBOT")
+                    elif(rg.targetList[rg.allRobots[indx].assignedTarget].id !=
+                         self.assignments[indx, iexp]):
+                        print("UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
 
-    def assign(self, include_calibration=True):
+    def assign(self, include_calibration=True, kaiju=True):
         """Assign targets to robots within the field
 
         Parameters:
@@ -754,17 +802,26 @@ class Field(object):
         if(len(iok) == 0):
             return
 
+        # Set up robotgrids
+        nexp = self.cadencelist.cadences[self.field_cadence].nexposures
+        for i in np.arange(nexp):
+            self.robotgrids.append(self._robotGrid())
+            self.robotgrids[i].setTargetList(self.tlist)
+
         # Assign the robots
         allRobots = self.mastergrid.allRobots
         doneRobots = np.zeros(self.mastergrid.nRobots, dtype=np.bool)
         for indx in np.arange(self.mastergrid.nRobots, dtype=np.int32):
             irobot = self._next_robot(allRobots=allRobots,
                                       doneRobots=doneRobots,
-                                      got_target=got_target)
+                                      got_target=got_target,
+                                      kaiju=kaiju)
             doneRobots[irobot] = True
             if(len(allRobots[irobot].targetList) > 0):
-                itargets = np.array([t.id
+                itargets = np.array([self.mastergrid.targetList[t].id
                                      for t in allRobots[irobot].targetList])
+                print(allRobots[irobot].targetList)
+                print(itargets)
                 it = np.where((got_target[itargets] == 0) &
                               (self.target_incadence[itargets] > 0) &
                               ((self.target_requires_boss[itargets] == 0) |
@@ -773,18 +830,22 @@ class Field(object):
                                (allRobots[irobot].hasApogee > 0)))[0]
                 if(len(it) > 0):
                     ifull = itargets[it]
-                    # For each target, here determine whether it is collided
-                    # in each exposure.
-                    nexp = self.cadencelist.cadences[self.field_cadence].nexposures
                     # Create mask to pass to pack_targets_greedy() based
                     # on collisions
-                    emask = np.ones((len(ifull), nexp), dtype=np.bool)
-                    for tindx, itarget in enumerate(ifull):
-                        for iexp in np.arange(nexp, dtype=np.int32):
-                            itarget = robotgrids[iexp].assignRobot2Target(indx,
-                                                                          itarget)
-                            if(robotgrids[iexp].allRobots[indx].isCollided()):
-                                emask[itarget, iexp] = False
+                    emask = np.zeros((len(ifull), nexp), dtype=np.bool)
+                    if(kaiju):
+                        for tindx, itarget in enumerate(ifull):
+                            for iexp in np.arange(nexp, dtype=np.int32):
+                                print("roro")
+                                print(irobot)
+                                print(itarget)
+                                print(self.robotgrids[iexp].allRobots[irobot].targetList)
+                                self.robotgrids[iexp].assignRobot2Target(irobot,
+                                                                         itarget)
+                                if(self.robotgrids[iexp].isCollidedWithAssigned(irobot)):
+                                    emask[tindx, iexp] = True
+                                # Reset robot -- perhaps there are more elegant ways
+                                self.robotgrids[iexp].unassignRobot(irobot)
                     p = cadence.Packing(self.field_cadence)
                     p.pack_targets_greedy(
                         target_ids=ifull,
@@ -797,30 +858,55 @@ class Field(object):
                     if(nassigned > 0):
                         got_target[itarget[iassigned]] = 1
                     self.assignments[irobot, :] = itarget
+                    for iexp, rg in enumerate(self.robotgrids):
+                        ctarget = self.assignments[irobot, iexp]
+                        if(kaiju):
+                            if(ctarget >= 0):
+                                rg.assignRobot2Target(irobot, ctarget)
+                            else:
+                                rg.unassignRobot(irobot)
+                            if(rg.isCollidedWithAssigned(irobot)):
+                                print("INCONSISTENCY")
+
+        # Explicitly unassign all unassigned robots so they
+        # are out of the way.
+        if(kaiju):
+            for iexp, rg in enumerate(self.robotgrids):
+                iun = np.where(self.assignments[:, iexp] < 0)[0]
+                for irobot in iun:
+                    rg.unassignRobot(irobot)
 
         if(include_calibration):
-            self.assign_calibration(category='SKY_APOGEE')
-            self.assign_calibration(category='STANDARD_APOGEE')
-            self.assign_calibration(category='SKY_BOSS')
-            self.assign_calibration(category='STANDARD_BOSS')
+            self.assign_calibration(category='SKY_APOGEE', kaiju=kaiju)
+            self.assign_calibration(category='STANDARD_APOGEE', kaiju=kaiju)
+            self.assign_calibration(category='SKY_BOSS', kaiju=kaiju)
+            self.assign_calibration(category='STANDARD_BOSS', kaiju=kaiju)
 
         self.set_target_assignments()
 
         return
 
-    def _next_robot(self, allRobots=None, doneRobots=None, got_target=None):
+    def _next_robot(self, allRobots=None, doneRobots=None, got_target=None,
+                    kaiju=True):
         """Get next robot in order of highest priority of remaining targets"""
-        maxPriority = np.zeros(len(allRobots), dtype=np.int32) - 9999
-        for indx, robot in enumerate(allRobots):
-            if(doneRobots[indx] is False):
-                if(len(robot.targetList) > 0):
-                    itargets = np.array([t.id for t in robot.targetList])
-                    inot = np.where(got_target[itargets] == 0)[0]
-                    if(len(inot) > 0):
-                        it = itargets[inot]
-                        maxPriority[indx] = self.target_priority[it].max()
-        imax = np.argmax(maxPriority)
-        return(imax)
+        if(kaiju):
+            maxPriority = np.zeros(len(allRobots), dtype=np.int32) - 9999
+            for indx, robot in enumerate(allRobots):
+                if(doneRobots[indx] == np.bool(False)):
+                    if(len(robot.targetList) > 0):
+                        itargets = np.array([self.mastergrid.targetList[t].id
+                                             for t in robot.targetList])
+                        inot = np.where(got_target[itargets] == 0)[0]
+                        if(len(inot) > 0):
+                            it = itargets[inot]
+                            maxPriority[indx] = self.target_priority[it].max()
+                else:
+                    maxPriority[indx] = - 99999
+            imax = np.argmax(maxPriority)
+            return(imax)
+        else:
+            inotdone = np.where(doneRobots == np.bool(False))[0]
+            return(inotdone[0])
 
     def add_observations(self):
         """For assigned targets, add observations if possible
@@ -874,7 +960,7 @@ class Field(object):
                         print("r={r}, t={t}".format(r=rindx, t=itarget))
                         ii = np.where(self.assignments[:, i] == itarget)[0]
                         print(ii)
-                if(robot.assignedTarget is None):
+                if(robot.isAssigned() is False):
                     nfake = nfake + 1
                     targetID = - nfake  # signal for fake target
                     priority = 200000  # LOWEST priority right now
@@ -884,7 +970,7 @@ class Field(object):
                     yr = yr + robot.yPos
                     ct = [[targetID, xr, yr, priority, fiberID]]
                     self.robotgrids[i].addTargetList(ct)
-                    while(self.robotgrids[i].isValidRobotTarget(rindx, targetID) is False):
+                    while(self.robotgrids[i].isValidRobotTarget(rindx, targetID) == False):
                         nfake = nfake + 1
                         targetID = - nfake  # signal for fake target
                         priority = 200000  # LOWEST priority right now
@@ -917,7 +1003,7 @@ class Field(object):
 
             if(success):
                 for rindx, r in enumerate(rg.allRobots):
-                    if(r.assignedTarget is not None):
-                        targetid = r.assignedTarget.id
+                    if(r.isAssigned()):
+                        targetid = rg.targetList[r.assignedTarget].id
                         if(targetid >= 0):
                             self.kaiju_assignments[rindx, iexp] = targetid
