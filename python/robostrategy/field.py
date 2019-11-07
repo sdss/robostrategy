@@ -9,7 +9,6 @@ import numpy as np
 import fitsio
 import matplotlib.pyplot as plt
 
-import robostrategy.utils.memory as memory
 import roboscheduler.cadence as cadence
 import kaiju
 import kaiju.utils
