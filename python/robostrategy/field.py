@@ -348,6 +348,12 @@ class Field(object):
                                fiberID])
 
         self.mastergrid.setTargetList(self.tlist)
+        self.target_id2indx = dict()
+        self.target_indx2id = dict()
+        for i, t in enumerate(self.mastergrid.targetList):
+            self.target_id2indx[t.id] = i
+            self.target_indx2id[i] = t.id
+
         self.target_within = np.array([(len(t.robotInds) > 0)
                                        for t in self.mastergrid.targetList],
                                       dtype=np.bool)
@@ -599,8 +605,8 @@ class Field(object):
 
             curr_robot_targets[rindx] = np.zeros(0, dtype=np.int32)
             if(len(robot.targetList) > 0):
-                robot_targets = np.array([self.mastergrid.targetList[t].id
-                                          for t in robot.targetList])
+                robot_targets = np.array([self.target_indx2id[x]
+                                          for x in robot.targetList])
                 curr_icalib = np.where((iscalib[robot_targets] > 0) &
                                        ((requires_boss == 0) |
                                         (robot.hasBoss > 0)) &
@@ -625,7 +631,7 @@ class Field(object):
                     if(rg.allRobots[indx].isAssigned() is False):
                         if(self.assignments[indx, iexp] >= 0):
                             print("PRECHECK {i}: UH OH DID NOT ASSIGN ROBOT".format(i=iexp))
-                    elif(rg.targetList[rg.allRobots[indx].assignedTarget].id !=
+                    elif(self.target_indx2id[rg.allRobots[indx].assignedTarget] !=
                          self.assignments[indx, iexp]):
                         print("PRECHECK: UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
 
@@ -678,10 +684,10 @@ class Field(object):
                         got = True
                         if(kaiju):
                             rg.assignRobot2Target(indx, itry)
-                            if(rg.isCollidedWithAssignedInd(indx) == False):
+                            if(rg.isCollidedWithAssigned(rg.allRobots[indx]) == False):
                                 got = True
                         if(got):
-                            calibration_assignments[indx] = itry
+                            calibration_assignments[indx] = self.target_indx2id[itry]
                             got_calib[itry] = 1
                             robot_used[indx] = 1
                             nassigned = nassigned + 1
@@ -702,8 +708,9 @@ class Field(object):
                 for itry in ifree:
                     itarget = self.assignments[indx, iexp]
                     if(kaiju):
-                        self.robotgrids[itry].assignRobot2Target(indx, itarget)
-                        ica = self.robotgrids[itry].isCollidedWithAssigned(indx)
+                        self.robotgrids[itry].assignRobot2Target(indx,
+                                                                 itarget)
+                        ica = self.robotgrids[itry].isCollidedWithAssigned(self.robotgrids[itry].allRobots[indx])
                     else:
                         ica = False
                     if(ica == False):
@@ -731,7 +738,7 @@ class Field(object):
                     if(rg.allRobots[indx].isAssigned() is False):
                         if(self.assignments[indx, iexp] >= 0):
                             print("UH OH DID NOT ASSIGN ROBOT")
-                    elif(rg.targetList[rg.allRobots[indx].assignedTarget].id !=
+                    elif(self.target_indx2id[rg.allRobots[indx].assignedTarget] !=
                          self.assignments[indx, iexp]):
                         print("UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
 
@@ -816,17 +823,16 @@ class Field(object):
                                       got_target=got_target,
                                       kaiju=kaiju)
             doneRobots[irobot] = True
-            if(len(allRobots[irobot].targetList) > 0):
-                itargets = np.array([self.mastergrid.targetList[t].id
-                                     for t in allRobots[irobot].targetList])
-                print(allRobots[irobot].targetList)
-                print(itargets)
+            cRobot = allRobots[irobot]
+            if(len(cRobot.targetList) > 0):
+                itargets = np.array([self.target_indx2id[x]
+                                     for x in cRobot.targetList])
                 it = np.where((got_target[itargets] == 0) &
                               (self.target_incadence[itargets] > 0) &
                               ((self.target_requires_boss[itargets] == 0) |
-                               (allRobots[irobot].hasBoss > 0)) &
+                               (cRobot.hasBoss > 0)) &
                               ((self.target_requires_apogee[itargets] == 0) |
-                               (allRobots[irobot].hasApogee > 0)))[0]
+                               (cRobot.hasApogee > 0)))[0]
                 if(len(it) > 0):
                     ifull = itargets[it]
                     # Create mask to pass to pack_targets_greedy() based
@@ -835,13 +841,10 @@ class Field(object):
                     if(kaiju):
                         for tindx, itarget in enumerate(ifull):
                             for iexp in np.arange(nexp, dtype=np.int32):
-                                print("roro")
-                                print(irobot)
-                                print(itarget)
-                                print(self.robotgrids[iexp].allRobots[irobot].targetList)
                                 self.robotgrids[iexp].assignRobot2Target(irobot,
                                                                          itarget)
-                                if(self.robotgrids[iexp].isCollidedWithAssigned(irobot)):
+                                eRobot = self.robotgrids[iexp].allRobots[irobot]
+                                if(self.robotgrids[iexp].isCollidedWithAssigned(eRobot)):
                                     emask[tindx, iexp] = True
                                 # Reset robot -- perhaps there are more elegant ways
                                 self.robotgrids[iexp].unassignRobot(irobot)
@@ -861,10 +864,19 @@ class Field(object):
                         ctarget = self.assignments[irobot, iexp]
                         if(kaiju):
                             if(ctarget >= 0):
-                                rg.assignRobot2Target(irobot, ctarget)
+                                try:
+                                    rg.assignRobot2Target(irobot, ctarget)
+                                except RuntimeError:
+                                    print(irobot)
+                                    print(iexp)
+                                    print(ctarget)
+                                    print(rg.allRobots[irobot].targetList)
+                                    print([rg.targetList[x].id
+                                           for x in rg.allRobots[irobot].targetList])
+                                    sys.exit(1)
                             else:
                                 rg.unassignRobot(irobot)
-                            if(rg.isCollidedWithAssigned(irobot)):
+                            if(rg.isCollidedWithAssigned(rg.allRobots[irobot])):
                                 print("INCONSISTENCY")
 
         # Explicitly unassign all unassigned robots so they
@@ -893,8 +905,8 @@ class Field(object):
             for indx, robot in enumerate(allRobots):
                 if(doneRobots[indx] == np.bool(False)):
                     if(len(robot.targetList) > 0):
-                        itargets = np.array([self.mastergrid.targetList[t].id
-                                             for t in robot.targetList])
+                        itargets = np.array([self.target_indx2id[x]
+                                             for x in robot.targetList])
                         inot = np.where(got_target[itargets] == 0)[0]
                         if(len(inot) > 0):
                             it = itargets[inot]
@@ -1003,6 +1015,6 @@ class Field(object):
             if(success):
                 for rindx, r in enumerate(rg.allRobots):
                     if(r.isAssigned()):
-                        targetid = rg.targetList[r.assignedTarget].id
+                        targetid = self.target_indx2id[r.assignedTarget]
                         if(targetid >= 0):
                             self.kaiju_assignments[rindx, iexp] = targetid
