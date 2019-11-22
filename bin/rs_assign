@@ -188,7 +188,7 @@ if __name__ == '__main__':
                             observatory=observatory)
             f.targets_fromarray(targets)
 
-            f.field_cadence = field_cadence
+            f.set_field_cadence(field_cadence)
             f.assign(include_calibration=False, kaiju=False)
 
             if(field_cadence.split('-')[-1] == 'n'):
