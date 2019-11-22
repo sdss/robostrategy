@@ -5,13 +5,15 @@
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 
 
+import os
+import json
 import numpy as np
 import fitsio
 import matplotlib.pyplot as plt
 
 import roboscheduler.cadence as cadence
 import kaiju
-import kaiju.utils
+import kaiju.robotGrid
 
 # import observesim.robot as robot
 
@@ -152,7 +154,7 @@ class Field(object):
         self.deccen = deccen
         self.observatory = observatory
         self.cadencelist = cadence.CadenceList()
-        self.field_cadence = None
+        self.set_field_cadence('none')
         self.assignments = None
         self.target_assigned = None
         self.target_assignments = None
@@ -174,8 +176,7 @@ class Field(object):
 
     def _robotGrid(self):
         """Return a RobotGrid instance"""
-        rg = kaiju.utils.robotGridFromFilledHex(self.stepSize,
-                                                self.collisionBuffer)
+        rg = kaiju.robotGrid.RobotGridFilledHex()
         for r in rg.allRobots:
             r.setAlphaBeta(0., 180.)
         return(rg)
@@ -192,7 +193,7 @@ class Field(object):
         if(self.assignments is None):
             return
 
-        nexp = self.cadencelist.cadences[self.field_cadence].nexposures
+        nexp = self.nexposures
         self.target_assignments = np.zeros((self.ntarget, nexp),
                                            dtype=np.int32) - 1
         self.target_assigned = np.zeros(self.ntarget, dtype=np.int32)
@@ -386,7 +387,15 @@ class Field(object):
         self.targets_fromarray(target_array)
         return
 
-    def fromfits(self, filename=None, read_assignments=True, kaiju=False):
+    def set_field_cadence(self, field_cadence='none'):
+        self.field_cadence = field_cadence
+        if(self.field_cadence != 'none'):
+            self.nexposures = self.cadencelist.cadences[self.field_cadence].nexposures
+        else:
+            self.nexposures = 0
+        return
+
+    def fromfits(self, filename=None, read_assignments=True):
         """Read field from a FITS file
 
         Parameters:
@@ -398,14 +407,15 @@ class Field(object):
         hdr = fitsio.read_header(filename, ext=1)
         self.racen = np.float64(hdr['RACEN'])
         self.deccen = np.float64(hdr['DECCEN'])
-        self.field_cadence = hdr['FCADENCE'].strip()
+        self.set_field_cadence(hdr['FCADENCE'].strip())
         if((self.field_cadence != 'none') & (read_assignments)):
             self.assignments = fitsio.read(filename, ext=2)
-        if((self.field_cadence != 'none') & (read_assignments) & (kaiju)):
-            self.kaiju_assignments = fitsio.read(filename, ext=3)
         self.targets_fromfits(filename)
+        self.make_robotgrids()
         if((self.field_cadence != 'none') & (read_assignments)):
             self.set_target_assignments()
+        if(read_assignments):
+            self._assignments_to_grids()
         return
 
     def targets_toarray(self):
@@ -482,8 +492,6 @@ class Field(object):
         fitsio.write(filename, tarray, header=hdr, clobber=clobber)
         if(self.assignments is not None):
             fitsio.write(filename, self.assignments, clobber=False)
-        if(self.kaiju_assignments is not None):
-            fitsio.write(filename, self.kaiju_assignments, clobber=False)
         return
 
     def plot(self, epochs=None):
@@ -618,8 +626,6 @@ class Field(object):
         ncalib = getattr(self, 'n{c}'.format(c=category).lower())
 
         # Loop over exposures
-        nexposures = self.cadencelist.cadences[self.field_cadence].nexposures
-
         robot_used = np.zeros(self.mastergrid.nRobots, dtype=np.int32)
         for iexp, rg in enumerate(self.robotgrids):
             calibration_assignments = (np.zeros(self.mastergrid.nRobots,
@@ -686,6 +692,8 @@ class Field(object):
                             rg.assignRobot2Target(indx, itry)
                             if(rg.isCollidedWithAssigned(rg.allRobots[indx]) == False):
                                 got = True
+                            else:
+                                got = False
                         if(got):
                             calibration_assignments[indx] = self.target_indx2id[itry]
                             got_calib[itry] = 1
@@ -730,7 +738,7 @@ class Field(object):
                 for iun in iother:
                     self.assignments[indx, iun] = -1
                     self.robotgrids[iun].unassignRobot(indx)
-                    
+
             iassign = np.where(calibration_assignments >= 0)[0]
             self.assignments[iassign, iexp] = calibration_assignments[iassign]
             if(kaiju):
@@ -741,6 +749,15 @@ class Field(object):
                     elif(self.target_indx2id[rg.allRobots[indx].assignedTarget] !=
                          self.assignments[indx, iexp]):
                         print("UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
+
+    def make_robotgrids(self):
+        self.robotgrids = []
+        for i in np.arange(self.nexposures):
+            self.robotgrids.append(self._robotGrid())
+            ta = self.mastergrid.target_array()
+            self.robotgrids[i].clearTargetList()
+            self.robotgrids[i].target_fromarray(ta)
+        return
 
     def assign(self, include_calibration=True, kaiju=True):
         """Assign targets to robots within the field
@@ -785,7 +802,7 @@ class Field(object):
 """
 
         # Initialize
-        nexposures = self.cadencelist.cadences[self.field_cadence].nexposures
+        nexposures = self.nexposures
         self.assignments = (np.zeros((self.mastergrid.nRobots, nexposures),
                                      dtype=np.int32) - 1)
         got_target = np.zeros(self.ntarget, dtype=np.int32)
@@ -809,12 +826,10 @@ class Field(object):
             return
 
         # Set up robotgrids
-        nexp = self.cadencelist.cadences[self.field_cadence].nexposures
-        for i in np.arange(nexp):
-            self.robotgrids.append(self._robotGrid())
-            self.robotgrids[i].setTargetList(self.tlist)
+        self.make_robotgrids()
 
         # Assign the robots
+        nexp = self.nexposures
         allRobots = self.mastergrid.allRobots
         doneRobots = np.zeros(self.mastergrid.nRobots, dtype=np.bool)
         for indx in np.arange(self.mastergrid.nRobots, dtype=np.int32):
@@ -897,6 +912,33 @@ class Field(object):
 
         return
 
+    def html(self, filename):
+        """Write HTML format file for visualizing assignments
+
+        Parameters:
+        ----------
+
+        filename : str
+            name of file to write to
+"""
+        html_str = '<script type="text/javascript">\n'
+        html_str = html_str + 'target_obj = ' + json.dumps(self.mastergrid.target_dict()) + ";\n"
+        html_str = html_str + 'var robot_obj = new Array();\n'
+        for iexp, rg in enumerate(self.robotgrids):
+            html_str = html_str +\
+                'robot_obj[{iexp}] = '.format(iexp=iexp) +\
+                json.dumps(rg.robot_dict()) + ";\n"
+        html_str = html_str + '</script>\n'
+        fp = open(os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'data',
+                               'field.html'), "r")
+        for l in fp.readlines():
+            html_str = html_str + l
+        fp.close()
+        fp = open(filename, "w")
+        fp.write(html_str)
+        fp.close()
+        return
+
     def _next_robot(self, allRobots=None, doneRobots=None, got_target=None,
                     kaiju=True):
         """Get next robot in order of highest priority of remaining targets"""
@@ -956,48 +998,22 @@ class Field(object):
 
     def _assignments_to_grids(self):
         """Transfer assignments to RobotGrid objects"""
-        nexp = self.cadencelist.cadences[self.field_cadence].nexposures
-        self.robotgrids = []
+        nexp = self.nexposures
         for i in np.arange(nexp):
-            self.robotgrids.append(self._robotGrid())
-            self.robotgrids[i].setTargetList(self.tlist)
-            nfake = 0
             for rindx, robot in enumerate(self.robotgrids[i].allRobots):
                 itarget = self.assignments[rindx, i]
                 if(itarget >= 0):
-                    try:
-                        self.robotgrids[i].assignRobot2Target(rindx, itarget)
-                    except:
-                        print("r={r}, t={t}".format(r=rindx, t=itarget))
-                        ii = np.where(self.assignments[:, i] == itarget)[0]
-                        print(ii)
-                if(robot.isAssigned() is False):
-                    nfake = nfake + 1
-                    targetID = - nfake  # signal for fake target
-                    priority = 200000  # LOWEST priority right now
-                    fiberID = 2  # BOSS, so any robot gets it
-                    xr, yr = robot.randomXYUniform()
-                    xr = xr + robot.xPos
-                    yr = yr + robot.yPos
-                    ct = [[targetID, xr, yr, priority, fiberID]]
-                    self.robotgrids[i].addTargetList(ct)
-                    while(self.robotgrids[i].isValidRobotTarget(rindx, targetID) == False):
-                        nfake = nfake + 1
-                        targetID = - nfake  # signal for fake target
-                        priority = 200000  # LOWEST priority right now
-                        fiberID = 2  # BOSS, so any robot gets it
-                        xr, yr = robot.randomXYUniform()
-                        xr = xr + robot.xPos
-                        yr = yr + robot.yPos
-                        ct = [[targetID, xr, yr, priority, fiberID]]
-                        self.robotgrids[i].addTargetList(ct)
-                        
-                    self.robotgrids[i].assignRobot2Target(rindx, targetID)
+                    self.robotgrids[i].assignRobot2Target(rindx, itarget)
+            for rindx, robot in enumerate(self.robotgrids[i].allRobots):
+                itarget = self.assignments[rindx, i]
+                if(itarget < 0):
+                    self.robotgrids[i].unassignRobot(rindx)
+        return
 
     def apply_kaiju(self):
-        """Apply kaiju conditions to field."""
+        """Apply kaiju conditions to field. Deprecated"""
         self._assignments_to_grids()
-        nexposures = self.cadencelist.cadences[self.field_cadence].nexposures
+        nexposures = self.nexposures
         self.kaiju_assignments = (np.zeros((self.mastergrid.nRobots,
                                             nexposures), dtype=np.int32) - 1)
         for iexp, rg in enumerate(self.robotgrids):

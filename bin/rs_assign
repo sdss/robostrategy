@@ -199,7 +199,7 @@ if __name__ == '__main__':
                             observatory=observatory)
             f.targets_fromarray(targets)
 
-            f.field_cadence = field_cadence
+            f.set_field_cadence(field_cadence)
             print("amem= {m}".format(m=memory.memory()))
             f.assign(include_calibration=False, kaiju=False)
             print("bmem= {m}".format(m=memory.memory()))

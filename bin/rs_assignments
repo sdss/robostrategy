@@ -83,7 +83,7 @@ if __name__ == '__main__':
                                              fieldid=fieldid)
         f.fromfits(field_assigned_file, kaiju=kaiju)
 
-        f.field_cadence = allocate.field_array['cadence'][indx].decode().strip()
+        f.set_field_cadence(allocate.field_array['cadence'][indx].decode().strip())
 
         if(f.assignments is not None):
             if(kaiju):

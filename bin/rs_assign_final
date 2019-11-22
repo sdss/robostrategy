@@ -65,7 +65,8 @@ if __name__ == '__main__':
                                            fieldid=fieldid)
         f.targets_fromfits(field_target_file)
 
-        f.field_cadence = allocate.field_array['cadence'][indx].decode().strip()
+        field_cadence = allocate.field_array['cadence'][indx].decode().strip()
+        f.set_field_cadence(field_cadence)
 
         if(f.field_cadence != 'none'):
             f.assign()
