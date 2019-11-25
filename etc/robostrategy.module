@@ -14,11 +14,10 @@
 # the second line if needed, but most products should
 # leave this alone.
 #
-proc ModulesHelp {{ }} {{
-    global product version
-    puts stderr This module adds $product/$version to your environment.
-
-}}
+#proc ModulesHelp {{ }} {{
+#    global product version
+#    puts stderr "This module adds $product/$version to your environment."
+#}}
 #
 # These variables are used below.  The product variable should be set to
 # the name of the product and never changed.  The version variable will
@@ -34,7 +33,7 @@ conflict $product
 # modify the part in quotes if you really need to, but most products should
 # leave this alone.
 #
-module-whatis Sets up $product/$version in your environment.
+module-whatis "Sets up $product/$version in your environment."
 #
 # DEPENDENCIES SECTION
 #
@@ -43,9 +42,9 @@ module-whatis Sets up $product/$version in your environment.
 # A mandatory dependency is a module load command followed by a prereq
 # command.  An optional dependency is not followed by a prereq statement.
 #
-
-
-
+module load python/3.6.3
+module load roboscheduler
+module load kaiju
 #
 # ENVIRONMENT SECTION
 #
@@ -64,11 +63,10 @@ setenv [string toupper $product]_DIR $PRODUCT_DIR
 # template product layout.  These will be set or commented as needed by the
 # sdss4install script.
 #
-{needs_bin}prepend-path PATH $PRODUCT_DIR/bin
-{needs_python}prepend-path PYTHONPATH $PRODUCT_DIR/lib/{pyversion}/site-packages
-{needs_trunk_python}prepend-path PYTHONPATH $PRODUCT_DIR/python
-{needs_ld_lib}prepend-path LD_LIBRARY_PATH $PRODUCT_DIR/lib
-{needs_idl}prepend-path IDL_PATH +$PRODUCT_DIR/pro
+prepend-path PATH $PRODUCT_DIR/bin
+prepend-path PYTHONPATH $PRODUCT_DIR/python
 #
 # Add any non-standard Module code below this point.
 #
+#
+setenv ROBOSTRATEGY_DATA /uufs/chpc.utah.edu/common/home/sdss10/sdss5/sandbox/robostrategy
