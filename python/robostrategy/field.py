@@ -689,6 +689,8 @@ class Field(object):
                     if(got_calib[itry] == 0):
                         got = True
                         if(kaiju):
+                            if(rg.allRobots[indx].isAssigned()):
+                                rg.unassignRobot(indx)
                             rg.assignRobot2Target(indx, itry)
                             if(rg.isCollidedWithAssigned(rg.allRobots[indx]) == False):
                                 got = True
@@ -702,6 +704,9 @@ class Field(object):
                             break
                         if(kaiju):
                             rg.unassignRobot(indx)
+                            if(self.assignments[indx, iexp] >= 0):
+                                rg.assignRobot2Target(indx,
+                                                      self.assignments[indx, iexp])
                 if(nassigned >= ncalib):
                     break
 
@@ -724,6 +729,10 @@ class Field(object):
                     if(ica == False):
                         self.assignments[indx, itry] = itarget
                         self.assignments[indx, iexp] = -1
+                        #if(kaiju):
+                            # if((iexp == 0) & (indx == 361)):
+                                # print("HERE!!")
+                            #self.robotgrids[iexp].unassignRobot(indx)
                         break
                     if(kaiju):
                         self.robotgrids[itry].unassignRobot(indx)
@@ -746,9 +755,26 @@ class Field(object):
                     if(rg.allRobots[indx].isAssigned() is False):
                         if(self.assignments[indx, iexp] >= 0):
                             print("UH OH DID NOT ASSIGN ROBOT")
+                            print("indx={indx}".format(indx=indx))
+                            print("iexp={iexp}".format(iexp=iexp))
+                            print("itarget={itarget}".format(itarget=self.assignments[indx, iexp]))
                     elif(self.target_indx2id[rg.allRobots[indx].assignedTarget] !=
                          self.assignments[indx, iexp]):
                         print("UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
+
+        if(kaiju):
+            for iexp, rg in enumerate(self.robotgrids):
+                for indx in np.arange(rg.nRobots):
+                    if(rg.allRobots[indx].isAssigned() is False):
+                        if(self.assignments[indx, iexp] >= 0):
+                            print("UH OH DID NOT ASSIGN ROBOT")
+                        if((iexp == 0) & (indx == 110)):
+                            print("HERE")
+                        if(rg.isCollidedInd(indx)):
+                            rg.unassignRobot(indx)
+                            print(rg.isCollidedInd(indx))
+                        if((iexp == 0) & (indx == 110)):
+                            print("DONE")
 
     def make_robotgrids(self):
         self.robotgrids = []
@@ -901,6 +927,17 @@ class Field(object):
                 iun = np.where(self.assignments[:, iexp] < 0)[0]
                 for irobot in iun:
                     rg.unassignRobot(irobot)
+
+        # Make sure all assigned robots are assigned
+        if(kaiju):
+            for iexp, rg in enumerate(self.robotgrids):
+                for indx in np.arange(rg.nRobots):
+                    if(rg.allRobots[indx].isAssigned() is False):
+                        if(self.assignments[indx, iexp] >= 0):
+                            print("UH OH DID NOT ASSIGN ROBOT")
+                    elif(self.target_indx2id[rg.allRobots[indx].assignedTarget] !=
+                         self.assignments[indx, iexp]):
+                        print("UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
 
         if(include_calibration):
             self.assign_calibration(category='SKY_APOGEE', kaiju=kaiju)
