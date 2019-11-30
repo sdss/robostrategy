@@ -37,14 +37,10 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
-    parser.add_argument('-k', '--kaiju', dest='kaiju', action='store_true',
-                        help='run on Kaiju assignments',
-                        default=False)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
-    kaiju = args.kaiju
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -81,15 +77,12 @@ if __name__ == '__main__':
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
-        f.fromfits(field_assigned_file, kaiju=kaiju)
+        f.fromfits(field_assigned_file)
 
         f.set_field_cadence(allocate.field_array['cadence'][indx].decode().strip())
 
         if(f.assignments is not None):
-            if(kaiju):
-                assignments = f.kaiju_assignments
-            else:
-                assignments = f.assignments
+            assignments = f.assignments
             nexposures = assignments.shape[1]
             for iexp in np.arange(nexposures):
                 iassigned = np.where(assignments[:, iexp] >= 0)[0]
@@ -117,10 +110,4 @@ if __name__ == '__main__':
     print(count)
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
-    if(kaiju):
-        assigned_dir = os.path.dirname(assigned_file)
-        assigned_file = os.path.join(assigned_dir,
-                                     'rsKaijuAssignments-{plan}-{obs}.fits')
-        assigned_file = assigned_file.format(plan=plan,
-                                             obs=observatory)
     fitsio.write(assigned_file, assignment, clobber=True)
