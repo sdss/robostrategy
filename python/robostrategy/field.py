@@ -949,6 +949,35 @@ class Field(object):
 
         return
 
+    def tojs(self, filename):
+        """Write Javascript for each exposure
+
+        Parameters:
+        ----------
+
+        filename : str
+            name of file to write to
+
+        Comments:
+        ---------
+
+        Javascript assigns target information to target_obj dict
+        and robot information to robot_obj, an array of dicts
+"""
+        js_str = '{"target_obj" : ' + json.dumps(self.mastergrid.target_dict()) + ",\n"
+        js_str = js_str + '"robot_obj" : [\n'
+        for iexp, rg in enumerate(self.robotgrids):
+            js_str = js_str +\
+                json.dumps(rg.robot_dict())
+            if(iexp < len(self.robotgrids) - 1):
+                js_str = js_str + ","
+            js_str = js_str + "\n"
+        js_str = js_str + ']}'
+        fp = open(filename, "w")
+        fp.write(js_str)
+        fp.close()
+        return
+
     def html(self, filename):
         """Write HTML format file for visualizing assignments
 

@@ -120,16 +120,6 @@ if __name__ == '__main__':
 
     targets = get_targets(cfg=cfg)
 
-    try:
-        for c in rsParams.cfg['TargetValueRescale']:
-            indx = np.where(targets['cadence'] == c)[0]
-            if(len(indx) > 0):
-                scale = np.float32(rsParams.cfg.get('ValueRescale', c))
-                targets['value'][indx] = targets['value'][indx] * scale
-    except KeyError:
-        print("No TargetValueRescale")
-    
-
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     fitsio.write(targets_file, targets, clobber=True)

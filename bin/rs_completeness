@@ -55,14 +55,10 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
-    parser.add_argument('-k', '--kaiju', dest='kaiju', action='store_true',
-                        help='run on Kaiju assignments',
-                        default=False)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
-    kaiju = args.kaiju
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
@@ -96,9 +92,6 @@ if __name__ == '__main__':
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
-    if(kaiju):
-        assigned_file = assigned_file.replace('rsAssignments',
-                                              'rsKaijuAssignments')
     assigned = fitsio.read(assigned_file)
 
     gotpk = np.zeros(targets['pk'].max() + 1, dtype=np.int8)
@@ -112,9 +105,6 @@ if __name__ == '__main__':
 
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
-    if(kaiju):
-        completeness_file = completeness_file.replace('rsCompleteness',
-                                                      'rsKaijuCompleteness')
 
     icadence = np.where(cadences != "none")[0]
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
