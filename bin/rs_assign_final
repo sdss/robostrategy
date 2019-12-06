@@ -36,10 +36,15 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-n', '--no-kaiju', dest='kaiju',
+                        help='do not use kaiju',
+                        default=True, action='store_false')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    kaiju = args.kaiju
+    print("kaiju = {kaiju}".format(kaiju=kaiju))
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -69,7 +74,7 @@ if __name__ == '__main__':
         f.set_field_cadence(field_cadence)
 
         if(f.field_cadence != 'none'):
-            f.assign()
+            f.assign(kaiju=kaiju)
 
         field_assigned_file = sdss_path.full('rsFieldAssignments',
                                              plan=plan,

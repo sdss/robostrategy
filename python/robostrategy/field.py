@@ -145,11 +145,10 @@ class Field(object):
     def __init__(self, racen=None, deccen=None,
                  db=True, observatory='apo'):
         self.stepSize = 1  # for kaiju
-        self.collisionBuffer = 0.1  # for kaiju
+        self.collisionBuffer = 2.0  # for kaiju
         self.mastergrid = self._robotGrid()
         self.robotgrids = []
         self.stepSize = 1
-        self.collisionBuffer = 0.1
         self.racen = racen
         self.deccen = deccen
         self.observatory = observatory
@@ -176,7 +175,7 @@ class Field(object):
 
     def _robotGrid(self):
         """Return a RobotGrid instance"""
-        rg = kaiju.robotGrid.RobotGridFilledHex()
+        rg = kaiju.robotGrid.RobotGridFilledHex(collisionBuffer=self.collisionBuffer)
         for r in rg.allRobots:
             r.setAlphaBeta(0., 180.)
         return(rg)
@@ -768,13 +767,8 @@ class Field(object):
                     if(rg.allRobots[indx].isAssigned() is False):
                         if(self.assignments[indx, iexp] >= 0):
                             print("UH OH DID NOT ASSIGN ROBOT")
-                        if((iexp == 0) & (indx == 110)):
-                            print("HERE")
                         if(rg.isCollidedInd(indx)):
                             rg.unassignRobot(indx)
-                            print(rg.isCollidedInd(indx))
-                        if((iexp == 0) & (indx == 110)):
-                            print("DONE")
 
     def make_robotgrids(self):
         self.robotgrids = []
@@ -828,6 +822,7 @@ class Field(object):
 """
 
         # Initialize
+        np.random.seed(int(self.racen))
         nexposures = self.nexposures
         self.assignments = (np.zeros((self.mastergrid.nRobots, nexposures),
                                      dtype=np.int32) - 1)
@@ -964,7 +959,16 @@ class Field(object):
         Javascript assigns target information to target_obj dict
         and robot information to robot_obj, an array of dicts
 """
-        js_str = '{"target_obj" : ' + json.dumps(self.mastergrid.target_dict()) + ",\n"
+        ii = np.where(self.target_within)[0]
+        nwithin = len(ii)
+        js_str = "{"
+        js_str = js_str + '"racen" : ' + str(self.racen) + ',\n'
+        js_str = js_str + '"deccen" : ' + str(self.deccen) + ',\n'
+        js_str = js_str + '"field_cadence" : "' + str(self.field_cadence) + '",\n'
+        js_str = js_str + '"observatory" : "' + str(self.observatory) + '",\n'
+        js_str = js_str + '"ntarget" : ' + str(self.ntarget) + ',\n'
+        js_str = js_str + '"nwithin" : ' + str(nwithin) + ',\n'
+        js_str = js_str + '"target_obj" : ' + json.dumps(self.mastergrid.target_dict()) + ',\n'
         js_str = js_str + '"robot_obj" : [\n'
         for iexp, rg in enumerate(self.robotgrids):
             js_str = js_str +\
@@ -1008,24 +1012,20 @@ class Field(object):
     def _next_robot(self, allRobots=None, doneRobots=None, got_target=None,
                     kaiju=True):
         """Get next robot in order of highest priority of remaining targets"""
-        if(kaiju):
-            maxPriority = np.zeros(len(allRobots), dtype=np.int32) - 9999
-            for indx, robot in enumerate(allRobots):
-                if(doneRobots[indx] == np.bool(False)):
-                    if(len(robot.targetList) > 0):
-                        itargets = np.array([self.target_indx2id[x]
-                                             for x in robot.targetList])
-                        inot = np.where(got_target[itargets] == 0)[0]
-                        if(len(inot) > 0):
-                            it = itargets[inot]
-                            maxPriority[indx] = self.target_priority[it].max()
+        maxPriority = np.zeros(len(allRobots), dtype=np.int32) - 9999
+        for indx, robot in enumerate(allRobots):
+            if(doneRobots[indx] == np.bool(False)):
+                if(len(robot.targetList) > 0):
+                    itargets = np.array([self.target_indx2id[x]
+                                         for x in robot.targetList])
+                    inot = np.where(got_target[itargets] == 0)[0]
+                    if(len(inot) > 0):
+                        it = itargets[inot]
+                        maxPriority[indx] = self.target_priority[it].max()
                 else:
                     maxPriority[indx] = - 99999
-            imax = np.argmax(maxPriority)
-            return(imax)
-        else:
-            inotdone = np.where(doneRobots == np.bool(False))[0]
-            return(inotdone[0])
+        imax = np.argmax(maxPriority)
+        return(imax)
 
     def add_observations(self):
         """For assigned targets, add observations if possible

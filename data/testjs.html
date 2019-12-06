@@ -33,9 +33,22 @@ html, body, #container {
   <input type="button" onclick="setExposure(exposure.value)" value="Submit">
 </form>
 
-<div id="control-container" style="position: absolute; top: 100px; left: 10px; width: 300px; height: 600px; overflow: hidden;"></div>
+<table style="position: absolute; top: 120px; left:10px; width: 280px;
+							height: 80px; overflow: hidden;">
+<tr> <td>Field ID</td> <td id="fieldid"></td> </tr>
+<tr> <td>Center RA (deg, J2000)</td> <td id="racen"></td> </tr>
+<tr> <td>Center Dec (deg, J2000)</td> <td id="deccen"></td> </tr>
+<tr> <td>Cadence</td> <td id="field_cadence"></td> </tr>
+<tr> <td>N<sub>within</sub></td> <td id="nwithin"></td> </tr>
+<tr> <td>N<sub>exp</sub></td> <td id="nexposure"></td> </tr>
+<tr> <td>Exposure</td> <td id="exposureid"></td> </tr>
+<tr> <td>N<sub>APOGEE</sub></td> <td id="napogee"></td> </tr>
+<tr> <td>N<sub>BOSS</sub></td> <td id="nboss"></td> </tr>
+</table>
+
+<div id="control-container" style="position: absolute; top: 350px; left: 10px; width: 300px; height: 600px; overflow: hidden;"></div>
 <div id="stage-container" style="position: absolute; top: 10px; left: 320px; width: 1000px; height: 1000px; overflow: hidden;"></div>
-<div id="cadence-container" style="position: absolute; top: 400px; left: 10px; width: 200px; height: 400px; overflow: hidden;"></div>
+<div id="cadence-container" style="position: absolute; top: 500px; left: 10px; width: 200px; height: 400px; overflow: hidden;"></div>
 
  <script src="fields.js"></script>
 

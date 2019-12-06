@@ -5,9 +5,14 @@ $.ajaxSetup({
 // create a stage for the robot
 var stage = acgraph.create('stage-container', 1000, 1000);
 var control = acgraph.create('control-container', 300, 600);
-var fieldid = -1
-var iexp = 0
-var irobot = 0
+var fieldid = -1;
+var iexp = 0;
+var irobot = 0;
+var plan = 'beta-2-kaiju-2';
+var observatory = 'apo';
+var field_cadence = "";
+var racen = -1.;
+var deccen = -1.;
 
 // Axis settings
 var mm2pix = 1.3;
@@ -18,11 +23,11 @@ var betaLen = Math.round(15 * mm2pix);
 var alphaWid = Math.round(1. * mm2pix);
 var betaWid = Math.round(3.2 * mm2pix);
 
-var text_targetid	= control.text(10, 200, 'Target ID = ');
-text_targetid.fontSize('18px');
+var text_targetid	= control.text(0, 220, 'Target ID = ');
+text_targetid.fontSize('14px');
 
-var text_robotid	= control.text(10, 240, 'Robot ID = ');
-text_robotid.fontSize('18px');
+var text_robotid	= control.text(0, 250, 'Robot ID = ');
+text_robotid.fontSize('14px');
 
 var target_obj = {};
 var robot_obj = new Array();
@@ -40,9 +45,14 @@ drawTextRobots();
 
 // Read in information for the field
 function readFieldID(fieldid) {
-    $.getJSON('https://cosmo.nyu.edu/blanton/test.js', function(jd) {
+    $.getJSON('targets/rsFieldAssignments-' + plan + '-' +
+		          observatory + '-' + fieldid + '.json', function(jd) {
 		    target_obj = jd.target_obj;
 		    robot_obj = jd.robot_obj;
+				racen = jd.racen;
+				deccen = jd.deccen;
+				field_cadence = jd.field_cadence;
+				nwithin = jd.nwithin;
 		}).fail(function() { alert("Error reading field."); });
 }
 
@@ -51,6 +61,7 @@ function setExposure(exposure) {
 		if(fieldid >= 0) {
 				setAllRobots();
 		}
+	  setExposureTableInfo();
 }
 
 // Set the field ID to draw
@@ -60,6 +71,33 @@ function setFieldID(in_fieldid) {
 		drawAllTargets();
 		drawAllCoverage();
 		drawAllRobots();
+		setFieldTableInfo();
+}
+
+function setFieldTableInfo() {
+    document.getElementById("fieldid").innerHTML = fieldid;
+    document.getElementById("nexposure").innerHTML = robot_obj.length;
+    document.getElementById("nwithin").innerHTML = nwithin;
+    document.getElementById("racen").innerHTML = racen;
+    document.getElementById("deccen").innerHTML = deccen;
+    document.getElementById("field_cadence").innerHTML = field_cadence;
+}
+
+function setExposureTableInfo() {
+    document.getElementById("exposureid").innerHTML = iexp;
+    napogee = 0;
+    nboss = 0;
+    for (i = 0; i < robot_obj[iexp].xPos.length; i++) {
+        if(robot_obj[iexp].isAssigned[i]) {
+            if(robot_obj[iexp].fiberID[i] == 1) {
+						    napogee = napogee + 1;
+            } else {
+						    nboss = nboss + 1;
+        		}
+        }
+    }
+    document.getElementById("napogee").innerHTML = napogee;
+    document.getElementById("nboss").innerHTML = nboss;
 }
 
 // mm to pixel units
@@ -280,14 +318,14 @@ function toggleCoverage(type) {
 }
 
 function drawTextCoverage() {
-		text_coverage['all']	= control.text(10, 10, 'Coverage');
-		text_coverage['all'].fontSize('24px');
+		text_coverage['all']	= control.text(0, 10, 'Coverage');
+		text_coverage['all'].fontSize('16px');
 		text_coverage['all'].fontWeight('bold');
-		text_coverage['boss'] = control.text(20, 45, 'BOSS');
-		text_coverage['boss'].fontSize('18px');
+		text_coverage['boss'] = control.text(10, 40, 'BOSS');
+		text_coverage['boss'].fontSize('14px');
 		text_coverage['boss'].fontWeight('bold');
-		text_coverage['apogee'] = control.text(20, 70, 'APOGEE+BOSS');
-		text_coverage['apogee'].fontSize('18px');
+		text_coverage['apogee'] = control.text(10, 60, 'APOGEE+BOSS');
+		text_coverage['apogee'].fontSize('14px');
 		text_coverage['apogee'].fontWeight('bold');
 		show_coverage["boss"] = true
 		show_coverage["apogee"] = true
@@ -327,14 +365,14 @@ function toggleRobots(type) {
 }
 
 function drawTextRobots() {
-		text_robots['all']	= control.text(10, 120, 'Robots');
-		text_robots['all'].fontSize('24px');
+		text_robots['all']	= control.text(0, 90, 'Robots');
+		text_robots['all'].fontSize('16px');
 		text_robots['all'].fontWeight('bold');
-		text_robots['boss'] = control.text(20, 155, 'BOSS');
-		text_robots['boss'].fontSize('18px');
+		text_robots['boss'] = control.text(10, 120, 'BOSS');
+		text_robots['boss'].fontSize('14px');
 		text_robots['boss'].fontWeight('bold');
-		text_robots['apogee'] = control.text(20, 180, 'APOGEE+BOSS');
-		text_robots['apogee'].fontSize('18px');
+		text_robots['apogee'] = control.text(10, 140, 'APOGEE+BOSS');
+		text_robots['apogee'].fontSize('14px');
 		text_robots['apogee'].fontWeight('bold');
 		show_robots["boss"] = true
 		show_robots["apogee"] = true
