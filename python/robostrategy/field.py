@@ -572,6 +572,7 @@ class Field(object):
             got_calib = np.zeros(len(icalib), dtype=np.int32)
             for indx in np.arange(self.robot.npositioner):
                 # First try calibration targets not already taken
+                positionerid = self.robot.positionerid[indx]
                 it = robot_targets[positionerid]
                 if(len(it) > 0):
                     ileft = np.where(got_calib[it] == 0)[0]
@@ -621,7 +622,7 @@ class Field(object):
                 ifree = np.sort(np.where(self.assignments[indx, :] == -1)[0])
                 if(len(ifree) > 0):
                     itarget = self.assignments[indx, iexp]
-                    self.assignments[indx, ifree] = itarget
+                    self.assignments[indx, ifree[0]] = itarget
                     self.assignments[indx, iexp] = -1
 
             # If there is a conflict with a multi-exposure observation
