@@ -13,6 +13,9 @@
 #
 # Work out the PA for each field so that the hexagonal field boundaries tesselate well
 #
+# Info on the focal plane layout
+# https://wiki.sdss.org/display/FPS/FPS+Focal+Plane+Layout+Concepts
+#
 
 from __future__ import division
 from __future__ import print_function
@@ -81,7 +84,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-i', '--infile',  required=True,  default=None, help='The input field list file')
     parser.add_argument('-o', '--outfile', required=True,  default=None, help='The main output file')
-    parser.add_argument('-r', '--hexrad', required=False,  default=1.38883786, help='The radius (deg) of the hexagonal FoV - used to compute vertices')
+    parser.add_argument('-r', '--hexrad', required=False,  default=1.49, help='The radius (deg) of the hexagonal FoV - used to compute vertices')
 
     args = parser.parse_args()
 
@@ -105,7 +108,7 @@ if __name__ == '__main__':
     except:
         raise Exception(f"Failed to open input file: {infile}")
 
-    # assume using first fits extension
+    # assume fields are in the 1st fits extension
     fdata = hdul[1].data
     col_id = 'fieldid'
     col_ra = 'racen'
@@ -151,11 +154,11 @@ if __name__ == '__main__':
 
     # algo 1)
     pa_mean = np.array([np.mean(pa_deg[idx1 == i]) for i in iu])
-    pa_mean  = np.mod(pa_mean, 60.0) + 0.0
+    pa_mean  = np.mod(pa_mean+30.0, 60.0)
     pa_mean[niu<=3] = 0.0  # seems to do badly here
 
     # algo 2
-    pa_furthest = [pa_deg[np.argmax(np.where(idx1 == i, sep, -1.0))]+30.0 for i in iu]
+    pa_furthest = [pa_deg[np.argmax(np.where(idx1 == i, sep, -1.0))]+0.0 for i in iu]
     pa_furthest = np.mod(pa_furthest, 60.0)
     #pa_furthest[niu<6] = 0.0
 
@@ -183,8 +186,8 @@ if __name__ == '__main__':
     # add some header keywords
     hdu_out.header.append(fits.Card('COMMENT',
                                     'The field rotations, pa1, pa2 are defined '
-                                    'such that a hexagon with vertex pointing '
-                                    'towards Equatorial North has PA=0deg'))
+                                    'such that a hexagon with two edges '
+                                    'aligned East-West has PA=0deg'))
 
     hdu_out.writeto(outfile, overwrite=True, checksum=True)
     print(f'Main outfile is at: {outfile}')
@@ -192,7 +195,7 @@ if __name__ == '__main__':
 
     # compute vertex coordinates and write to separate fiels for pa1 and pa2
     n_vertex = 6
-    angle0=pi/2. # -pi/6. # angular position of 1st vertex, in radians where angle0=0 lies along +ve X-axis
+    angle0= pi/3.0 # pi/2. # -pi/6. # angular position of 1st vertex, in radians where angle0=0 lies along +ve X-axis
 
     # these are the pixel coords of the vertices on the tangent plane
     vertex_tan = hex_radius * np.array([(cos(2. * pi * (i / float(n_vertex)) + angle0),
