@@ -14,12 +14,12 @@
 # the second line if needed, but most products should
 # leave this alone.
 #
-proc ModulesHelp {{ }} {{
-    global product version
-    puts stderr This module adds $product/$version to your environment.
-
-}}
+#proc ModulesHelp {{ }} {{
+#    global product version
+#    puts stderr This module adds $product/$version to your environment.
 #
+#}}
+##
 # These variables are used below.  The product variable should be set to
 # the name of the product and never changed.  The version variable will
 # be set at install time, so it should be left alone.  The conflict line
