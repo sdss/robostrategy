@@ -304,7 +304,8 @@ class AllocateLST(object):
                 alloc[curr_cadence]['vars'] = ([0] *
                                                (self.slots.nskybrightness *
                                                 self.slots.nlst))
-                alloc[curr_cadence]['needed'] = float(curr_option['nvisit'])
+                alloc[curr_cadence]['needed'] = float(curr_slot['needed'])
+                alloc[curr_cadence]['needed_sb'] = [float(n) for n in curr_slot['needed_sb']]
                 alloc[curr_cadence]['ngot_pp'] = curr_option['ngot_pp']
                 alloc[curr_cadence]['value'] = float(curr_option['valuegot'] *
                                                      prefer)
@@ -364,7 +365,9 @@ class AllocateLST(object):
                                                              slst=ilst,
                                                              ssb=iskybrightness)
                         if(ccadence['slots'][ilst, iskybrightness]):
-                            var = solver.NumVar(0.0, ccadence['needed'], name)
+                            var = solver.NumVar(0.0,
+                                                ccadence['needed_sb'][iskybrightness],
+                                                name)
                             if(minimize_time is False):
                                 objective.SetCoefficient(var,
                                                          ccadence['value'] /
@@ -374,19 +377,36 @@ class AllocateLST(object):
                             ccadence['nvars'] = ccadence['nvars'] + 1
 
         # Cadences have limits, which limit the total number of exposures
-        # in the cadence to the total needed.
+        # in the cadence to the total needed, and as needed in each lunation.
         cadence_constraints = []
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
                 cadence_constraint = solver.Constraint(0., ccadence['needed'])
-                for ilst in range(self.slots.nlst):
-                    for iskybrightness in range(self.slots.nskybrightness):
+
+                # set total cadence constraint
+                for iskybrightness in range(self.slots.nskybrightness):
+                    for ilst in range(self.slots.nlst):
                         if(ccadence['slots'][ilst, iskybrightness]):
-                            var = ccadence['vars'][ilst * self.slots.nskybrightness +
+                            var = ccadence['vars'][ilst *
+                                                   self.slots.nskybrightness +
                                                    iskybrightness]
                             cadence_constraint.SetCoefficient(var, 1.)
                 cadence_constraints.append(cadence_constraint)
+
+                # set ratio of dark and bright so there is enough dark
+                Asb = np.array([ccadence['needed_sb'][1],
+                                - ccadence['needed_sb'][0]])
+                solver_ninf = - solver.infinity()
+                cadence_constraint_sb = solver.Constraint(solver_ninf, 0.)
+                for iskybrightness in range(self.slots.nskybrightness):
+                    for ilst in range(self.slots.nlst):
+                        if(ccadence['slots'][ilst, iskybrightness]):
+                            var = ccadence['vars'][ilst *
+                                                   self.slots.nskybrightness +
+                                                   iskybrightness]
+                            cadence_constraint_sb.SetCoefficient(var, Asb[iskybrightness])
+                cadence_constraints.append(cadence_constraint_sb)
 
         # Constraints on numbers
         mint_constraints = dict()

@@ -1,0 +1,390 @@
+<head>
+  <script src="https://cdn.anychart.com/releases/v8/js/anychart-base.min.js?hcode=c11e6e3cfefb406e8ce8d99fa8368d33"></script>
+  <script src="https://cdn.anychart.com/releases/v8/js/anychart-ui.min.js?hcode=c11e6e3cfefb406e8ce8d99fa8368d33"></script>
+  <script src="https://cdn.anychart.com/releases/v8/js/anychart-exports.min.js?hcode=c11e6e3cfefb406e8ce8d99fa8368d33"></script>
+  <script src="https://cdn.anychart.com/releases/v8/js/anychart-heatmap.min.js?hcode=c11e6e3cfefb406e8ce8d99fa8368d33"></script>
+  <script src="https://cdn.anychart.com/releases/v8/js/anychart-data-adapter.min.js?hcode=c11e6e3cfefb406e8ce8d99fa8368d33"></script>
+  <link href="https://cdn.anychart.com/releases/v8/css/anychart-ui.min.css?hcode=c11e6e3cfefb406e8ce8d99fa8368d33" type="text/css" rel="stylesheet">
+  <link href="https://cdn.anychart.com/releases/v8/fonts/css/anychart-font.min.css?hcode=c11e6e3cfefb406e8ce8d99fa8368d33" type="text/css" rel="stylesheet">
+  <style type="text/css">
+html, body, #container {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+</style>
+</head>
+<script src="https://cdn.anychart.com/releases/8.7.0/js/graphics.min.js"></script>
+
+<form id="exposure" style="position: absolute; top: 35px; left:10px; width: 300px; height: 80px; overflow: hidden;">
+  Exposure: <input type="text" name="exposure"><br>
+  <input type="button" onclick="set_exposure(exposure.value)" value="Submit">
+</form>
+
+<form id="field" style="position: absolute; top: 10px; left:10px; width: 300px; height: 80px; overflow: hidden;">
+  Field: <input type="text" name="exposure"><br>
+  <input type="button" onclick="set_field(field.value)" value="Submit">
+</form>
+
+<div id="control-container" style="position: absolute; top: 100px; left: 10px; width: 300px; height: 600px; overflow: hidden;"></div>
+<div id="stage-container" style="position: absolute; top: 10px; left: 320px; width: 1000px; height: 1000px; overflow: hidden;"></div>
+<div id="cadence-container" style="position: absolute; top: 400px; left: 10px; width: 200px; height: 400px; overflow: hidden;"></div>
+<script>
+		// create a stage for the robot
+		var stage = acgraph.create('stage-container', 1000, 1000);
+		var control = acgraph.create('control-container', 300, 600);
+		var iexp = 0
+		var irobot = 0
+
+		// Axis settings
+		var mm2pix = 1.3;
+		var alphaLen = Math.round(7.4 * mm2pix);
+		var betaLen = Math.round(15 * mm2pix);
+		var alphaWid = Math.round(1. * mm2pix);
+		var betaWid = Math.round(3.2 * mm2pix);
+
+		text_targetid	= control.text(10, 200, 'Target ID = ');
+    text_targetid.fontSize('18px');
+
+		text_robotid	= control.text(10, 240, 'Robot ID = ');
+    text_robotid.fontSize('18px');
+
+		function set_exposure(exposure) {
+		   alert(exposure);
+		   iexp = exposure;
+       setAllRobots();
+		}
+
+    function drawCoverage(robot_obj, i) {
+		  var xPos = (330 + robot_obj.xPos[i]) * mm2pix;
+		  var yPos = (330 - robot_obj.yPos[i]) * mm2pix;
+		  var cover = stage.donut(xPos, yPos, betaLen - alphaLen,
+		                          betaLen + alphaLen, 0, 360);
+			if(robot_obj.hasApogee[i]) {
+					cover.fill('red', 0.2);
+      } else {
+					cover.fill('blue', 0.2);
+	    }
+		  return(cover);
+		}
+
+    function drawTarget(target_obj, i) {
+		  var xPos = (330 + target_obj.x[i]) * mm2pix;
+		  var yPos = (330 - target_obj.y[i]) * mm2pix;
+		  var target = stage.circle(xPos, yPos, 2);
+			if(target_obj.fiberID[i] == 1) {
+					target.fill('red', 0.2);
+      } else {
+					target.fill('blue', 0.2);
+	    }
+		  target.listen('mouseover', function (e) {
+        text_targetid.text('Target ID = ' + target_obj.id[i]);
+		  });
+		  target.listen('mouseout', function (e) {
+        text_targetid.text('Target ID =');
+		  });
+		  return(target);
+		}
+
+		function drawRobot(robot_obj, target_obj, i) {
+
+		  var xPos = (330 + robot_obj.xPos[i]) * mm2pix;
+		  var yPos = (330 - robot_obj.yPos[i]) * mm2pix;
+		  var alpha = 0.;
+		  var beta = 180.;
+
+		  // draw center of robot
+		  var center = stage.circle(xPos, yPos, 1);
+
+		  // draw the alpha arm
+		  var alphaArm = stage.rect(0, - alphaWid / 2, alphaLen, alphaWid);
+		  alphaArm.translate(xPos, yPos);
+		  alphaArm.rotate(- alpha, xPos, yPos);
+		  alphaArm.fill('yellow', 0.5);
+   
+	  	alphaEndX = xPos + alphaLen * Math.cos(alpha / 180. * Math.PI);
+	  	alphaEndY = yPos - alphaLen * Math.sin(alpha / 180. * Math.PI);
+	  	alphaEnd = stage.circle(alphaEndX, alphaEndY, 1);
+
+      var betaArm = stage.rect(0, - betaWid / 2, betaLen, betaWid);
+	  	betaArm.translate(alphaEndX, alphaEndY);
+	  	betaArm.rotate(- (beta + alpha), alphaEndX, alphaEndY);
+		  if(robot_obj.isAssigned[i]) {
+        if(target_obj.fiberID == 2) {
+					 var betaColor = 'blue';
+        } else {
+			     var betaColor = 'red';
+		    }
+      } else {
+			  var betaColor = 'grey';
+      }
+		  if(robot_obj.isCollided[i]) {
+				var betaOpacity = 1.;
+      } else {
+			  var betaOpacity = 0.4;
+			}		
+	  	betaArm.fill(betaColor, betaOpacity);
+
+		  betaArm.listen('mouseover', function (e) {
+        text_robotid.text('Robot ID = ' + robot_obj.id[i]);
+		  });
+
+		  betaArm.listen('mouseout', function (e) {
+        text_robotid.text('Robot ID = ');
+		  });
+
+			var robot = new Array();
+				robot.push(alphaArm);
+				robot.push(alphaEnd);
+				robot.push(betaArm);
+				robot.push(alpha);
+				robot.push(beta);
+				return(robot);
+		}
+
+		show_coverage = true;
+		var covers = new Array();
+    for (i = 0; i < robot_obj[iexp].xPos.length; i++) {
+				covers.push(drawCoverage(robot_obj[iexp], i));
+    }
+
+    var robots = new Array();
+    function drawAllRobots() {
+      show_robots = true;
+      for (i = 0; i < robot_obj[iexp].xPos.length; i++) {
+		  		robots.push(drawRobot(robot_obj[iexp], target_obj, i));
+      }
+    }
+
+    function setAllRobots() {
+      for (i = 0; i < robot_obj[iexp].xPos.length; i++) {
+		    var alpha = robot_obj[iexp].alpha[i];
+		    var beta = robot_obj[iexp].beta[i];
+		    var xPos = (330 + robot_obj[iexp].xPos[i]) * mm2pix;
+		    var yPos = (330 - robot_obj[iexp].yPos[i]) * mm2pix;
+		    robots[i][0].rotate(robots[i][3], xPos, yPos);
+		    robots[i][0].rotate(- alpha, xPos, yPos);
+	  	  alphaEndX = xPos + alphaLen * Math.cos(robots[i][3] / 180. * Math.PI);
+	  	  alphaEndY = yPos - alphaLen * Math.sin(robots[i][3] / 180. * Math.PI);
+		    robots[i][1].translate(- alphaEndX, - alphaEndY)
+		    robots[i][2].translate(- alphaEndX, - alphaEndY)
+	  	  robots[i][2].rotate(robots[i][4] + robots[i][3], alphaEndX, alphaEndY);
+	  	  alphaEndX = xPos + alphaLen * Math.cos(alpha / 180. * Math.PI);
+	  	  alphaEndY = yPos - alphaLen * Math.sin(alpha / 180. * Math.PI);
+		    robots[i][1].translate(alphaEndX, alphaEndY)
+		    robots[i][2].translate(alphaEndX, alphaEndY)
+	  	  robots[i][2].rotate(- (beta + alpha), alphaEndX, alphaEndY);
+				robots[i][3] = alpha
+				robots[i][4] = beta
+		  if(robot_obj[iexp].isAssigned[i]) {
+        if(target_obj.fiberID[robot_obj[iexp].assignedTargetInd[i]] == 2) {
+					 var betaColor = 'blue';
+        } else {
+			     var betaColor = 'red';
+		    }
+      } else {
+			  var betaColor = 'grey';
+      }
+		  if(robot_obj[iexp].isCollided[i]) {
+				var betaOpacity = 1.;
+      } else {
+			  var betaOpacity = 0.4;
+			}		
+	  	robots[i][2].fill(betaColor, betaOpacity);
+      }
+    }
+
+    drawAllRobots();
+
+    show_targets = true;
+    var targets = new Array();
+    for (i = 0; i < target_obj.x.length; i++) {
+				targets.push(drawTarget(target_obj, i));
+    }
+
+    text_coverage = {};
+		text_coverage['all']	= control.text(10, 10, 'Coverage');
+    text_coverage['all'].fontSize('24px');
+    text_coverage['all'].fontWeight('bold');
+		text_coverage['boss'] = control.text(20, 45, 'BOSS');
+    text_coverage['boss'].fontSize('18px');
+    text_coverage['boss'].fontWeight('bold');
+		text_coverage['apogee'] = control.text(20, 70, 'APOGEE+BOSS');
+    text_coverage['apogee'].fontSize('18px');
+    text_coverage['apogee'].fontWeight('bold');
+		show_coverage = {};
+		show_coverage["boss"] = true
+		show_coverage["apogee"] = true
+
+		function toggleCoverage(type) {
+       if(show_coverage[type]) {
+				 newWeight = 'normal';
+				 newVisible = false;					  
+			 } else {
+				 newWeight = 'bold';
+				 newVisible = true;					  
+			 }
+       text_coverage[type].fontWeight(newWeight);
+       for (i in covers) {
+				 if(((type == 'apogee') && (robot_obj[iexp].hasApogee[i] > 0)) || ((type == 'boss') && (robot_obj[iexp].hasApogee[i] == 0))) {
+										covers[i].visible(newVisible);
+            }
+       }
+       show_coverage[type] = newVisible;
+  }
+    
+		text_coverage['all'].listen('click', function(e) {
+										toggleCoverage('apogee');
+										toggleCoverage('boss');
+										});
+		text_coverage['apogee'].listen('click', function(e) {
+										toggleCoverage('apogee');
+										});
+		text_coverage['boss'].listen('click', function(e) {
+										toggleCoverage('boss');
+										});
+
+    text_robots = {};
+		text_robots['all']	= control.text(10, 120, 'Robots');
+    text_robots['all'].fontSize('24px');
+    text_robots['all'].fontWeight('bold');
+		text_robots['boss'] = control.text(20, 155, 'BOSS');
+    text_robots['boss'].fontSize('18px');
+    text_robots['boss'].fontWeight('bold');
+		text_robots['apogee'] = control.text(20, 180, 'APOGEE+BOSS');
+    text_robots['apogee'].fontSize('18px');
+    text_robots['apogee'].fontWeight('bold');
+		show_robots = {};
+		show_robots["boss"] = true
+		show_robots["apogee"] = true
+
+		function toggleRobots(type) {
+       if(show_robots[type]) {
+				 newWeight = 'normal';
+				 newVisible = false;					  
+			 } else {
+				 newWeight = 'bold';
+				 newVisible = true;					  
+			 }
+       text_robots[type].fontWeight(newWeight);
+       for (i in robots) {
+				   if(((type == 'apogee') && (robot_obj[iexp].hasApogee[i] > 0)) || ((type == 'boss') && (robot_obj[iexp].hasApogee[i] == 0))) {
+               robots[i][0].visible(newVisible);
+               robots[i][1].visible(newVisible);
+               robots[i][2].visible(newVisible);
+         }
+       }
+       show_robots[type] = newVisible;
+     }
+    
+		text_robots['all'].listen('click', function(e) {
+										toggleRobots('apogee');
+										toggleRobots('boss');
+										});
+		text_robots['apogee'].listen('click', function(e) {
+										toggleRobots('apogee');
+										});
+		text_robots['boss'].listen('click', function(e) {
+										toggleRobots('boss');
+										});
+
+
+</script>
+
+  <script>
+anychart.onDocumentReady(function () {
+    // The data used in this sample can be obtained from the CDN
+    // https://cdn.anychart.com/samples/heat-map-charts/heat-map-with-scroll/data.json
+
+    function drawCadences(data) {
+        // Creates Heat Map
+        var chart = anychart.heatMap(data);
+
+        // Sets colorScale
+        var colorScale = anychart.scales.ordinalColor();
+        // Sets colors for all points
+        colorScale.ranges([
+            {equal: 0, color: "#ffffff"},
+            {equal: 1, color: "#dddddd"},
+            {equal: 2, color: "#bbbbbb"},
+            {equal: 3, color: "#999999"},
+            {equal: 4, color: "#777777"},
+            {equal: 5, color: "#555555"},
+            {equal: 6, color: "#333333"},
+            {equal: 7, color: "#111111"},
+            {equal: 8, color: "#000000"},
+        ]);
+        chart.colorScale(colorScale);
+
+        // Sets chart title
+        chart.title()
+                .enabled(true)
+                .text("Target assignments")
+                .padding([0, 0, 0, 0]);
+
+        // Sets chart labels
+        chart.labels()
+                .enabled(true)
+                .format('{%Heat}');
+
+        // Sets Scrolls for Axes
+        chart.xScroller(true);
+        chart.yScroller(true);
+
+        // Sets starting zoom for Axes
+        chart.xZoom().setToPointsCount(8);
+        chart.yZoom().setToPointsCount(6);
+
+        // Sets chart and hover chart settings
+        chart.stroke('#fff');
+        chart.hovered()
+                .stroke('6 #fff')
+                .fill('#545f69')
+                .labels({'fontColor': '#fff'});
+
+        // Sets legend
+        // chart.legend()
+                // .enabled(true)
+                // .align('center')
+                // .position('center-bottom')
+                // .itemsLayout('horizontal')
+                // .padding([0, 0, 0, 0]);
+
+        // set container id for the chart
+        chart.container('cadence-container');
+        // initiate chart drawing
+        chart.draw();
+   }
+
+  function setCadenceData(irobot) {
+    var data = new Array();
+    for (i = 0; i < robot_obj[iexp].xPos.length; i++) {
+      for (i = 0; i < robot_obj[iexp].xPos.length; i++) {
+    
+data = [
+{
+    "x": "t1",
+    "y": "e1",
+    "heat": 4
+}, {
+    "x": "t2",
+    "y": "e1",
+    "heat": 3
+}, {
+    "x": "t1",
+    "y": "e2",
+    "heat": 1
+}, {
+    "x": "t2",
+    "y": "e2",
+    "heat": 8
+}
+];
+
+   drawCadences(data);
+});
+</script>
+</body>
+</html>
+                

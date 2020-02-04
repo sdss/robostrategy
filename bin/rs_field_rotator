@@ -11,7 +11,8 @@
 # Algorithm based on ancient 4MOST algorithms:
 # see 4MOST-OpSys/OpSim/OpSim_fields_lib.c:1726:fieldlist_calc_PAs()
 #
-# Work out the PA for each field so that the hexagonal field boundaries tesselate well
+# Work out the PA for each field so that the hexagonal field 
+# boundaries tesselate well
 #
 # Info on the focal plane layout
 # https://wiki.sdss.org/display/FPS/FPS+Focal+Plane+Layout+Concepts
@@ -27,7 +28,7 @@ from astropy.coordinates import SkyCoord, search_around_sky
 from astropy import units as u
 from astropy import wcs
 
-from math import cos,sin,pi,radians,degrees
+from math import cos, sin, pi
 
 import numpy as np
 import numpy.lib.recfunctions as rf
@@ -37,27 +38,26 @@ import sys
 import argparse
 
 
-
 def calc_sky_vertices(fdata, pa, vertex_tan):
 
     inv_pixel_scale = float(3600.0)
-    pixel_scale = 1./inv_pixel_scale
+    pixel_scale = 1. / inv_pixel_scale
 
     vertex_pix = vertex_tan * inv_pixel_scale
 
-    cos_pa = np.cos((pi/180.) * pa)
-    sin_pa = np.sin((pi/180.) * pa)
+    cos_pa = np.cos((pi / 180.) * pa)
+    sin_pa = np.sin((pi / 180.) * pa)
 
-    #compute the vertices
+    # compute the vertices
     out_str_list = []
-    for i,f in enumerate(fdata):
+    for i, f in enumerate(fdata):
         vertex_w = {}
         w = wcs.WCS(naxis=2)
         w.wcs.crpix = [0.0, 0.0]
-        w.wcs.cdelt = np.array([-1.0, 1.0])*pixel_scale
+        w.wcs.cdelt = np.array([-1.0, 1.0]) * pixel_scale
         w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
         w.wcs.crval = [f[col_ra], f[col_dec]]
-        w.wcs.pc = np.array([[cos_pa[i], -sin_pa[i]],[sin_pa[i], cos_pa[i]]])
+        w.wcs.pc = np.array([[cos_pa[i], -sin_pa[i]], [sin_pa[i], cos_pa[i]]])
         vertex_w = w.wcs_pix2world(vertex_pix, 0)
 
         out_str_list.append("")
@@ -65,7 +65,7 @@ def calc_sky_vertices(fdata, pa, vertex_tan):
         out_str_list.append(s)
 
         for v in vertex_w:
-            #s = f'VERTEX FIELD{f[col_id]:04d} {v[0]:12.7f} {v[1]:12.7f} {f[col_ra]-v[0]:8.5f} {f[col_dec]-v[1]:8.5f}  '
+            # s = f'VERTEX FIELD{f[col_id]:04d} {v[0]:12.7f} {v[1]:12.7f} {f[col_ra]-v[0]:8.5f} {f[col_dec]-v[1]:8.5f}  '
             s = f'VERTEX FIELD{f[col_id]:04d} {v[0]:12.7f} {v[1]:12.7f}'
             out_str_list.append(s)
 
@@ -82,25 +82,27 @@ if __name__ == '__main__':
         prog=os.path.basename(sys.argv[0]),
         description='Attempts to rotate the RS fields so that they tesselate well')
 
-    parser.add_argument('-i', '--infile',  required=True,  default=None, help='The input field list file')
-    parser.add_argument('-o', '--outfile', required=True,  default=None, help='The main output file')
-    parser.add_argument('-r', '--hexrad', required=False,  default=1.49, help='The radius (deg) of the hexagonal FoV - used to compute vertices')
+    parser.add_argument('-i', '--infile', required=True, default=None,
+                        help='The input field list file')
+    parser.add_argument('-o', '--outfile', required=True, default=None,
+                        help='The main output file')
+    parser.add_argument('-r', '--hexrad', required=False, default=1.49,
+                        help='The radius (deg) of the hexagonal FoV - used to compute vertices')
 
     args = parser.parse_args()
 
-    #np.set_printoptions(edgeitems=10)
-    #np.core.arrayprint._line_width = 180
+    # np.set_printoptions(edgeitems=10)
+    # np.core.arrayprint._line_width = 180
 
     infile = os.path.expanduser(args.infile)
     outfile = os.path.expanduser(args.outfile)
     outfile_vert1 = os.path.splitext(outfile)[0] + "_vertex_pa1.txt"
     outfile_vert2 = os.path.splitext(outfile)[0] + "_vertex_pa2.txt"
 
-
     # maybe allow this as a command line paramaeter:
     # this is how far to seacrh for neighbouring fields
     radius_multiplier = 2.0
-    hex_radius = float(args.hexrad) # deg
+    hex_radius = float(args.hexrad)  # deg
 
     # read the input fields from file
     try:
@@ -116,7 +118,7 @@ if __name__ == '__main__':
     col_radius = 'radius'
     col_type = 'type'
 
-    #take subset of fields that have type == 'AllSkySloane'
+    # take subset of fields that have type == 'AllSkySloane'
     m = np.where((fdata[col_type] == 'AllSkySloane'), True, False)
     fas = np.extract(m, fdata)
     del m
@@ -127,14 +129,16 @@ if __name__ == '__main__':
     # convert to coords format
     c = SkyCoord(fas[col_ra], fas[col_dec], frame="icrs", unit="deg")
 
-    # for each field, find the list of adjacent neighbours - can search within some multiple of radius
-    # if we are starting with an icosahedral Hardin-Sloane type pattern, then each field should have either 5 or 6 neighbours
-    # fields along boundaries may have fewer neighbours
+    # for each field, find the list of adjacent neighbours 
+    #   - can search within some multiple of radius
+    # if we are starting with an icosahedral Hardin-Sloane type pattern,
+    #   then each field should have either 5 or 6 neighbours
+    #   fields along boundaries may have fewer neighbours
     seplimit = radius_multiplier * np.median(fas[col_radius]) * u.deg
     idx1, idx2, sep, d3d  = search_around_sky(c, c, seplimit)
     del d3d
 
-    #get rid of self matches
+    # get rid of self matches
     m = np.where(idx1 != idx2, True, False)
     idx1 = np.extract(m, idx1)
     idx2 = np.extract(m, idx2)
@@ -146,7 +150,7 @@ if __name__ == '__main__':
 
     iu = np.unique(idx1)
     niu = np.bincount(idx1)
-    #print(np.bincount(niu))
+    # print(np.bincount(niu))
 
     # two algorithms -
     # 1) mean bearing to the the nighbouring fields
@@ -154,19 +158,19 @@ if __name__ == '__main__':
 
     # algo 1)
     pa_mean = np.array([np.mean(pa_deg[idx1 == i]) for i in iu])
-    pa_mean  = np.mod(pa_mean+30.0, 60.0)
-    pa_mean[niu<=3] = 0.0  # seems to do badly here
+    pa_mean  = np.mod(pa_mean + 30.0, 60.0)
+    pa_mean[niu <= 3] = 0.0  # seems to do badly here
 
     # algo 2
-    pa_furthest = [pa_deg[np.argmax(np.where(idx1 == i, sep, -1.0))]+0.0 for i in iu]
+    pa_furthest = [pa_deg[np.argmax(np.where(idx1 == i, sep, -1.0))] + 0.0 for i in iu]
     pa_furthest = np.mod(pa_furthest, 60.0)
-    #pa_furthest[niu<6] = 0.0
-
+    # pa_furthest[niu<6] = 0.0
 
     # now prepare new columns to write out to the result file
     pa1 = np.zeros(len(fdata), np.float32)
     pa2 = np.zeros(len(fdata), np.float32)
-    # the following patches the results from above (only AllSkySloane) back into the complete field list
+    # the following patches the results from above (only AllSkySloane)
+    # back into the complete field list
     ii = [ (i,np.where(fdata[col_id]==fid)[0][0]) for i,fid in enumerate(fas[col_id])]
     for i1,i2 in ii:
         pa1[i2] = pa_mean[i1]

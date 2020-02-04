@@ -36,13 +36,20 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-k', '--kaiju', dest='kaiju', action='store_true',
+                        help='run on Kaiju assignments',
+                        default=False)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    kaiju = args.kaiju
 
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
+    if(kaiju):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsKaijuCompleteness')
 
     ntargets_map, hdr = fitsio.read(completeness_file, header=True, ext=2)
     nside = np.int32(hdr['NSIDE'])
@@ -70,6 +77,9 @@ if __name__ == '__main__':
         ntargets_png_file = sdss_path.full(
             'rsAssignmentsPng', name='ntargets-cadence-{c}'.format(c=cadence),
             plan=plan, observatory=observatory)
+        if(kaiju):
+            ntargets_png_file = ntargets_png_file.replace('rsAssignments',
+                                                          'rsKaijuAssignments')
         plt.savefig(ntargets_png_file)
         plt.clf()
 
@@ -81,6 +91,9 @@ if __name__ == '__main__':
         ngot_png_file = sdss_path.full(
             'rsAssignmentsPng', name='ngot-cadence-{c}'.format(c=cadence),
             plan=plan, observatory=observatory)
+        if(kaiju):
+            ngot_png_file = ngot_png_file.replace('rsAssignments',
+                                                  'rsKaijuAssignments')
         plt.savefig(ngot_png_file)
         plt.clf()
 
@@ -93,6 +106,9 @@ if __name__ == '__main__':
         fgot_png_file = sdss_path.full(
             'rsAssignmentsPng', name='fgot-cadence-{c}'.format(c=cadence), plan=plan,
             observatory=observatory)
+        if(kaiju):
+            fgot_png_file = fgot_png_file.replace('rsAssignments',
+                                                  'rsKaijuAssignments')
         plt.savefig(fgot_png_file)
         plt.clf()
 
@@ -114,6 +130,9 @@ if __name__ == '__main__':
         ntargets_png_file = sdss_path.full(
             'rsAssignmentsPng', name='ntargets-program-{c}'.format(c=program),
             plan=plan, observatory=observatory)
+        if(kaiju):
+            ntargets_png_file = ntargets_png_file.replace('rsAssignments',
+                                                          'rsKaijuAssignments')
         plt.savefig(ntargets_png_file)
         plt.clf()
 
@@ -125,6 +144,9 @@ if __name__ == '__main__':
         ngot_png_file = sdss_path.full(
             'rsAssignmentsPng', name='ngot-program-{c}'.format(c=program),
             plan=plan, observatory=observatory)
+        if(kaiju):
+            ngot_png_file = ngot_png_file.replace('rsAssignments',
+                                                  'rsKaijuAssignments')
         plt.savefig(ngot_png_file)
         plt.clf()
 
@@ -137,5 +159,8 @@ if __name__ == '__main__':
         fgot_png_file = sdss_path.full(
             'rsAssignmentsPng', name='fgot-program-{c}'.format(c=program),
             plan=plan, observatory=observatory)
+        if(kaiju):
+            fgot_png_file = fgot_png_file.replace('rsAssignments',
+                                                  'rsKaijuAssignments')
         plt.savefig(fgot_png_file)
         plt.clf()

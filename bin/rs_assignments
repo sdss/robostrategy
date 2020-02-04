@@ -77,21 +77,17 @@ if __name__ == '__main__':
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
-        f.targets_fromfits(field_assigned_file)
-        try:
-            f.assignments = fitsio.read(field_assigned_file, ext=2)
-        except:
-            f.assignments = None
+        f.fromfits(field_assigned_file)
 
-        f.field_cadence = allocate.field_array['cadence'][indx].decode().strip()
+        f.set_field_cadence(allocate.field_array['cadence'][indx].decode().strip())
 
         if(f.assignments is not None):
-            print("adfdf{fid}".format(fid=fieldid))
-            nexposures = f.assignments.shape[1]
+            assignments = f.assignments
+            nexposures = assignments.shape[1]
             for iexp in np.arange(nexposures):
-                iassigned = np.where(f.assignments[:, iexp] >= 0)[0]
+                iassigned = np.where(assignments[:, iexp] >= 0)[0]
                 if(len(iassigned) > 0):
-                    tassigned = f.assignments[iassigned, iexp]
+                    tassigned = assignments[iassigned, iexp]
                     tmp_assignment = np.zeros(len(tassigned),
                                               dtype=assignment_dtype)
                     tmp_assignment['pk'] = f.target_pk[tassigned]
