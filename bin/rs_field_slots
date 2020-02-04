@@ -71,6 +71,8 @@ if __name__ == '__main__':
                          ('cadence', cadence.fits_type),
                          ('racen', np.float64),
                          ('deccen', np.float64),
+                         ('needed', np.int32),
+                         ('needed_sb', np.int32, slots.nskybrightness),
                          ('slots', np.int32, (slots.nlst,
                                               slots.nskybrightness))]
     field_slots = np.zeros(nfields, dtype=field_slots_dtype)
@@ -80,8 +82,25 @@ if __name__ == '__main__':
     field_slots['racen'] = field_options['racen']
     field_slots['deccen'] = field_options['deccen']
     field_cadences = [c.decode().strip() for c in field_options['cadence']]
-    field_min_skybrightness = [cadencelist.cadences[c].skybrightness.min() for
+    field_max_skybrightness = [cadencelist.cadences[c].skybrightness.max() for
                                c in field_cadences]
+
+    # needed is how many exposures are needed for cadence
+    # needed_sb says how many are needed in each skybrightness
+    #   slot (assuming they use bright for bright, dark for dark)
+    for i in range(len(field_cadences)):
+        c = field_cadences[i]
+        field_slots['needed'][i] = cadencelist.cadences[c].nexposures
+        for iexp in range(cadencelist.cadences[c].nexposures):
+            isb = -1
+            # well, that's a bit dangerous isn't it
+            # relies on skybrightness in cadence always <= 1
+            while((cadencelist.cadences[c].skybrightness[iexp] >
+                   slots.skybrightness[isb + 1]) &
+                  (cadencelist.cadences[c].skybrightness[iexp] <=
+                   slots.skybrightness[isb + 2])):
+                isb = isb + 1
+            field_slots['needed_sb'][i, isb] = field_slots['needed_sb'][i, isb] + 1
 
     observer = roboscheduler.scheduler.Observer(observatory=observatory)
     for ilst in np.arange(slots.nlst):
@@ -101,11 +120,12 @@ if __name__ == '__main__':
                      ((airmass < airmass_limit) |
                       (airmass < airmass_min + airmass_pad)))
             if(bright_only_bright):
-                oksky = (np.abs(field_min_skybrightness -
+                oksky = (np.abs(field_max_skybrightness -
                                 slots.skybrightness[iskybrightness + 1]) <
                          1.e-2)
             else:
-                oksky = (field_min_skybrightness >=
+                # is OK if ANY exposure can use this skybrightness slot
+                oksky = (field_max_skybrightness >=
                          slots.skybrightness[iskybrightness + 1])
             iok = np.where(okalt & oksky)[0]
             field_slots['slots'][iok, ilst, iskybrightness] = 1.

@@ -2,8 +2,8 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Date: Sept 26, 2018
-# @Filename: rs_assign_final
+# @Date: Nov 29, 2019
+# @Filename: rs_assign_json
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -16,7 +16,6 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
-import multiprocessing
 import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -26,47 +25,17 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path()
 
 
-def assign_field(indx):
-    fieldid = allocate.field_array['fieldid'][indx]
-    if((fieldid % 1) == 0):
-        print(fieldid, flush=True)
-
-    f = field.Field(racen=allocate.field_array['racen'][indx],
-                    deccen=allocate.field_array['deccen'][indx],
-                    observatory=observatory)
-
-    field_target_file = sdss_path.full('rsFieldTargets',
-                                       plan=plan, observatory=observatory,
-                                       fieldid=fieldid)
-    f.targets_fromfits(field_target_file)
-
-    field_cadence = allocate.field_array['cadence'][indx].decode().strip()
-    f.set_field_cadence(field_cadence)
-
-    if(f.field_cadence != 'none'):
-        f.assign(kaiju=kaiju)
-
-    field_assigned_file = sdss_path.full('rsFieldAssignments',
-                                         plan=plan,
-                                         observatory=observatory,
-                                         fieldid=fieldid)
-    f.tofits(field_assigned_file)
-
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Final assignment based on allocation')
+        description='Output JSON for each field')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
-    parser.add_argument('-n', '--no-kaiju', dest='kaiju',
-                        help='do not use kaiju',
-                        default=True, action='store_false')
     parser.add_argument('-s', '--start', dest='start',
                         type=np.int32, help='field to start', required=False,
                         default=0)
@@ -77,10 +46,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
-    kaiju = args.kaiju
     start = args.start
     end = args.end
-    print("kaiju = {kaiju}".format(kaiju=kaiju))
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -96,6 +63,16 @@ if __name__ == '__main__':
         end = allocate.field_array['fieldid'].max()
     ikeep = np.where((allocate.field_array['fieldid'] >= start) &
                      (allocate.field_array['fieldid'] <= end))[0]
+    for indx in ikeep:
+        fieldid = allocate.field_array['fieldid'][indx]
+        if((fieldid % 1) == 0):
+            print(fieldid, flush=True)
 
-    with multiprocessing.Pool() as pool:
-        pool.map(assign_field, ikeep)
+        field_file = sdss_path.full('rsFieldAssignments',
+                                    plan=plan, observatory=observatory,
+                                    fieldid=fieldid)
+        f = field.Field(observatory=observatory)
+        f.fromfits(field_file)
+
+        json_file = ".".join(field_file.split('.')[0:-1]) + '.json'
+        f.tojs(json_file)

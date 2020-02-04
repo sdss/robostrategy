@@ -24,8 +24,8 @@ class Slots(object):
         number of LST bins (default 24)
 
     skybrightness : list of float or np.float32
-        edges of sky brightness bins (N+1 length for N bins; default
-        [0., 0.35, 1.])
+        edges of sky brightness bins in increasing order (N+1 length
+        for N bins; default [0., 0.35, 1.])
 
     observatory : str
         observatory to calculate slots for, 'apo' or 'lco' (default 'apo')

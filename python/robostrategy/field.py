@@ -12,7 +12,6 @@ import fitsio
 import matplotlib.pyplot as plt
 
 import roboscheduler.cadence as cadence
-import kaiju
 import kaiju.robotGrid
 
 # import observesim.robot as robot
@@ -689,7 +688,10 @@ class Field(object):
                         got = True
                         if(kaiju):
                             if(rg.allRobots[indx].isAssigned()):
-                                rg.unassignRobot(indx)
+                                try:
+                                    rg.unassignRobot(indx)
+                                except:
+                                    print("unassign failure 1")
                             rg.assignRobot2Target(indx, itry)
                             if(rg.isCollidedWithAssigned(rg.allRobots[indx]) == False):
                                 got = True
@@ -702,7 +704,10 @@ class Field(object):
                             nassigned = nassigned + 1
                             break
                         if(kaiju):
-                            rg.unassignRobot(indx)
+                            try:
+                                rg.unassignRobot(indx)
+                            except RuntimeError:
+                                print("unassign failure 2")
                             if(self.assignments[indx, iexp] >= 0):
                                 rg.assignRobot2Target(indx,
                                                       self.assignments[indx, iexp])
@@ -734,7 +739,10 @@ class Field(object):
                             #self.robotgrids[iexp].unassignRobot(indx)
                         break
                     if(kaiju):
-                        self.robotgrids[itry].unassignRobot(indx)
+                        try:
+                            self.robotgrids[itry].unassignRobot(indx)
+                        except:
+                            print("unassign failure 3")
 
             # If there is a conflict with a multi-exposure observation
             # just completely unassign (need to actually unassign)
@@ -745,7 +753,10 @@ class Field(object):
                                   self.assignments[indx, iexp])[0]
                 for iun in iother:
                     self.assignments[indx, iun] = -1
-                    self.robotgrids[iun].unassignRobot(indx)
+                    try:
+                        self.robotgrids[iun].unassignRobot(indx)
+                    except:
+                        print("unassign failure4")
 
             iassign = np.where(calibration_assignments >= 0)[0]
             self.assignments[iassign, iexp] = calibration_assignments[iassign]
@@ -768,7 +779,10 @@ class Field(object):
                         if(self.assignments[indx, iexp] >= 0):
                             print("UH OH DID NOT ASSIGN ROBOT")
                         if(rg.isCollidedInd(indx)):
-                            rg.unassignRobot(indx)
+                            try:
+                                rg.unassignRobot(indx)
+                            except:
+                                print("unassign failure 5")
 
     def make_robotgrids(self):
         self.robotgrids = []
@@ -847,7 +861,10 @@ class Field(object):
             return
 
         # Set up robotgrids
-        self.make_robotgrids()
+        if(kaiju):
+            self.make_robotgrids()
+        else:
+            self.robotgrids = [None] * self.nexposures
 
         # Assign the robots
         nexp = self.nexposures
@@ -883,7 +900,10 @@ class Field(object):
                                 if(self.robotgrids[iexp].isCollidedWithAssigned(eRobot)):
                                     emask[tindx, iexp] = True
                                 # Reset robot -- perhaps there are more elegant ways
-                                self.robotgrids[iexp].unassignRobot(irobot)
+                                try:
+                                    self.robotgrids[iexp].unassignRobot(irobot)
+                                except:
+                                    print("unassign failure 6")
                     p = cadence.Packing(self.field_cadence)
                     p.pack_targets_greedy(
                         target_ids=ifull,
@@ -896,9 +916,9 @@ class Field(object):
                     if(nassigned > 0):
                         got_target[itarget[iassigned]] = 1
                     self.assignments[irobot, :] = itarget
-                    for iexp, rg in enumerate(self.robotgrids):
-                        ctarget = self.assignments[irobot, iexp]
-                        if(kaiju):
+                    if(kaiju):
+                        for iexp, rg in enumerate(self.robotgrids):
+                            ctarget = self.assignments[irobot, iexp]
                             if(ctarget >= 0):
                                 try:
                                     rg.assignRobot2Target(irobot, ctarget)
@@ -911,7 +931,10 @@ class Field(object):
                                            for x in rg.allRobots[irobot].targetList])
                                     sys.exit(1)
                             else:
-                                rg.unassignRobot(irobot)
+                                try:
+                                    rg.unassignRobot(irobot)
+                                except:
+                                    print("unassign failure 7")
                             if(rg.isCollidedWithAssigned(rg.allRobots[irobot])):
                                 print("INCONSISTENCY")
 
@@ -921,7 +944,10 @@ class Field(object):
             for iexp, rg in enumerate(self.robotgrids):
                 iun = np.where(self.assignments[:, iexp] < 0)[0]
                 for irobot in iun:
-                    rg.unassignRobot(irobot)
+                    try:
+                        rg.unassignRobot(irobot)
+                    except:
+                        print("unassign failure 8")
 
         # Make sure all assigned robots are assigned
         if(kaiju):
@@ -939,6 +965,18 @@ class Field(object):
             self.assign_calibration(category='STANDARD_APOGEE', kaiju=kaiju)
             self.assign_calibration(category='SKY_BOSS', kaiju=kaiju)
             self.assign_calibration(category='STANDARD_BOSS', kaiju=kaiju)
+
+        if(kaiju):
+            for iexp, rg in enumerate(self.robotgrids):
+                for indx in np.arange(rg.nRobots):
+                    if(rg.allRobots[indx].isAssigned() is False):
+                        if(self.assignments[indx, iexp] >= 0):
+                            print("UH OH DID NOT ASSIGN ROBOT")
+                        if(rg.isCollidedInd(indx)):
+                            try:
+                                rg.unassignRobot(indx)
+                            except:
+                                print("unassign failure 9")
 
         self.set_target_assignments()
 
@@ -1073,7 +1111,10 @@ class Field(object):
             for rindx, robot in enumerate(self.robotgrids[i].allRobots):
                 itarget = self.assignments[rindx, i]
                 if(itarget < 0):
-                    self.robotgrids[i].unassignRobot(rindx)
+                    try:
+                        self.robotgrids[i].unassignRobot(rindx)
+                    except:
+                        print("unassign failure 10")
         return
 
     def apply_kaiju(self):

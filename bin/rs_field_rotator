@@ -1,0 +1,219 @@
+#!/usr/bin/env python
+
+# encoding: utf-8
+#
+# @Author: Tom Dwelly
+# @Date: 29-01-2020
+# @Filename: rs_field_rotator
+# @License: BSD 3-Clause
+# @Copyright: Tom Dwelly
+
+# Algorithm based on ancient 4MOST algorithms:
+# see 4MOST-OpSys/OpSim/OpSim_fields_lib.c:1726:fieldlist_calc_PAs()
+#
+# Work out the PA for each field so that the hexagonal field 
+# boundaries tesselate well
+#
+# Info on the focal plane layout
+# https://wiki.sdss.org/display/FPS/FPS+Focal+Plane+Layout+Concepts
+#
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+from astropy.io import fits
+from astropy.coordinates import SkyCoord, search_around_sky
+from astropy import units as u
+from astropy import wcs
+
+from math import cos, sin, pi
+
+import numpy as np
+import numpy.lib.recfunctions as rf
+
+import os
+import sys
+import argparse
+
+
+def calc_sky_vertices(fdata, pa, vertex_tan):
+
+    inv_pixel_scale = float(3600.0)
+    pixel_scale = 1. / inv_pixel_scale
+
+    vertex_pix = vertex_tan * inv_pixel_scale
+
+    cos_pa = np.cos((pi / 180.) * pa)
+    sin_pa = np.sin((pi / 180.) * pa)
+
+    # compute the vertices
+    out_str_list = []
+    for i, f in enumerate(fdata):
+        vertex_w = {}
+        w = wcs.WCS(naxis=2)
+        w.wcs.crpix = [0.0, 0.0]
+        w.wcs.cdelt = np.array([-1.0, 1.0]) * pixel_scale
+        w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        w.wcs.crval = [f[col_ra], f[col_dec]]
+        w.wcs.pc = np.array([[cos_pa[i], -sin_pa[i]], [sin_pa[i], cos_pa[i]]])
+        vertex_w = w.wcs_pix2world(vertex_pix, 0)
+
+        out_str_list.append("")
+        s = f'FIELD{f[col_id]:04d} {f[col_ra]:12.7f} {f[col_dec]:12.7f} {pa[i]:8.2f}'
+        out_str_list.append(s)
+
+        for v in vertex_w:
+            # s = f'VERTEX FIELD{f[col_id]:04d} {v[0]:12.7f} {v[1]:12.7f} {f[col_ra]-v[0]:8.5f} {f[col_dec]-v[1]:8.5f}  '
+            s = f'VERTEX FIELD{f[col_id]:04d} {v[0]:12.7f} {v[1]:12.7f}'
+            out_str_list.append(s)
+
+        # print first vertex twice to aid plotting closed polygons
+        s = f'VERTEX FIELD{f[col_id]:04d} {vertex_w[0][0]:12.7f} {vertex_w[0][1]:12.7f}'
+        out_str_list.append(s)
+
+    return "\n".join(out_str_list)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Attempts to rotate the RS fields so that they tesselate well')
+
+    parser.add_argument('-i', '--infile', required=True, default=None,
+                        help='The input field list file')
+    parser.add_argument('-o', '--outfile', required=True, default=None,
+                        help='The main output file')
+    parser.add_argument('-r', '--hexrad', required=False, default=1.49,
+                        help='The radius (deg) of the hexagonal FoV - used to compute vertices')
+
+    args = parser.parse_args()
+
+    # np.set_printoptions(edgeitems=10)
+    # np.core.arrayprint._line_width = 180
+
+    infile = os.path.expanduser(args.infile)
+    outfile = os.path.expanduser(args.outfile)
+    outfile_vert1 = os.path.splitext(outfile)[0] + "_vertex_pa1.txt"
+    outfile_vert2 = os.path.splitext(outfile)[0] + "_vertex_pa2.txt"
+
+    # maybe allow this as a command line paramaeter:
+    # this is how far to seacrh for neighbouring fields
+    radius_multiplier = 2.0
+    hex_radius = float(args.hexrad)  # deg
+
+    # read the input fields from file
+    try:
+        hdul = fits.open(infile)
+    except:
+        raise Exception(f"Failed to open input file: {infile}")
+
+    # assume fields are in the 1st fits extension
+    fdata = hdul[1].data
+    col_id = 'fieldid'
+    col_ra = 'racen'
+    col_dec = 'deccen'
+    col_radius = 'radius'
+    col_type = 'type'
+
+    # take subset of fields that have type == 'AllSkySloane'
+    m = np.where((fdata[col_type] == 'AllSkySloane'), True, False)
+    fas = np.extract(m, fdata)
+    del m
+
+    print(f'Input field list contains {len(fdata)} fields')
+    print(f'Of which {len(fas)} are of type = "AllSkySloane"')
+
+    # convert to coords format
+    c = SkyCoord(fas[col_ra], fas[col_dec], frame="icrs", unit="deg")
+
+    # for each field, find the list of adjacent neighbours 
+    #   - can search within some multiple of radius
+    # if we are starting with an icosahedral Hardin-Sloane type pattern,
+    #   then each field should have either 5 or 6 neighbours
+    #   fields along boundaries may have fewer neighbours
+    seplimit = radius_multiplier * np.median(fas[col_radius]) * u.deg
+    idx1, idx2, sep, d3d  = search_around_sky(c, c, seplimit)
+    del d3d
+
+    # get rid of self matches
+    m = np.where(idx1 != idx2, True, False)
+    idx1 = np.extract(m, idx1)
+    idx2 = np.extract(m, idx2)
+    sep  = np.extract(m, sep)
+    del m
+
+    # calculate bearing of each field to all of its neighbours
+    pa_deg = c[idx1].position_angle(c[idx2]).to(u.deg).value
+
+    iu = np.unique(idx1)
+    niu = np.bincount(idx1)
+    # print(np.bincount(niu))
+
+    # two algorithms -
+    # 1) mean bearing to the the nighbouring fields
+    # 2) bearing of the sixth neighbouring field plus 30deg
+
+    # algo 1)
+    pa_mean = np.array([np.mean(pa_deg[idx1 == i]) for i in iu])
+    pa_mean  = np.mod(pa_mean + 30.0, 60.0)
+    pa_mean[niu <= 3] = 0.0  # seems to do badly here
+
+    # algo 2
+    pa_furthest = [pa_deg[np.argmax(np.where(idx1 == i, sep, -1.0))] + 0.0 for i in iu]
+    pa_furthest = np.mod(pa_furthest, 60.0)
+    # pa_furthest[niu<6] = 0.0
+
+    # now prepare new columns to write out to the result file
+    pa1 = np.zeros(len(fdata), np.float32)
+    pa2 = np.zeros(len(fdata), np.float32)
+    # the following patches the results from above (only AllSkySloane)
+    # back into the complete field list
+    ii = [ (i,np.where(fdata[col_id]==fid)[0][0]) for i,fid in enumerate(fas[col_id])]
+    for i1,i2 in ii:
+        pa1[i2] = pa_mean[i1]
+        pa2[i2] = pa_furthest[i1]
+
+
+    print("Preparing output columns")
+    fdata = rf.append_fields(fdata,
+                             ['pa1', 'pa2'],
+                             [pa1, pa2],
+                             usemask=False,
+                             asrecarray=True)
+
+
+    hdu_out = fits.BinTableHDU.from_columns(fdata)
+
+    # add some header keywords
+    hdu_out.header.append(fits.Card('COMMENT',
+                                    'The field rotations, pa1, pa2 are defined '
+                                    'such that a hexagon with two edges '
+                                    'aligned East-West has PA=0deg'))
+
+    hdu_out.writeto(outfile, overwrite=True, checksum=True)
+    print(f'Main outfile is at: {outfile}')
+
+
+    # compute vertex coordinates and write to separate fiels for pa1 and pa2
+    n_vertex = 6
+    angle0= pi/3.0 # pi/2. # -pi/6. # angular position of 1st vertex, in radians where angle0=0 lies along +ve X-axis
+
+    # these are the pixel coords of the vertices on the tangent plane
+    vertex_tan = hex_radius * np.array([(cos(2. * pi * (i / float(n_vertex)) + angle0),
+                                         sin(2. * pi * (i / float(n_vertex)) + angle0)) for i in range(n_vertex)])
+
+    print(f'vertex file (PA1) is at: {outfile_vert1}')
+    with open(outfile_vert1,  'wb') as vf:
+        s = calc_sky_vertices(fdata, pa1, vertex_tan)
+        vf.write(s.encode('ascii'))
+
+    print(f'vertex file (PA2) is at: {outfile_vert2}')
+    with open(outfile_vert2,  'wb') as vf:
+        s = calc_sky_vertices(fdata, pa2, vertex_tan)
+        vf.write(s.encode('ascii'))
+
+
+    #
