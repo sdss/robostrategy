@@ -175,8 +175,8 @@ class Field(object):
     def _robotGrid(self):
         """Return a RobotGrid instance"""
         rg = kaiju.robotGrid.RobotGridFilledHex(collisionBuffer=self.collisionBuffer)
-        for r in rg.allRobots:
-            r.setAlphaBeta(0., 180.)
+        for k in rg.robotDict.keys():
+            rg.robotDict[k].setAlphaBeta(0., 180.)
         return(rg)
 
     def set_target_assignments(self):
@@ -605,14 +605,14 @@ class Field(object):
 
         # Match robots to targets (indexed into icalib)
         curr_robot_targets = dict()
-        for rindx, robot in enumerate(self.mastergrid.allRobots):
+        for rindx, robotID in enumerate(self.mastergrid.robotDict.keys()):
+            robot = self.mastergrid.robotDict[robotID]
             requires_boss = (ttype == 'BOSS')
             requires_apogee = (ttype == 'APOGEE')
 
-            curr_robot_targets[rindx] = np.zeros(0, dtype=np.int32)
-            if(len(robot.targetList) > 0):
-                robot_targets = np.array([self.target_indx2id[x]
-                                          for x in robot.targetList])
+            curr_robot_targets[robotID] = np.zeros(0, dtype=np.int32)
+            if(len(robot.validTargetIDs) > 0):
+                robot_targets = np.array(robot.validTargetIDs)
                 curr_icalib = np.where((iscalib[robot_targets] > 0) &
                                        ((requires_boss == 0) |
                                         (robot.hasBoss > 0)) &
@@ -631,13 +631,15 @@ class Field(object):
 
             # Initial consistency check
             if(kaiju):
-                for indx in np.arange(rg.nRobots):
-                    if(rg.allRobots[indx].isAssigned() is False):
+                for indx, robotID in enumerate(rg.robotDict.keys()):
+                    r= rg.robotDict[robotID]
+                    if(r.isAssigned() is False):
                         if(self.assignments[indx, iexp] >= 0):
                             print("PRECHECK {i}: UH OH DID NOT ASSIGN ROBOT".format(i=iexp))
-                    elif(self.target_indx2id[rg.allRobots[indx].assignedTarget] !=
-                         self.assignments[indx, iexp]):
-                        print("PRECHECK: UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
+                    else:
+                        assignedID = r.assignedTargetID
+                        if(assignedID != self.assignments[indx, iexp]):
+                            print("PRECHECK: UH OH ROBOT DOES NOT MATCH ASSIGNMENT")
 
             # Now make ordered list of robots to use
             exposure_assignments = self.assignments[:, iexp]
