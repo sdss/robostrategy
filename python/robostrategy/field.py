@@ -6,6 +6,7 @@
 
 
 import os
+import sys
 import json
 import numpy as np
 import fitsio
@@ -270,7 +271,11 @@ class Field(object):
         self.ntarget = len(self.target_array)
         self.target_ra = self.target_array['ra']
         self.target_dec = self.target_array['dec']
-        self.target_id = self.target_array['targetid']
+        try:
+            self.target_id = self.target_array['targetid']
+        except:
+            print("FAKE TARGET ID")
+            self.target_id = np.arange(self.ntarget, dtype=np.int32)
         self.target_pk = self.target_array['pk']
         self.target_x, self.target_y = self.radec2xy(self.target_ra,
                                                      self.target_dec)
@@ -660,7 +665,7 @@ class Field(object):
                         if(kaiju):
                             if(rg.robotDict[robotID].isAssigned()):
                                 try:
-                                    rg.unassignRobot(robotID)
+                                    rg.decollideRobot(robotID)
                                 except:
                                     print("unassign failure 1")
                             rg.assignRobot2Target(robotID,
@@ -678,7 +683,7 @@ class Field(object):
                             break
                         if(kaiju):
                             try:
-                                rg.unassignRobot(robotID)
+                                rg.decollideRobot(robotID)
                             except RuntimeError:
                                 print("unassign failure 2")
                             if(self.assignments[indx, iexp] >= 0):
@@ -712,7 +717,7 @@ class Field(object):
                         break
                     if(kaiju):
                         try:
-                            self.robotgrids[itry].unassignRobot(robotID)
+                            self.robotgrids[itry].decollideRobot(robotID)
                         except:
                             print("unassign failure 3")
 
@@ -727,7 +732,7 @@ class Field(object):
                 for iun in iother:
                     self.assignments[irobot, iun] = -1
                     try:
-                        self.robotgrids[iun].unassignRobot(robotID)
+                        self.robotgrids[iun].decollideRobot(robotID)
                     except:
                         print("unassign failure4")
 
@@ -755,7 +760,7 @@ class Field(object):
                             print("UH OH DID NOT ASSIGN ROBOT")
                         if(rg.isCollided(robotID)):
                             try:
-                                rg.unassignRobot(robotID)
+                                rg.decollideRobot(robotID)
                             except:
                                 print("unassign failure 5")
 
@@ -877,7 +882,7 @@ class Field(object):
                                     emask[tindx, iexp] = True
                                 # Reset robot -- perhaps there are more elegant ways
                                 try:
-                                    self.robotgrids[iexp].unassignRobot(robotID)
+                                    self.robotgrids[iexp].decollideRobot(robotID)
                                 except:
                                     print("unassign failure 6")
                     p = cadence.Packing(self.field_cadence)
@@ -908,11 +913,14 @@ class Field(object):
                                     sys.exit(1)
                             else:
                                 try:
-                                    rg.unassignRobot(robotID)
+                                    rg.decollideRobot(robotID)
                                 except:
                                     print("unassign failure 7")
                             if(rg.isCollidedWithAssigned(robotID)):
-                                print("INCONSISTENCY")
+                                print(robotID)
+                                print(ctarget)
+                                print(rg.robotDict[robotID].assignedTargetID)
+                                print("INCONSISTENCY 1")
 
         # Explicitly unassign all unassigned robots so they
         # are out of the way.
@@ -922,7 +930,7 @@ class Field(object):
                 for irobot in iun:
                     robotID = self.indx2RobotID[irobot]
                     try:
-                        rg.unassignRobot(robotID)
+                        rg.decollideRobot(robotID)
                     except:
                         print("unassign failure 8")
 
@@ -951,7 +959,7 @@ class Field(object):
                             print("UH OH DID NOT ASSIGN ROBOT")
                         if(rg.isCollided(robotID)):
                             try:
-                                rg.unassignRobot(robotID)
+                                rg.decollideRobot(robotID)
                             except:
                                 print("unassign failure 9")
 
@@ -1090,7 +1098,7 @@ class Field(object):
                 itarget = self.assignments[rindx, i]
                 if(itarget < 0):
                     try:
-                        self.robotgrids[i].unassignRobot(robotID)
+                        self.robotgrids[i].decollideRobot(robotID)
                     except:
                         print("unassign failure 10")
         return
