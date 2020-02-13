@@ -82,7 +82,7 @@ def field_options(ifield):
     fieldid = fields_entry['fieldid']
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
-        
+
     field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                        observatory=observatory,
                                        fieldid=fieldid)
