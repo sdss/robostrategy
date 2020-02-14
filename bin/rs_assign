@@ -44,7 +44,8 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     assign_entry['ntargets'] = f.ntarget
     target_got = np.zeros(f.ntarget, dtype=np.int32)
     igot = np.where(f.assignments[:, 0:nvisit] >= 0)
-    tgot = np.unique(f.assignments[igot])
+    tgot = np.array([f.targetID2indx[x]
+                     for x in np.unique(f.assignments[igot])])
     target_got[tgot] = 1
     iok = np.where((f.target_incadence) & (f.target_within))[0]
     assign_entry['nwithin'] = len(iok)
