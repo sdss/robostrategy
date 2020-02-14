@@ -637,15 +637,19 @@ class Field(object):
 
             # Now make ordered list of robots to use
             exposure_assignments = self.assignments[:, iexp]
-            indx = np.where(exposure_assignments >= 0)[0]
+            robot_indx = np.where(exposure_assignments >= 0)[0]
+            target_indx = np.array([self.targetID2indx[x]
+                                    for x in exposure_assignments[robot_indx]])
             assignment_nexp = np.zeros(self.mastergrid.nRobots,
                                        dtype=np.int32)
-            iscience = np.where(self.target_category[exposure_assignments[indx]] == 'SCIENCE')[0]
-            assignment_nexp[indx[iscience]] = np.array([
+            iscience = np.where(self.target_category[target_indx] ==
+                                'SCIENCE')[0]
+            assignment_nexp[robot_indx[iscience]] = np.array([
                 self.cadencelist.cadences[x].nexposures
-                for x in self.target_cadence[exposure_assignments[indx[iscience]]]])
-            inot = np.where(self.target_category[exposure_assignments[indx]] != 'SCIENCE')[0]
-            assignment_nexp[indx[inot]] = -1
+                for x in self.target_cadence[target_indx[iscience]]])
+            inot = np.where(self.target_category[target_indx] !=
+                            'SCIENCE')[0]
+            assignment_nexp[robot_indx[inot]] = -1
             chances = np.random.random(size=self.mastergrid.nRobots)
             sortby = (robot_used * (1 + chances) * 1 +
                       np.int32(assignment_nexp == 1) * (1 + chances) * 2 +
