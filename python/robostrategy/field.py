@@ -693,8 +693,7 @@ class Field(object):
                             except RuntimeError:
                                 print("unassign failure 2")
                             if(self.assignments[indx, iexp] >= 0):
-                                tid = self.target_id[self.assignments[indx,
-                                                                      iexp]]
+                                tid = self.assignments[indx, iexp]
                                 rg.assignRobot2Target(robotID, tid)
                 if(nassigned >= ncalib):
                     break
