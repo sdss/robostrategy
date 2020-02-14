@@ -275,7 +275,9 @@ class Field(object):
             self.target_id = self.target_array['targetid']
         except:
             print("FAKE TARGET ID")
-            self.target_id = np.arange(self.ntarget, dtype=np.int32)
+            self.target_id = np.arange(0, self.ntarget * 10, 10,
+                                       dtype=np.int32)
+            np.random.shuffle(self.target_id)
         self.target_pk = self.target_array['pk']
         self.target_x, self.target_y = self.radec2xy(self.target_ra,
                                                      self.target_dec)
