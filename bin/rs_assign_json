@@ -16,6 +16,7 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import multiprocessing
 import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -23,6 +24,21 @@ import robostrategy.allocate
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
+
+
+def field_to_json(indx=None):
+    fieldid = allocate.field_array['fieldid'][indx]
+    if((fieldid % 1) == 0):
+        print(fieldid, flush=True)
+
+    field_file = sdss_path.full('rsFieldAssignments',
+                                plan=plan, observatory=observatory,
+                                fieldid=fieldid)
+    f = field.Field(observatory=observatory)
+    f.fromfits(field_file)
+
+    json_file = ".".join(field_file.split('.')[0:-1]) + '.json'
+    f.tojs(json_file)
 
 
 if __name__ == '__main__':
@@ -63,16 +79,5 @@ if __name__ == '__main__':
         end = allocate.field_array['fieldid'].max()
     ikeep = np.where((allocate.field_array['fieldid'] >= start) &
                      (allocate.field_array['fieldid'] <= end))[0]
-    for indx in ikeep:
-        fieldid = allocate.field_array['fieldid'][indx]
-        if((fieldid % 1) == 0):
-            print(fieldid, flush=True)
-
-        field_file = sdss_path.full('rsFieldAssignments',
-                                    plan=plan, observatory=observatory,
-                                    fieldid=fieldid)
-        f = field.Field(observatory=observatory)
-        f.fromfits(field_file)
-
-        json_file = ".".join(field_file.split('.')[0:-1]) + '.json'
-        f.tojs(json_file)
+    with multiprocessing.Pool() as pool:
+        pool.map(field_to_json, ikeep)
