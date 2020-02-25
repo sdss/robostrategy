@@ -63,6 +63,9 @@ if __name__ == '__main__':
     outfile = field_file.replace('rsFieldAssignments', 'rsTest')
     f.tofits(outfile)
 
-    outbase = outfile.replace('.fits', '')
-    for indx, rg in enumerate(f.robotgrids):
-        rg.html(outbase + '-' + str(indx))
+    g = field.Field()
+    g.fromfits(outfile)
+
+    # outbase = outfile.replace('.fits', '')
+    # for indx, rg in enumerate(f.robotgrids):
+    #     rg.html(outbase + '-' + str(indx))
