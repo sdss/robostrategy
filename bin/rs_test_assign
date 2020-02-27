@@ -33,7 +33,7 @@ if __name__ == '__main__':
                         choices=['apo', 'lco'], required=True)
     parser.add_argument('-c', '--cadence', dest='cadence',
                         type=str, help='cadence to use',
-                        default='dark_single-1', required=False)
+                        default='dark_single-5', required=False)
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-f', '--fieldid', dest='fieldid',
