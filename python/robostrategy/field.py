@@ -403,6 +403,12 @@ class Field(object):
             t = self.mastergrid.targetDict[self.target_id[itarget]]
             self.target_within[itarget] = len(t.validRobotIDs) > 0
 
+        self.robot_validitargets = dict()
+        for rid in self.mastergrid.robotDict:
+            robot = self.mastergrid.robotDict[rid]
+            self.robot_validitargets[rid] = np.array([self.targetID2indx[x]
+                                                      for x in robot.validTargetIDs])
+
         return
 
     def targets_fromfits(self, filename=None):
@@ -696,7 +702,7 @@ class Field(object):
             exposure_assignments = self.assignments[:, iexp]
             robot_indx = np.where(exposure_assignments >= 0)[0]
             target_indx = np.array([self.targetID2indx[x]
-                                    for x in exposure_assignments[robot_indx]])
+                                    for x in exposure_assignments[robot_indx]], dtype=np.int32)
             assignment_nexp = np.zeros(self.mastergrid.nRobots,
                                        dtype=np.int32)
             iscience = np.where(self.target_category[target_indx] ==
@@ -771,8 +777,7 @@ class Field(object):
                     else:
                         ica = False
                     if(ica == False):
-                        itarget = self.targetID2indx[targetID]
-                        self.assignments[irobot, itry] = itarget
+                        self.assignments[irobot, itry] = targetID
                         self.assignments[irobot, iexp] = -1
                         break
                     if(kaiju):
@@ -826,9 +831,9 @@ class Field(object):
 
     def make_robotgrids(self):
         self.robotgrids = []
+        ta = self.mastergrid.target_array()
         for i in np.arange(self.nexposures):
             self.robotgrids.append(self._robotGrid())
-            ta = self.mastergrid.target_array()
             self.robotgrids[i].clearTargetDict()
             self.robotgrids[i].target_fromarray(ta)
         return
@@ -936,8 +941,20 @@ class Field(object):
                         for tindx, itarget in enumerate(ifull):
                             for iexp in np.arange(nexp, dtype=np.int32):
                                 tid = self.target_id[itarget]
-                                self.robotgrids[iexp].assignRobot2Target(robotID,
-                                                                         tid)
+                                try:
+                                    self.robotgrids[iexp].assignRobot2Target(robotID, tid)
+                                except:
+                                    print(iexp)
+                                    print(robotID)
+                                    print(tid)
+                                    print(itarget)
+                                    print(self.targetID2indx[tid])
+                                    print(self.target_id[itarget])
+                                    for v in self.mastergrid.robotDict[robotID].validTargetIDs:
+                                        print(v)
+                                    for v in self.robotgrids[iexp].robotDict[robotID].validTargetIDs:
+                                        print(v)
+                                    self.robotgrids[iexp].assignRobot2Target(robotID, tid)
                                 if(self.robotgrids[iexp].isCollidedWithAssigned(robotID)):
                                     emask[tindx, iexp] = True
                                 # Reset robot -- perhaps there are more elegant ways
@@ -1097,11 +1114,9 @@ class Field(object):
         """Get next robot in order of highest priority of remaining targets"""
         maxPriority = np.zeros(len(robotIDs), dtype=np.int32) - 9999
         for indx, robotID in enumerate(robotIDs):
-            robot = self.mastergrid.robotDict[robotID]
             if(doneRobots[indx] == np.bool(False)):
-                if(len(robot.validTargetIDs) > 0):
-                    itargets = np.array([self.targetID2indx[x]
-                                         for x in robot.validTargetIDs])
+                if(len(self.robot_validitargets[robotID]) > 0):
+                    itargets = self.robot_validitargets[robotID]
                     inot = np.where(got_target[itargets] == 0)[0]
                     if(len(inot) > 0):
                         it = itargets[inot]
