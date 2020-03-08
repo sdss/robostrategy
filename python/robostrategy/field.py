@@ -245,7 +245,67 @@ class Field(object):
 
         return(x, y)
 
-    def targets_fromarray(self, target_array=None):
+    def _targets_fromarray_strings(self):
+        try:
+            self.target_cadence = np.array(
+                [c.decode().strip() for c in self.target_array['cadence']])
+        except AttributeError:
+            self.target_cadence = np.array(
+                [c.strip() for c in self.target_array['cadence']])
+
+        try:
+            self.target_category = np.array(
+                [c.decode().strip() for c in self.target_array['category']])
+        except AttributeError:
+            self.target_category = np.array(
+                [c.strip() for c in self.target_array['category']])
+        except ValueError:
+            self.target_category = np.array(['SCIENCE'] * self.ntarget)
+
+        try:
+            self.target_program = np.array(
+                [c.decode().strip() for c in self.target_array['program']])
+        except AttributeError:
+            self.target_program = np.array(
+                [c.strip() for c in self.target_array['program']])
+        except ValueError:
+            self.target_program = np.array(['PROGRAM'] * self.ntarget)
+
+        self.targetID2indx = dict()
+        for itarget in np.arange(self.ntarget, dtype=np.int32):
+            self.targetID2indx[self.target_id[itarget]] = itarget
+        return
+
+    def _targets_fromarray_mastergrid(self):
+        # Add all targets to master grid.
+        for itarget in np.arange(self.ntarget, dtype=np.int32):
+            if(self.target_requires_apogee[itarget]):
+                fiberType = kaiju.ApogeeFiber
+            else:
+                fiberType = kaiju.BossFiber
+            self.mastergrid.addTarget(targetID=self.target_id[itarget],
+                                      x=self.target_x[itarget],
+                                      y=self.target_y[itarget],
+                                      priority=self.target_priority[itarget],
+                                      fiberType=fiberType)
+        return
+
+    def _targets_fromarray_within(self):
+        self.target_within = np.zeros(self.ntarget, dtype=np.bool)
+        for tid, t in self.mastergrid.targetDict.items():
+            itarget = self.targetID2indx[tid]
+            self.target_within[itarget] = len(t.validRobotIDs) > 0
+        return
+
+    def _targets_fromarray_valid(self):
+        self.robot_validitargets = dict()
+        for rid in self.mastergrid.robotDict:
+            robot = self.mastergrid.robotDict[rid]
+            self.robot_validitargets[rid] = np.array([self.targetID2indx[x]
+                                                      for x in robot.validTargetIDs])
+        return
+
+    def targets_fromarray(self, target_array=None, add_to_mastergrid=True):
         """Read targets from an ndarray
 
         Parameters:
@@ -282,12 +342,7 @@ class Field(object):
         self.target_x, self.target_y = self.radec2xy(self.target_ra,
                                                      self.target_dec)
 
-        try:
-            self.target_cadence = np.array(
-                [c.decode().strip() for c in self.target_array['cadence']])
-        except AttributeError:
-            self.target_cadence = np.array(
-                [c.strip() for c in self.target_array['cadence']])
+        self._targets_fromarray_strings()
 
         try:
             self.target_priority = self.target_array['priority']
@@ -298,24 +353,6 @@ class Field(object):
             self.target_value = self.target_array['value']
         except ValueError:
             self.target_value = np.ones(self.ntarget, dtype=np.int32)
-
-        try:
-            self.target_category = np.array(
-                [c.decode().strip() for c in self.target_array['category']])
-        except AttributeError:
-            self.target_category = np.array(
-                [c.strip() for c in self.target_array['category']])
-        except ValueError:
-            self.target_category = np.array(['SCIENCE'] * self.ntarget)
-
-        try:
-            self.target_program = np.array(
-                [c.decode().strip() for c in self.target_array['program']])
-        except AttributeError:
-            self.target_program = np.array(
-                [c.strip() for c in self.target_array['program']])
-        except ValueError:
-            self.target_program = np.array(['PROGRAM'] * self.ntarget)
 
         self.target_requires_apogee = np.zeros(self.ntarget, dtype=np.int8)
         iscience = np.where(self.target_category == 'SCIENCE')[0]
@@ -329,34 +366,14 @@ class Field(object):
         self.target_requires_apogee[inotscience] = (ttype == 'APOGEE')
         self.target_requires_boss[inotscience] = (ttype == 'BOSS')
 
-        # Add all targets to master grid.
-        self.targetID2indx = dict()
-        for itarget in np.arange(self.ntarget, dtype=np.int32):
-            if(self.target_requires_apogee[itarget]):
-                fiberType = kaiju.ApogeeFiber
-            else:
-                fiberType = kaiju.BossFiber
-            self.mastergrid.addTarget(targetID=self.target_id[itarget],
-                                      x=self.target_x[itarget],
-                                      y=self.target_y[itarget],
-                                      priority=self.target_priority[itarget],
-                                      fiberType=fiberType)
-            self.targetID2indx[self.target_id[itarget]] = itarget
-
-        self.target_within = np.zeros(self.ntarget, dtype=np.bool)
-        for itarget in np.arange(self.ntarget, dtype=np.int32):
-            t = self.mastergrid.targetDict[self.target_id[itarget]]
-            self.target_within[itarget] = len(t.validRobotIDs) > 0
-
-        self.robot_validitargets = dict()
-        for rid in self.mastergrid.robotDict:
-            robot = self.mastergrid.robotDict[rid]
-            self.robot_validitargets[rid] = np.array([self.targetID2indx[x]
-                                                      for x in robot.validTargetIDs])
+        if(add_to_mastergrid is True):
+            self._targets_fromarray_mastergrid()
+            self._targets_fromarray_within()
+            self._targets_fromarray_valid()
 
         return
 
-    def targets_fromfits(self, filename=None):
+    def targets_fromfits(self, filename=None, add_to_mastergrid=True):
         """Read targets from a FITS file
 
         Parameters:
@@ -379,7 +396,7 @@ class Field(object):
          'program'
 """
         target_array = fitsio.read(filename)
-        self.targets_fromarray(target_array)
+        self.targets_fromarray(target_array, add_to_mastergrid=add_to_mastergrid)
         return
 
     def set_field_cadence(self, field_cadence='none'):
@@ -390,7 +407,7 @@ class Field(object):
             self.nexposures = 0
         return
 
-    def fromfits(self, filename=None, read_assignments=True):
+    def fromfits(self, filename=None, read_assignments=True, make_grids=True):
         """Read field from a FITS file
 
         Parameters:
@@ -405,11 +422,12 @@ class Field(object):
         self.set_field_cadence(hdr['FCADENCE'].strip())
         if((self.field_cadence != 'none') & (read_assignments)):
             self.assignments = fitsio.read(filename, ext=2)
-        self.targets_fromfits(filename)
-        self.make_robotgrids()
+        self.targets_fromfits(filename, add_to_mastergrid=make_grids)
+        if(make_grids):
+            self.make_robotgrids()
         if((self.field_cadence != 'none') & (read_assignments)):
             self.set_target_assignments()
-        if(read_assignments):
+        if(read_assignments & make_grids):
             self._assignments_to_grids()
         return
 
@@ -776,11 +794,13 @@ class Field(object):
 
     def make_robotgrids(self):
         self.robotgrids = []
-        ta = self.mastergrid.target_array()
         for i in np.arange(self.nexposures):
             self.robotgrids.append(self._robotGrid())
             self.robotgrids[i].clearTargetDict()
-            self.robotgrids[i].target_fromarray(ta)
+            for tid, t in self.mastergrid.targetDict.items():
+                self.robotgrids[i].addTarget(targetID=t.id, x=t.x,
+                                             y=t.y, priority=t.priority,
+                                             fiberType=t.fiberType)
         return
 
     def assign(self, include_calibration=True, kaiju=True):
