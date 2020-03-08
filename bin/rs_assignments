@@ -77,7 +77,7 @@ if __name__ == '__main__':
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
-        f.fromfits(field_assigned_file)
+        f.fromfits(field_assigned_file, make_grids=False)
 
         f.set_field_cadence(allocate.field_array['cadence'][indx].decode().strip())
 
@@ -87,7 +87,8 @@ if __name__ == '__main__':
             for iexp in np.arange(nexposures):
                 iassigned = np.where(assignments[:, iexp] >= 0)[0]
                 if(len(iassigned) > 0):
-                    tassigned = assignments[iassigned, iexp]
+                    tassigned = [f.targetID2indx[x]
+                                 for x in assignments[iassigned, iexp]]
                     tmp_assignment = np.zeros(len(tassigned),
                                               dtype=assignment_dtype)
                     tmp_assignment['pk'] = f.target_pk[tassigned]
