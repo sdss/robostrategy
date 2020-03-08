@@ -11,6 +11,7 @@ import json
 import numpy as np
 import fitsio
 import matplotlib.pyplot as plt
+import scipy.optimize as optimize
 
 import roboscheduler.cadence as cadence
 import kaiju
@@ -143,7 +144,7 @@ class Field(object):
     for unassigned positioner-exposures. It does not contain
     target_pk.
 """
-    def __init__(self, racen=None, deccen=None,
+    def __init__(self, racen=None, deccen=None, pa=0.,
                  db=True, observatory='apo'):
         self.stepSize = 1  # for kaiju
         self.collisionBuffer = 2.0  # for kaiju
@@ -157,7 +158,9 @@ class Field(object):
         self.stepSize = 1
         self.racen = racen
         self.deccen = deccen
+        self.pa = pa  # assume deg E of N
         self.observatory = observatory
+        self.set_vertices()
         self.cadencelist = cadence.CadenceList()
         self.set_field_cadence('none')
         self.assignments = None
@@ -185,6 +188,31 @@ class Field(object):
         for k in rg.robotDict.keys():
             rg.robotDict[k].setAlphaBeta(0., 180.)
         return(rg)
+
+    def set_vertices(self):
+        maxReach = self.mastergrid.robotDict[1].getMaxReach()
+        xPos = np.array([self.mastergrid.robotDict[r].xPos
+                         for r in self.mastergrid.robotDict])
+        yPos = np.array([self.mastergrid.robotDict[r].yPos
+                         for r in self.mastergrid.robotDict])
+        rPos = np.sqrt(xPos**2 + yPos**2)
+        ivert = np.argsort(rPos)[-6:]
+        xVert = np.zeros(6, dtype=np.float64)
+        yVert = np.zeros(6, dtype=np.float64)
+        for i, cvert in enumerate(ivert):
+            rOut = rPos[cvert] + maxReach
+            xVert[i] = xPos[cvert] * rOut / rPos[cvert]
+            yVert[i] = yPos[cvert] * rOut / rPos[cvert]
+        thVert = np.arctan2(yVert, xVert)
+        isort = np.argsort(thVert)
+        self.xVert = np.zeros(7, dtype=np.float64)
+        self.yVert = np.zeros(7, dtype=np.float64)
+        self.xVert[0:6] = xVert[isort]
+        self.yVert[0:6] = yVert[isort]
+        self.xVert[6] = self.xVert[0]
+        self.yVert[6] = self.yVert[0]
+        self.raVert, self.decVert = self.xy2radec(self.xVert, self.yVert)
+        return
 
     def set_target_assignments(self):
         """Convert assignments array to per-target basis
@@ -238,12 +266,39 @@ class Field(object):
         pay = np.sin(ra_rad - racen_rad)
         pax = (np.cos(deccen_rad) * np.tan(dec_rad) -
                np.sin(deccen_rad) * np.cos(ra_rad - racen_rad))
-        pa_rad = np.arctan2(pay, pax)
+        pa_rad = np.arctan2(pay, pax)  # I think E of N?
+
+        pa_rad = pa_rad - self.pa * np.pi / 180.
 
         x = d_rad * 180. / np.pi * scale * np.sin(pa_rad)
         y = d_rad * 180. / np.pi * scale * np.cos(pa_rad)
 
         return(x, y)
+
+    def _min_xy_diff(self, radec, xt, yt):
+        x, y = self.radec2xy(ra=radec[0], dec=radec[1])
+        resid2 = (x - xt)**2 + (y - yt)**2
+        return(resid2)
+
+    def xy2radec(self, x=None, y=None):
+        # This doesn't handle poles well
+        # Yikes!
+        if(self.observatory == 'apo'):
+            scale = 218.
+        if(self.observatory == 'lco'):
+            scale = 329.
+        xa = self._arrayify(x, dtype=np.float64)
+        ya = self._arrayify(y, dtype=np.float64)
+        rast = self.racen - xa / scale / np.cos(self.deccen * np.pi / 180.)
+        decst = self.deccen + ya / scale
+        ra = np.zeros(len(xa), dtype=np.float64)
+        dec = np.zeros(len(xa), dtype=np.float64)
+        for i in np.arange(len(xa)):
+            res = optimize.minimize(self._min_xy_diff, [rast[i], decst[i]],
+                                    (xa[i], ya[i]))
+            ra[i] = res.x[0]
+            dec[i] = res.x[1]
+        return(ra, dec)
 
     def _targets_fromarray_strings(self):
         try:
