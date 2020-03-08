@@ -18,6 +18,8 @@ import argparse
 import os
 import sys
 import numpy as np
+import astropy.coordinates as coords
+import astropy.units as u
 import fitsio
 import sdss_access.path
 
@@ -67,12 +69,27 @@ if __name__ == '__main__':
     cfg.optionxform = str
     cfg.read(cfgfile)
 
+    if('DarkPlane' in cfg['Fields']):
+        pars = np.array(cfg['Fields']['DarkPlane'].split())
+        darkPlane = True
+        darkPlaneNum = np.int32(pars[0])
+        darkPlaneLat = np.float64(pars[1])
+    else:
+        darkPlane = False
+
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
     fields_array = fitsio.read(fields_file)
 
+    fields_coords = coords.SkyCoord(ra=fields_array['racen'] * u.degree,
+                                    dec=fields_array['deccen'] * u.degree,
+                                    frame='fk5')
+    fields_coords_gal = fields_coords.transform_to('galactic')
+    fields_l = fields_coords_gal.l.value
+    fields_b = fields_coords_gal.b.value
+
     all_field_cadences = []
-    for fields_entry in fields_array:
+    for ifield, fields_entry in enumerate(fields_array):
         fieldid = fields_entry['fieldid']
         fieldtype = fields_entry['type'].decode().strip()
 
@@ -92,6 +109,12 @@ if __name__ == '__main__':
         for cadence in cadences[cadences != 'FromTargets']:
             if(cadence in target_cadences):
                 field_cadences.append(cadence)
+
+        if(darkPlane & (np.abs(fields_b[ifield]) < darkPlaneLat)):
+            for ic, fc in enumerate(field_cadences):
+                if('bright_single' in fc):
+                    field_cadences[ic] = fc.replace('bright',
+                                                    'mixed' + str(darkPlaneNum))
 
         all_field_cadences.append(np.array(field_cadences))
 
