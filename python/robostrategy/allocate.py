@@ -397,8 +397,8 @@ class AllocateLST(object):
                 # set ratio of dark and bright so there is enough dark
                 Asb = np.array([ccadence['needed_sb'][1],
                                 - ccadence['needed_sb'][0]])
-                solver_ninf = - solver.infinity()
-                cadence_constraint_sb = solver.Constraint(solver_ninf, 0.)
+                solver_inf = solver.infinity()
+                cadence_constraint_sb = solver.Constraint(0., solver_inf)
                 for iskybrightness in range(self.slots.nskybrightness):
                     for ilst in range(self.slots.nlst):
                         if(ccadence['slots'][ilst, iskybrightness]):
