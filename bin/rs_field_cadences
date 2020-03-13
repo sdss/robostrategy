@@ -76,6 +76,7 @@ if __name__ == '__main__':
         darkPlaneLat = np.float64(pars[1])
     else:
         darkPlane = False
+        darkPlaneLat = 0
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
