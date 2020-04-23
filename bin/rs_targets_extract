@@ -33,14 +33,18 @@ def get_targets(cfg=None):
                ('ra', np.float64),
                ('dec', np.float64),
                ('value', np.int32),
+               ('priority', np.int32),
                ('program', np.dtype('a30')),
+               ('version', np.dtype('a30')),
                ('cadence', cadence.fits_type),
                ('category', np.dtype('a30'))]
 
     targets = np.zeros(0, dtype=target0)
 
     for program in cfg['Programs']:
-        print(program)
+        version = cfg['Programs'][program]
+        print("Extracting program {p}, version {v}".format(p=program,
+                                                           v=version))
 
         nt = (targetdb.Target.select(targetdb.Target.pk)
               .join(targetdb.Program)
@@ -53,19 +57,24 @@ def get_targets(cfg=None):
                                          targetdb.Target.dec,
                                          targetdb.Target.pk,
                                          targetdb.Target.value,
+                                         targetdb.Target.priority,
                                          targetdb.Program.label.alias('program'),
+                                         targetdb.Program.version,
                                          targetdb.TargetCadence.name.alias('cadence'))
                   .join(targetdb.Program).switch(targetdb.Target)
                   .join(targetdb.TargetCadence)
-                  .where(targetdb.Program.label == program)).dicts()
+                  .where((targetdb.Program.label == program) &
+                         (targetdb.Program.version == version))).dicts()
             
             for indx, t in zip(np.arange(nt), ts):
                 tmp_targets['ra'][indx] = t['ra']
                 tmp_targets['dec'][indx] = t['dec']
                 tmp_targets['pk'][indx] = t['pk']
                 tmp_targets['program'][indx] = t['program']
+                tmp_targets['version'][indx] = t['version']
                 tmp_targets['cadence'][indx] = t['cadence']
                 tmp_targets['value'][indx] = t['value']
+                tmp_targets['priority'][indx] = t['priority']
                 tmp_targets['category'][indx] = 'SCIENCE'
 
             targets = np.append(targets, tmp_targets)
@@ -85,6 +94,7 @@ def get_targets(cfg=None):
             new_targets['dec'] = decrandom
             new_targets['pk'] = -1
             new_targets['program'] = 'CALIBRATION'
+            new_targets['version'] = 'fake'
             new_targets['cadence'] = 'none'
             new_targets['category'] = category
             targets = np.append(targets, new_targets)

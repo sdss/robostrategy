@@ -21,6 +21,7 @@ import fitsio
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import robostrategy.allocate
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -41,6 +42,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+
+    rsParams = params.RobostrategyParams(plan=plan)
+    if('Rotate' in rsParams.cfg['Fields']):
+        rotate = True
+        paname = rsParams.cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -72,6 +81,8 @@ if __name__ == '__main__':
         f = field.Field(racen=allocate.fields['racen'][indx],
                         deccen=allocate.fields['deccen'][indx],
                         observatory=observatory)
+        if(rotate):
+            f.pa = np.float32(allocate.fields[paname][indx])
 
         field_assigned_file = sdss_path.full('rsFieldAssignments',
                                              plan=plan,

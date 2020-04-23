@@ -304,6 +304,10 @@ class Field(object):
         try:
             self.target_cadence = np.array(
                 [c.decode().strip() for c in self.target_array['cadence']])
+            self.target_nexposures = np.array(
+                [1 if x == 'none' else
+                 self.cadencelist.cadences[x].nexposures
+                 for x in self.target_cadence])
         except AttributeError:
             self.target_cadence = np.array(
                 [c.strip() for c in self.target_array['cadence']])

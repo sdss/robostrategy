@@ -181,8 +181,8 @@ class AllocateLST(object):
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
                  observatory=None, programs=None,
-                 observe_all_fields=[], dark_prefer=1.,
-                 minimum_ntargets={}):
+                 observe_all_fields=[], observe_all_cadences=[],
+                 dark_prefer=1., minimum_ntargets={}):
         if(filename is None):
             self.slots = slots
             self.fields = fields
@@ -197,6 +197,7 @@ class AllocateLST(object):
         np.random.seed(self.seed)
         self.observer = scheduler.Observer(observatory=observatory)
         self.observe_all_fields = observe_all_fields
+        self.observe_all_cadences = observe_all_cadences
         self.cadencelist = rcadence.CadenceList()
         self.dark_prefer = dark_prefer
         return
@@ -382,7 +383,12 @@ class AllocateLST(object):
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
-                cadence_constraint = solver.Constraint(0., ccadence['needed'])
+                if(cadence in self.observe_all_cadences):
+                    minval = float(ccadence['needed'] * 0.95)
+                else:
+                    minval = float(0.)
+                cadence_constraint = solver.Constraint(minval,
+                                                       ccadence['needed'])
 
                 # set total cadence constraint
                 for iskybrightness in range(self.slots.nskybrightness):

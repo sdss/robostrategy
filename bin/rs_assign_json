@@ -34,7 +34,9 @@ def field_to_json(indx=None):
     field_file = sdss_path.full('rsFieldAssignments',
                                 plan=plan, observatory=observatory,
                                 fieldid=fieldid)
-    f = field.Field(observatory=observatory)
+    f = field.Field(racen=allocate.fields['racen'][indx],
+                    deccen=allocate.fields['deccen'][indx],
+                    observatory=observatory)
     f.fromfits(field_file)
 
     json_file = ".".join(field_file.split('.')[0:-1]) + '.json'

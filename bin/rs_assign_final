@@ -21,6 +21,7 @@ import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import robostrategy.allocate
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -34,6 +35,8 @@ def assign_field(indx):
     f = field.Field(racen=allocate.field_array['racen'][indx],
                     deccen=allocate.field_array['deccen'][indx],
                     observatory=observatory)
+    if(rotate):
+        f.pa = np.float32(allocate.fields[paname][indx])
 
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
@@ -81,6 +84,14 @@ if __name__ == '__main__':
     start = args.start
     end = args.end
     print("kaiju = {kaiju}".format(kaiju=kaiju))
+
+    rsParams = params.RobostrategyParams(plan=plan)
+    if('Rotate' in rsParams.cfg['Fields']):
+        rotate = True
+        paname = rsParams.cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,

@@ -24,6 +24,8 @@ import robostrategy
 import robostrategy.sloane as sloane
 import robostrategy.params as params
 import sdss_access.path
+import astropy.coordinates as coords
+import astropy.units as units
 
 sdss_path = sdss_access.path.Path()
 
@@ -109,9 +111,92 @@ if __name__ == '__main__':
         fields_south_array = np.append(fields_south_array,
                                        tmp_fields_south_array)
 
-    if('RM' in rsParams.cfg['Fields']):
+    if('eROSITA_DE' in rsParams.cfg['Fields']):
+        c = coords.SkyCoord(fields_north_array['racen'] * units.deg,
+                            fields_north_array['deccen'] * units.deg)
+        l = c.galactic.l.value
+        b = c.galactic.b.value
+        iede = np.where((l > 180.) & (l < 360.))[0]
+        fields_north_array['type'][iede] = 'eROSITA_DE'
+        c = coords.SkyCoord(fields_south_array['racen'] * units.deg,
+                            fields_south_array['deccen'] * units.deg)
+        l = c.galactic.l.value
+        b = c.galactic.b.value
+        iede = np.where((l > 180.) & (l < 360.))[0]
+        fields_south_array['type'][iede] = 'eROSITA_DE'
+
+    if('BHMAqmesWide2' in rsParams.cfg['Fields']):
+        in_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                               'data',
+                               'candidate_target_fields_bhm_aqmes_wide_{v}.fits')
+        in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
+        wide = fitsio.read(in_file)
+        inew = np.where((wide['type'] == b'hpx') &
+                        (wide['CADENCE'] == b'bhm_aqmes_wide_2x4'))[0]
+        tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
+        tmp_fields['racen'] = wide['RACEN'][inew]
+        tmp_fields['deccen'] = wide['DECCEN'][inew]
+        tmp_fields['radius'] = 1.49
+        tmp_fields['type'] = 'BHMAqmesWide2'
+        fields_north_array = np.append(fields_north_array,
+                                       tmp_fields)
+        iold = np.where((wide['type'] == b'AllSkySloan') &
+                        (wide['CADENCE'] == b'bhm_aqmes_wide_2x4'))[0]
+        for i in iold:
+            d2 = ((fields_north_array['racen'] - wide['RACEN'][i])**2 *
+                  np.cos(wide['DECCEN'][i] * np.pi / 180.)**2 +
+                  (fields_north_array['deccen'] - wide['DECCEN'][i])**2)
+            imatch = d2.argmin()
+            fields_north_array['type'][imatch] = 'BHMAqmesWide2'
+        inew = np.where((wide['type'] == b'hpx') &
+                        (wide['CADENCE'] == b'bhm_aqmes_wide_3x4'))[0]
+        tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
+        tmp_fields['racen'] = wide['RACEN'][inew]
+        tmp_fields['deccen'] = wide['DECCEN'][inew]
+        tmp_fields['radius'] = 1.49
+        tmp_fields['type'] = 'BHMAqmesWide3'
+        fields_north_array = np.append(fields_north_array,
+                                       tmp_fields)
+        iold = np.where((wide['type'] == b'AllSkySloan') &
+                        (wide['CADENCE'] == b'bhm_aqmes_wide_3x4'))[0]
+        for i in iold:
+            d2 = ((fields_north_array['racen'] - wide['RACEN'][i])**2 *
+                  np.cos(wide['DECCEN'][i] * np.pi / 180.)**2 +
+                  (fields_north_array['deccen'] - wide['DECCEN'][i])**2)
+            imatch = d2.argmin()
+            fields_north_array['type'][imatch] = 'BHMAqmesWide3'
+
+    if('BHMAqmesMedium' in rsParams.cfg['Fields']):
+        in_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                               'data',
+                               'candidate_target_fields_bhm_aqmes_med_{v}.fits')
+        in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
+        med = fitsio.read(in_file)
+        inew = np.where(med['type'] == b'hpx')[0]
+        tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
+        tmp_fields['racen'] = med['RACEN'][inew]
+        tmp_fields['deccen'] = med['DECCEN'][inew]
+        tmp_fields['radius'] = 1.49
+        tmp_fields['type'] = 'BHMAqmesMedium'
+        fields_north_array = np.append(fields_north_array,
+                                       tmp_fields)
+        iold = np.where(med['type'] == b'AllSkySloan')[0]
+        for i in iold:
+            d2 = ((fields_north_array['racen'] - med['RACEN'][i])**2 *
+                  np.cos(med['DECCEN'][i] * np.pi / 180.)**2 +
+                  (fields_north_array['deccen'] - med['DECCEN'][i])**2)
+            imatch = d2.argmin()
+            fields_north_array['type'][imatch] = 'BHMAqmesMedium'
+        
+    in_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                              'data', 'fields-RM-v0.1.7.fits')
+    if('BHM' in rsParams.cfg['Fields']):
         in_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                  'data', 'fields-RM-v0.1.7.fits')
+                                  'data',
+                                  'candidate_target_fields_bhm_rm_{v}.fits')
+        in_rm_file = in_rm_file.format(v=rsParams.cfg['Fields']['BHM'])
+
+    if('RM' in rsParams.cfg['Fields']):
         in_rm = fitsio.read(in_rm_file)
         tmp_fields_rm = np.zeros(len(in_rm), dtype=fields_dtype)
         tmp_fields_rm['racen'] = in_rm['RACEN']

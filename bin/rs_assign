@@ -44,8 +44,9 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     assign_entry['ntargets'] = f.ntarget
     target_got = np.zeros(f.ntarget, dtype=np.int32)
     igot = np.where(f.assignments[:, 0:nvisit] >= 0)
-    tgot = np.array([f.targetID2indx[x]
-                     for x in np.unique(f.assignments[igot])])
+    gotids, gotn = np.unique(f.assignments[igot], return_counts=True)
+    gotindx = np.array([f.targetID2indx[x] for x in gotids])
+    tgot = gotindx[gotn >= f.target_nexposures[gotindx]]
     target_got[tgot] = 1
     iok = np.where((f.target_incadence) & (f.target_within))[0]
     assign_entry['nwithin'] = len(iok)
@@ -92,6 +93,8 @@ def field_options(ifield):
     f = field.Field(racen=fields_entry['racen'],
                     deccen=fields_entry['deccen'],
                     observatory=observatory)
+    if(rotate):
+        f.pa = np.float32(fields_entry[paname])
     f.targets_fromarray(targets)
 
     icadences = np.where(cadence_mask[ifield, :] != 0)[0]
@@ -102,21 +105,28 @@ def field_options(ifield):
         f = field.Field(racen=fields_entry['racen'],
                         deccen=fields_entry['deccen'],
                         observatory=observatory)
+        if(rotate):
+            f.pa = np.float32(fields_entry[paname])
         f.targets_fromarray(targets)
 
         f.set_field_cadence(field_cadence)
         f.assign(include_calibration=False, kaiju=False)
 
-        if(field_cadence.split('-')[-1] == 'n'):
+        last = field_cadence.split('-')[-1]
+        if(last[0] == 'n'):
+            if(last != 'n'):
+                minn = int(last[1:])
+            else:
+                minn = 1
             field_cadence_base = field_cadence.split('-')[0]
-            assign_entries = np.zeros(ncadence, dtype=assign_dtype)
-            for indx in np.arange(ncadence, dtype=np.int32) + 1:
+            assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
+            for indx in np.arange(minn, ncadence + 1, dtype=np.int32):
                 fcadence = '{base}-{n}'.format(base=field_cadence_base,
                                                n=indx)
                 assign_entry = make_assign_entry(f, fields_entry,
                                                  fcadence, utcadences,
                                                  utprograms, assign_dtype)
-                assign_entries[indx - 1] = assign_entry
+                assign_entries[indx - minn] = assign_entry
 
             if(assign_entries['ngot'].max() == 0):
                 ikeep = 0
@@ -127,21 +137,14 @@ def field_options(ifield):
                     ngot_pp = np.array([0.])
                 if(ngot_pp.max() > 0):
                     fgot = ngot_pp / ngot_pp.max()
-                    print(ngot_pp)
-                    print(fgot)
                     fgot_unique, iunique = np.unique(fgot,
                                                      return_index=True)
-                    print(fgot_unique)
                     indx = np.where((fgot_unique >= fgot_minimum) &
                                     (fgot_unique <= fgot_maximum))[0]
                     if(len(indx) > 0):
                         ikeep = iunique[indx]
                     else:
                         ikeep = [iunique[-1]]
-                    print(ngot_pp[ikeep])
-                    print(fgot[ikeep])
-                    print(fgot_minimum)
-                    print(fgot_maximum)
                 else:
                     ikeep = np.arange(len(assign_entries))
 
@@ -154,23 +157,25 @@ def field_options(ifield):
             assign_array = np.append(assign_array, assign_entry)
 
     # Write out at each field to allow resumption
+    hd = {'RSTVER': robostrategy.__version__}
+    tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
+                              observatory=observatory,
+                              fieldid=fieldid)
     if(test is False):
-        hd = {'RSTVER': robostrategy.__version__}
-        tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
-                                  observatory=observatory,
-                                  fieldid=fieldid)
         options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptions')
-        fitsio.write(options_file, assign_array, header=hd, clobber=True)
+    else:
+        options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptionsTest')
+    fitsio.write(options_file, assign_array, header=hd, clobber=True)
 
-        cadence_dtype = [('cadence', cadence.fits_type)]
-        cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
-        cadence_arr['cadence'] = utcadences
-        fitsio.write(options_file, cadence_arr, clobber=False)
+    cadence_dtype = [('cadence', cadence.fits_type)]
+    cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
+    cadence_arr['cadence'] = utcadences
+    fitsio.write(options_file, cadence_arr, clobber=False)
 
-        program_dtype = [('program', cadence.fits_type)]
-        program_arr = np.zeros(len(utprograms), dtype=program_dtype)
-        program_arr['program'] = utprograms
-        fitsio.write(options_file, program_arr, clobber=False)
+    program_dtype = [('program', cadence.fits_type)]
+    program_arr = np.zeros(len(utprograms), dtype=program_dtype)
+    program_arr['program'] = utprograms
+    fitsio.write(options_file, program_arr, clobber=False)
 
     return
 
@@ -212,12 +217,21 @@ if __name__ == '__main__':
     fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
     fgot_program = 'mwm_galactic'
 
+    if('Rotate' in rsParams.cfg['Fields']):
+        rotate = True
+        paname = rsParams.cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
+
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
+    if(rotate):
+        fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
@@ -277,6 +291,9 @@ if __name__ == '__main__':
     with multiprocessing.Pool() as pool:
         pool.map(field_options, ikeep)
 
+    if(test):
+        sys.exit(0)
+
     # Concatenate all
     assign_all = np.zeros(0, dtype=assign_dtype)
     for fieldid in fields_array['fieldid']:
@@ -303,8 +320,9 @@ if __name__ == '__main__':
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
     cadence_arr['cadence'] = utcadences
     fitsio.write(options_file, cadence_arr, clobber=False)
-
+    
     program_dtype = [('program', cadence.fits_type)]
     program_arr = np.zeros(len(utprograms), dtype=program_dtype)
     program_arr['program'] = utprograms
     fitsio.write(options_file, program_arr, clobber=False)
+    

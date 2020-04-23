@@ -78,8 +78,17 @@ if __name__ == '__main__':
         darkPlane = False
         darkPlaneLat = 0
 
+    if('Rotate' in cfg['Fields']):
+        rotate = True
+        paname = cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
+
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
+    if(rotate):
+        fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
 
     fields_coords = coords.SkyCoord(ra=fields_array['racen'] * u.degree,
@@ -105,11 +114,16 @@ if __name__ == '__main__':
         if('FromTargets' in cadences):
             field_cadences = cadences_from_targets(cfg=cfg,
                                                    target_cadences=target_cadences)
+            field_cadences = list(field_cadences)
         else:
             field_cadences = []
         for cadence in cadences[cadences != 'FromTargets']:
-            if(cadence in target_cadences):
-                field_cadences.append(cadence)
+            field_cadences.append(cadence)
+            if('bhm_aqmes_medium' in cadence):
+                print(fieldtype)
+                print(cadence)
+                print(target_cadences)
+                print(field_cadences)
 
         if(darkPlane & (np.abs(fields_b[ifield]) < darkPlaneLat)):
             for ic, fc in enumerate(field_cadences):

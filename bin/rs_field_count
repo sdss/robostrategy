@@ -20,6 +20,7 @@ import numpy as np
 import fitsio
 import robostrategy.field as field
 import roboscheduler.cadence as cadence
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path()
@@ -65,8 +66,18 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    rsParams = params.RobostrategyParams(plan=plan)
+    if('Rotate' in rsParams.cfg['Fields']):
+        rotate = True
+        paname = rsParams.cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
+
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
+    if(rotate):
+        fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
@@ -112,6 +123,8 @@ if __name__ == '__main__':
         f = field.Field(racen=fields_entry['racen'],
                         deccen=fields_entry['deccen'],
                         observatory=observatory)
+        if(rotate):
+            f.pa = np.float32(fields_entry[paname])
         f.targets_fromarray(targets)
 
         ce = make_count_entry(f, fields_entry, utcadences,
