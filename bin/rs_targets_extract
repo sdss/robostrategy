@@ -48,8 +48,10 @@ def get_targets(cfg=None):
 
         nt = (targetdb.Target.select(targetdb.Target.pk)
               .join(targetdb.Program)
-              .where(targetdb.Program.label == program)).count()
+              .where((targetdb.Program.label == program) &
+                     (targetdb.Program.version == version))).count()
 
+        print(" ... {nt} targets".format(nt=nt))
         if(nt > 0):
             tmp_targets = np.zeros(nt, dtype=target0)
 
