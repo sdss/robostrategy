@@ -37,6 +37,7 @@ def assign_field(indx):
                     observatory=observatory)
     if(rotate):
         f.pa = np.float32(allocate.fields[paname][indx])
+        print(f.pa)
 
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,

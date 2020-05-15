@@ -102,12 +102,13 @@ here</a>.</p>
     fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
     <thead>
         <tr>
-            <th>Programs included.</th>
+            <th>Program</th> <th>Version</th>
         </tr>
     </thead>""")
     fp.write("""<tbody>""")
     for program in cfg['Programs']:
-        fp.write("<tr><td>{p}</td></tr>".format(p=program))
+        fp.write("<tr><td>{p}</td><td>{v}</td></tr>".format(p=program,
+                                                            v=cfg['Programs'][program]))
     fp.write("""</tbody>""")
     fp.write("""</table>""")
 

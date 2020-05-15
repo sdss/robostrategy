@@ -38,6 +38,14 @@ if __name__ == '__main__':
                         type=str, help='program name',
                         required=True)
 
+    parser.add_argument('-v', '--version', dest='version',
+                        type=str, help='version name',
+                        required=True)
+
+    parser.add_argument('-cv', '--cadence-version', dest='cadence_version',
+                        type=str, help='cadence version name',
+                        required=True)
+
     parser.add_argument('-t', '--type', dest='type',
                         type=str, help='type',
                         choices=['Science', 'Standard', 'Sky',
@@ -50,6 +58,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     program = args.program
+    version = args.version
+    cadence_version = args.cadence_version
     filename = args.filename
     mapper = args.mapper
     target_type = args.type
@@ -72,21 +82,22 @@ if __name__ == '__main__':
     cadences = targetdb.TargetCadence.select().dicts()
     cadence_pk = dict()
     for cadence in cadences:
-        cadence_pk[cadence['name']] = cadence['pk']
+        cadence_pk[(cadence['name'], cadence['version'])] = cadence['pk']
 
     target_cadences_raw = np.unique(targets['cadence'])
     target_cadences = [x.decode().strip() for x in target_cadences_raw]
-    db_cadences = [x['name'] for x in cadences]
+    db_cadences = [(x['name'], x['version']) for x in cadences]
     for target_cadence in target_cadences:
-        if(target_cadence not in db_cadences):
-            print("Cadence {tc} not in database, not loading targets.".format(tc=target_cadence))
+        if((target_cadence, cadence_version) not in db_cadences):
+            print("Cadence {tc} version {cv} not in database, not loading targets.".format(tc=target_cadence, cv=cadence_version))
             sys.exit(1)
 
     # Check if program already exists
     existing_programs = targetdb.Program.select().dicts()
     for existing_program in existing_programs:
-        if(existing_program['label'] == program):
-            print("Program {p} already in database, not loading targets.".format(p=program))
+        if((existing_program['label'] == program) &
+           (existing_program['version'] == version)):
+            print("Program {p} version {v} already in database, not loading targets.".format(p=program, v=version))
             sys.exit(1)
 
     # Insert new file
@@ -100,6 +111,7 @@ if __name__ == '__main__':
     program_pk = program_pks.max() + 1
     program_insert = targetdb.Program.insert(pk=program_pk,
                                              label=program,
+                                             version=version,
                                              survey_pk=survey_pk[mapper])
 
     target_pk_max = (targetdb.Target.select(peewee.fn.Max(targetdb.Target.pk)).dicts())[0]['max']
@@ -116,10 +128,11 @@ if __name__ == '__main__':
         data_dict['file_index'] = indx
         data_dict['target_type_pk'] = target_type_pk[target_type]
         target_cadence = target['cadence'].decode().strip()
-        if(target_cadence not in cadence_pk):
-            print("Cadence {c} not in database, not loading.".format(c=target_cadence))
+        if((target_cadence, cadence_version) not in cadence_pk):
+            print("Cadence {c} version {v} not in database, not loading.".format(c=target_cadence, v=cadence_version))
             sys.exit(1)
-        data_dict['target_cadence_pk'] = cadence_pk[target_cadence]
+        data_dict['target_cadence_pk'] = cadence_pk[(target_cadence,
+                                                     cadence_version)]
         data_dict['program_pk'] = program_pk
         data_dict['priority'] = target['priority']
         data_dict['value'] = target['value']

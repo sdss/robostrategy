@@ -513,7 +513,8 @@ class Field(object):
                                        ('category', np.dtype('a30')),
                                        ('program', np.dtype('a30')),
                                        ('value', np.int32),
-                                       ('priority', np.int32)])
+                                       ('priority', np.int32),
+                                       ('within', np.int32)])
 
         target_array = np.zeros(self.ntarget, dtype=target_array_dtype)
         target_array['ra'] = self.target_ra
@@ -525,6 +526,7 @@ class Field(object):
         target_array['program'] = self.target_program
         target_array['value'] = self.target_value
         target_array['priority'] = self.target_priority
+        target_array['within'] = self.target_within
         return(target_array)
 
     def tofits(self, filename=None, clobber=True):

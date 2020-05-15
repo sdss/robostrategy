@@ -70,8 +70,16 @@ if __name__ == '__main__':
         else:
             lcoextend_ngc = False
 
-        fields_north = sloane.Sloane(n=7682, radius=1.49)
-        fields_south = sloane.Sloane(n=18752, radius=0.95)
+        if('APOSloaneNumber' in rsParams.cfg['Fields']):
+            nsloane_apo = int(rsParams.cfg['Fields']['APOSloaneNumber'])
+        else:
+            nsloane_apo = 7682
+        fields_north = sloane.Sloane(n=nsloane_apo, radius=1.49)
+        if('LCOSloaneNumber' in rsParams.cfg['Fields']):
+            nsloane_lco = int(rsParams.cfg['Fields']['LCOSloaneNumber'])
+        else:
+            nsloane_lco = 18752
+        fields_south = sloane.Sloane(n=nsloane_lco, radius=0.95)
 
         if(lcoextend_gp):
             fields_north.deccut_lcoextend(nsdiv, lcoextend_nsdiv,

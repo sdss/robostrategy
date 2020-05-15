@@ -71,7 +71,8 @@ if __name__ == '__main__':
                                     delta=tmpc.delta,
                                     delta_min=tmpc.delta_min,
                                     delta_max=tmpc.delta_max,
-                                    instrument=tmpc.instrument)
+                                    instrument=tmpc.instrument,
+                                    version=tmpc.version)
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
@@ -82,13 +83,13 @@ if __name__ == '__main__':
     for cn in cadencelist.cadences:
         if(('mwm_rv' in cn)):
             ii = np.where(cadencelist.cadences[cn].delta > 0.)[0]
-            cadencelist.cadences[cn].delta_max[ii] = cadencelist.cadences[cn].delta[ii] + 10.
+            cadencelist.cadences[cn].delta_max[ii] = cadencelist.cadences[cn].delta[ii] + 1.
 
     # precompile RV consistency because it is expensive
     for cn in cadencelist.cadences:
         if(('mwm_rv' in cn) & ('_v' not in cn)):
             print(cn)
-            cadencelist.cadence_consistency(cn, 'bhm_rm_174x8')
+            c = cadencelist.cadence_consistency(cn, 'bhm_rm_174x8')
 
     pkl_file = cadences_file + ".pkl"
     fp = open(pkl_file, 'wb')
