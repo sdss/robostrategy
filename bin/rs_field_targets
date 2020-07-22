@@ -24,7 +24,7 @@ import robostrategy.field as field
 import robostrategy.params as params
 import roboscheduler.cadence as cadence
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 cadencelist = cadence.CadenceList()
 
 

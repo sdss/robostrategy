@@ -22,7 +22,7 @@ import roboscheduler.cadence as cadence
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def get_targets():

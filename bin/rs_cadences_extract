@@ -23,7 +23,7 @@ import roboscheduler.cadence as cadence
 import sdss_access.path
 import pickle
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 if __name__ == '__main__':
@@ -90,6 +90,7 @@ if __name__ == '__main__':
         if(('mwm_rv' in cn) & ('_v' not in cn)):
             print(cn)
             c = cadencelist.cadence_consistency(cn, 'bhm_rm_174x8')
+            c = cadencelist.cadence_consistency(cn, 'bhm_rm_lite5_100x8')
 
     pkl_file = cadences_file + ".pkl"
     fp = open(pkl_file, 'wb')

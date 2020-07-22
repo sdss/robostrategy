@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_allocate_plot
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import fitsio
+import robostrategy.allocate
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5')
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Plot field allocation results')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    allocate_lco_file = sdss_path.full('rsAllocation', plan=plan,
+                                       observatory='lco')
+    allocate_lco = robostrategy.allocate.AllocateLST(filename=allocate_lco_file,
+                                                     observatory='lco')
+
+    allocate_apo_file = sdss_path.full('rsAllocation', plan=plan,
+                                       observatory='apo')
+    allocate_apo = robostrategy.allocate.AllocateLST(filename=allocate_apo_file,
+                                                     observatory='apo')
+
+    field_cadence_lco_file = sdss_path.full('rsFieldCadences',
+                                            plan=plan, observatory='lco')
+    cadence_mask_lco, hdr_lco = fitsio.read(field_cadence_lco_file, header=True)
+
+    field_cadence_apo_file = sdss_path.full('rsFieldCadences',
+                                            plan=plan, observatory='apo')
+    cadence_mask_apo, hdr_apo = fitsio.read(field_cadence_apo_file, header=True)
+
+    cadences_lco = [c.strip()
+                    for c in allocate_lco.field_array['cadence']]
+    base_cadences_lco = np.array([c.split('-')[0] for c in cadences_lco])
+
+    cadences_apo = [c.strip()
+                    for c in allocate_apo.field_array['cadence']]
+    base_cadences_apo = np.array([c.split('-')[0] for c in cadences_apo])
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory='apo+lco', name='radec')
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+    cm = colors.ListedColormap([(0.8, 0.8, 0.8),
+                                (0.7, 0.7, 0.7),
+                                (0.6, 0.4, 0.4),
+                                (0.6 * 0.8, 0.4 * 0.8, 0.4 * 0.8),
+                                (0.6 * 0.7, 0.4 * 0.7, 0.4 * 0.7),
+                                (0.6 * 0.6, 0.4 * 0.6, 0.4 * 0.6),
+                                (0.6 * 0.5, 0.4 * 0.5, 0.4 * 0.5),
+                                (0.6 * 0.4, 0.4 * 0.4, 0.4 * 0.4),
+                                (0.6 * 0.3, 0.4 * 0.3, 0.4 * 0.3)])
+    allocate_lco.plot_fields(linear=True, vmin=1., vmax=10, cmap=cm,
+                             lon_0=180.)
+    allocate_apo.plot_fields(linear=True, colorbar=False, vmin=1., vmax=10,
+                             cmap=cm, lon_0=180.)
+    plt.title("All cadences")
+    plt.savefig(png_file)
+    plt.clf()

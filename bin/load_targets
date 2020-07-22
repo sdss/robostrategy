@@ -21,7 +21,7 @@ import fitsio
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import peewee
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 if __name__ == '__main__':

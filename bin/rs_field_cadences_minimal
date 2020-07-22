@@ -22,7 +22,7 @@ import astropy.units as units
 import fitsio
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def cadences_from_targets(target_cadences):

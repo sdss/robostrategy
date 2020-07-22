@@ -25,7 +25,7 @@ import robostrategy.field as field
 import robostrategy.allocate
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 matplotlib.rcParams['figure.figsize'] = [10, 10]
 
@@ -74,7 +74,7 @@ if __name__ == '__main__':
 
     for indx in findx:
         fieldid = allocate.field_array['fieldid'][indx]
-        cadence = allocate.field_array['cadence'][indx].decode().strip()
+        cadence = allocate.field_array['cadence'][indx].strip()
 
         if((fieldid % 1) == 0):
             print(fieldid)

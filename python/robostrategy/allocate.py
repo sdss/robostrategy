@@ -270,7 +270,7 @@ class AllocateLST(object):
             curr_slots = self.field_slots[icurr]
             curr_options = self.field_options[icurr]
 
-            curr_cadences = np.array([x.decode().strip()
+            curr_cadences = np.array([x.strip()
                                       for x in curr_slots['cadence']])
 
             if(fix_cadence):
@@ -328,7 +328,7 @@ class AllocateLST(object):
 
         Solves the linear programming problem.
 """
-        ftype = np.array([x.decode().strip() for x in self.fields['type']])
+        ftype = np.array([x.strip() for x in self.fields['type']])
         field_minimum_float = dict()
         for indx in np.arange(len(self.fields)):
             cftype = ftype[indx]
@@ -337,10 +337,10 @@ class AllocateLST(object):
                 ifield = np.where(self.field_array['fieldid'] == cfieldid)[0]
                 if((len(ifield) == 0)):
                     field_minimum_float[cfieldid] = 0.0
-                elif (self.field_array['cadence'][ifield[0]].decode().strip() == 'none'):
+                elif (self.field_array['cadence'][ifield[0]].strip() == 'none'):
                     field_minimum_float[cfieldid] = 0.0
                 else:
-                    field_minimum_float[cfieldid] = 0.97
+                    field_minimum_float[cfieldid] = 0.95
             else:
                 if(cftype in self.observe_all_fields):
                     field_minimum_float[cfieldid] = 0.99
@@ -552,7 +552,7 @@ class AllocateLST(object):
             field_array['nfilled'][findx] = np.int32(
                 field_array['slots_exposures'][findx, :, :].sum() + 0.001)
 
-        fscadence = np.array([x.decode().strip()
+        fscadence = np.array([x.strip()
                               for x in self.field_slots['cadence']])
         for findx in np.arange(len(field_array), dtype=np.int32):
             field = field_array[findx]
@@ -696,7 +696,8 @@ class AllocateLST(object):
     def _convert_radec(self, m, ra, dec):
         return m(((360. - ra) + 180.) % 360., dec, inverse=False)
 
-    def plot_fields(self, indx=None, label=False):
+    def plot_fields(self, indx=None, label=False, linear=False,
+                    colorbar=True, lon_0=270., **kwargs):
         """Plot the RA/Dec distribution of fields allocated
 
         Parameters:
@@ -709,11 +710,10 @@ class AllocateLST(object):
         if(indx is None):
             indx = np.arange(len(self.field_array), dtype=np.int32)
 
-
         if basemap is None:
             raise ImportError('basemap was not imported. Is it installed?')
 
-        m = basemap.Basemap(projection='moll', lon_0=270, resolution='c')
+        m = basemap.Basemap(projection='moll', lon_0=lon_0, resolution='c')
 
         # draw parallels and meridians.
         m.drawparallels(np.arange(-90., 120., 30.),
@@ -726,15 +726,22 @@ class AllocateLST(object):
         ii = np.where(self.field_array['nfilled'][indx] > 0)[0]
         ii = indx[ii]
 
+        if(linear is False):
+            nfilled_value = np.log10(self.field_array['nfilled'][ii])
+            colorbar_label = '$\log_{10} N$'
+        else:
+            nfilled_value = self.field_array['nfilled'][ii]
+            colorbar_label = '$N$'
+
         if(label is False):
             (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
                                            self.field_array['deccen'][ii])
-            plt.scatter(xx, yy, s=4,
-                        c=np.log10(self.field_array['nfilled'][ii]))
-            cb = plt.colorbar()
-            cb.set_label('$\log_{10} N$')
+            plt.scatter(xx, yy, s=4, c=nfilled_value, **kwargs)
+            if(colorbar):
+                cb = plt.colorbar()
+                cb.set_label(colorbar_label)
         else:
-            cadences = np.array(["_".join(x.decode().strip().split('-')[0].split('_')[0:-1])
+            cadences = np.array(["_".join(x.strip().split('-')[0].split('_')[0:-1])
                                  for x in self.field_array['cadence'][ii]])
             ucadences = np.unique(cadences)
             for ucadence in ucadences:

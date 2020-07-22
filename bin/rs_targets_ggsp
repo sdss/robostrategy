@@ -21,7 +21,7 @@ import fitsio
 import observesim.db.peewee.targetdb as targetdb
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 targetdb.database.autoconnect()
 
 

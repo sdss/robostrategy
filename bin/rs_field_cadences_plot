@@ -27,7 +27,7 @@ try:
 except ImportError:
     basemap = None
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def _convert_radec(m, ra, dec):

@@ -22,7 +22,7 @@ import fitsio
 import sdss_access.path
 import roboscheduler.cadence as cadence
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 img_tag = "<a href='{png_file}'><img src='{png_file}' width=300px/></a>"
 
 if __name__ == '__main__':
@@ -56,12 +56,12 @@ if __name__ == '__main__':
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     targets = fitsio.read(targets_file)
-    cadence_targets = [c.decode().strip() for c in targets['cadence']]
+    cadence_targets = [c.strip() for c in targets['cadence']]
 
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
     field_options = fitsio.read(options_file)
-    cadence_fields = [c.decode().strip() for c in field_options['cadence']]
+    cadence_fields = [c.strip() for c in field_options['cadence']]
     cadence_fields.append('bright_single-100')
     cadence_fields.append('dark_single-100')
     cadence_fields.append('mixed_single-100')

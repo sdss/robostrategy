@@ -24,7 +24,7 @@ import robostrategy.sloane as sloane
 import robostrategy.params as params
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 if __name__ == '__main__':

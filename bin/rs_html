@@ -22,7 +22,7 @@ import fitsio
 import sdss_access.path
 import robostrategy.allocate
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 img_tag = "<a href='{png_file}'><img src='{png_file}' width=300px/></a>"
 
 if __name__ == '__main__':
@@ -478,7 +478,7 @@ table, th, td {
     for indx in np.arange(len(allocate.field_array)):
         field = allocate.field_array[indx]
         row = row_template.format(fieldid=field['fieldid'],
-                                  cadence=field['cadence'].decode().strip(),
+                                  cadence=field['cadence'].strip(),
                                   plan=plan, obs=observatory)
         fp.write(row)
 

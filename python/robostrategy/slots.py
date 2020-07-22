@@ -183,11 +183,11 @@ class Slots(object):
         method.
 """
         self.slots, hdr = fitsio.read(filename, ext=ext, header=True)
-        self.nlst = hdr['NLST']
-        self.duration = hdr['DURATION']
-        self.fclear = hdr['FCLEAR']
+        self.nlst = np.int32(hdr['NLST'])
+        self.duration = np.float32(hdr['DURATION'])
+        self.fclear = np.float32(hdr['FCLEAR'])
         self.observatory = hdr['OBSERVAT']
-        self.nskybrightness = hdr['NSB']
+        self.nskybrightness = np.int32(hdr['NSB'])
         self.skybrightness = np.zeros(self.nskybrightness + 1,
                                       dtype=np.float32)
         for indx in range(len(self.skybrightness)):

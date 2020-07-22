@@ -303,7 +303,7 @@ class Field(object):
     def _targets_fromarray_strings(self):
         try:
             self.target_cadence = np.array(
-                [c.decode().strip() for c in self.target_array['cadence']])
+                [c.strip() for c in self.target_array['cadence']])
             self.target_nexposures = np.array(
                 [1 if x == 'none' else
                  self.cadencelist.cadences[x].nexposures
@@ -314,7 +314,7 @@ class Field(object):
 
         try:
             self.target_category = np.array(
-                [c.decode().strip() for c in self.target_array['category']])
+                [c.strip() for c in self.target_array['category']])
         except AttributeError:
             self.target_category = np.array(
                 [c.strip() for c in self.target_array['category']])
@@ -323,7 +323,7 @@ class Field(object):
 
         try:
             self.target_program = np.array(
-                [c.decode().strip() for c in self.target_array['program']])
+                [c.strip() for c in self.target_array['program']])
         except AttributeError:
             self.target_program = np.array(
                 [c.strip() for c in self.target_array['program']])

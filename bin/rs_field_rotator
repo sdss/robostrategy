@@ -38,7 +38,8 @@ import sys
 import argparse
 
 import sdss_access.path
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
+
 
 def calc_sky_vertices(fdata, pa, vertex_tan):
 
@@ -174,7 +175,7 @@ if __name__ == '__main__':
 
     # algo 2
     pa_furthest = np.zeros(len(fas), dtype=np.float32)
-    pa_furthest[iu] = [pa_deg[np.argmax(np.where(idx1 == i, sep, -1.0))] +
+    pa_furthest[iu] = [pa_deg[np.argmax(np.where(idx1 == i, sep, -1.0 * u.deg))] +
                        0.0 for i in iu]
     pa_furthest = np.mod(pa_furthest, 60.0)
     # pa_furthest[niu<6] = 0.0

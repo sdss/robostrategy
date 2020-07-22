@@ -27,7 +27,7 @@ import sdss_access.path
 import astropy.coordinates as coords
 import astropy.units as units
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 if __name__ == '__main__':
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     fields_north_array = np.zeros(0, dtype=fields_dtype)
     fields_south_array = np.zeros(0, dtype=fields_dtype)
 
-    if('AllSkySloane' in rsParams.cfg['Fields']):
+    if('AllSkySloane' in rsParams.cfg.options('Fields')):
         nsdiv = np.float32(rsParams.cfg.get('Fields', 'NSDiv'))
         if('lcoextend_gp' in rsParams.cfg['Fields']):
             lcoextend_gp = True
@@ -139,8 +139,8 @@ if __name__ == '__main__':
                                'candidate_target_fields_bhm_aqmes_wide_{v}.fits')
         in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
         wide = fitsio.read(in_file)
-        inew = np.where((wide['type'] == b'hpx') &
-                        (wide['CADENCE'] == b'bhm_aqmes_wide_2x4'))[0]
+        inew = np.where((wide['type'] == 'hpx') &
+                        (wide['CADENCE'] == 'bhm_aqmes_wide_2x4'))[0]
         tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
         tmp_fields['racen'] = wide['RACEN'][inew]
         tmp_fields['deccen'] = wide['DECCEN'][inew]
@@ -148,16 +148,16 @@ if __name__ == '__main__':
         tmp_fields['type'] = 'BHMAqmesWide2'
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields)
-        iold = np.where((wide['type'] == b'AllSkySloan') &
-                        (wide['CADENCE'] == b'bhm_aqmes_wide_2x4'))[0]
+        iold = np.where((wide['type'] == 'AllSkySloan') &
+                        (wide['CADENCE'] == 'bhm_aqmes_wide_2x4'))[0]
         for i in iold:
             d2 = ((fields_north_array['racen'] - wide['RACEN'][i])**2 *
                   np.cos(wide['DECCEN'][i] * np.pi / 180.)**2 +
                   (fields_north_array['deccen'] - wide['DECCEN'][i])**2)
             imatch = d2.argmin()
             fields_north_array['type'][imatch] = 'BHMAqmesWide2'
-        inew = np.where((wide['type'] == b'hpx') &
-                        (wide['CADENCE'] == b'bhm_aqmes_wide_3x4'))[0]
+        inew = np.where((wide['type'] == 'hpx') &
+                        (wide['CADENCE'] == 'bhm_aqmes_wide_3x4'))[0]
         tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
         tmp_fields['racen'] = wide['RACEN'][inew]
         tmp_fields['deccen'] = wide['DECCEN'][inew]
@@ -165,8 +165,8 @@ if __name__ == '__main__':
         tmp_fields['type'] = 'BHMAqmesWide3'
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields)
-        iold = np.where((wide['type'] == b'AllSkySloan') &
-                        (wide['CADENCE'] == b'bhm_aqmes_wide_3x4'))[0]
+        iold = np.where((wide['type'] == 'AllSkySloan') &
+                        (wide['CADENCE'] == 'bhm_aqmes_wide_3x4'))[0]
         for i in iold:
             d2 = ((fields_north_array['racen'] - wide['RACEN'][i])**2 *
                   np.cos(wide['DECCEN'][i] * np.pi / 180.)**2 +
@@ -180,7 +180,7 @@ if __name__ == '__main__':
                                'candidate_target_fields_bhm_aqmes_med_{v}.fits')
         in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
         med = fitsio.read(in_file)
-        inew = np.where(med['type'] == b'hpx')[0]
+        inew = np.where(med['type'] == 'hpx')[0]
         tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
         tmp_fields['racen'] = med['RACEN'][inew]
         tmp_fields['deccen'] = med['DECCEN'][inew]
@@ -188,7 +188,7 @@ if __name__ == '__main__':
         tmp_fields['type'] = 'BHMAqmesMedium'
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields)
-        iold = np.where(med['type'] == b'AllSkySloan')[0]
+        iold = np.where(med['type'] == 'AllSkySloan')[0]
         for i in iold:
             d2 = ((fields_north_array['racen'] - med['RACEN'][i])**2 *
                   np.cos(med['DECCEN'][i] * np.pi / 180.)**2 +
@@ -211,7 +211,10 @@ if __name__ == '__main__':
         tmp_fields_rm['deccen'] = in_rm['DECCEN']
         tmp_fields_rm['radius'] = in_rm['RADIUS']
         tmp_fields_rm['type'] = 'RM'
-        obs = np.array([o.decode().strip() for o in in_rm['OBSERVATORY']])
+        ilite = np.where(in_rm['CADENCE'] == 'bhm_rm_lite5_100x8')[0]
+        tmp_fields_rm['type'][ilite] = 'RMlite'
+        print(in_rm['OBSERVATORY'])
+        obs = np.array([o.strip() for o in in_rm['OBSERVATORY']])
         iso = np.where(obs == 'lco')[0]
         tmp_fields_rm['radius'][iso] = 0.95
         fields_south_array = np.append(fields_south_array,

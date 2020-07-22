@@ -24,7 +24,7 @@ import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 if __name__ == '__main__':
@@ -90,7 +90,7 @@ if __name__ == '__main__':
                                              fieldid=fieldid)
         f.fromfits(field_assigned_file, make_grids=False)
 
-        f.set_field_cadence(allocate.field_array['cadence'][indx].decode().strip())
+        f.set_field_cadence(allocate.field_array['cadence'][indx].strip())
 
         if(f.assignments is not None):
             assignments = f.assignments

@@ -1,0 +1,171 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: May 19, 2020
+# @Filename: rs_stats
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5')
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Gather numbers per program both sites')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    html_path = os.path.dirname(sdss_path.full('rsCompleteness', plan=plan,
+                                               observatory='apo'))
+    html_file = os.path.join(html_path, 'rs-stats.html')
+    stats_file = os.path.join(html_path, 'rsStats-{p}.fits'.format(p=plan))
+
+    stats_dtype = [('program', np.dtype('a40')),
+                   ('ntarget', np.int32),
+                   ('ngot', np.int32),
+                   ('fgot', np.float32),
+                   ('ntarget_apo', np.int32),
+                   ('ngot_apo', np.int32),
+                   ('fgot_apo', np.float32),
+                   ('ntarget_lco', np.int32),
+                   ('ngot_lco', np.int32),
+                   ('fgot_lco', np.float32)]
+    stats = np.zeros(0, dtype=stats_dtype)
+
+    for observatory in ['apo', 'lco']:
+        completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
+                                                            plan=plan,
+                                                            observatory=observatory))
+
+        nt, completeness_hdr = fitsio.read(completeness_file, header=True)
+
+        nprog = np.int32(completeness_hdr['NPROGRAM'])
+        ncad = np.int32(completeness_hdr['NCADENCE'])
+        for iprog in np.arange(nprog):
+            hdr = fitsio.read_header(completeness_file,
+                                     ext=(ncad + 1 + iprog) * 3 + 2)
+            program = hdr['PROGRAM'].strip()
+            ntarget = hdr['NTARGETS']
+            ngot = hdr['NGOT']
+            fgot = hdr['FGOT']
+            if(len(stats) > 0):
+                plist = np.array([p.decode().strip()
+                                  for p in stats['program']])
+                ip = np.where(plist == program)[0]
+            else:
+                ip = []
+            if(len(ip) == 0):
+                stats_one = np.zeros(1, dtype=stats_dtype)
+                stats_one['program'] = program
+                stats = np.append(stats, stats_one)
+                plist = np.array([p.decode().strip()
+                                  for p in stats['program']])
+                ip = np.where(plist == program)[0]
+            print(program)
+            print(plist)
+            ip = ip[0]
+            stats['ngot_{o}'.format(o=observatory)][ip] = ngot
+            stats['ntarget_{o}'.format(o=observatory)][ip] = ntarget
+            stats['fgot_{o}'.format(o=observatory)][ip] = fgot
+
+    stats['ntarget'] = stats['ntarget_apo'] + stats['ntarget_lco']
+    stats['ngot'] = stats['ngot_apo'] + stats['ngot_lco']
+    stats['fgot'] = stats['ngot'] / stats['ntarget']
+
+    fitsio.write(stats_file, stats, clobber=True)
+
+    fp = open(html_file, "w")
+    fp.write("<html>")
+    fp.write("""<head>
+<style>
+table, th, td {
+  border: 1px solid black;
+  border-collapse: collapse;
+}
+</style>
+</head>
+""")
+    fp.write("<body>")
+    fp.write("<h2>{p}</h2><table>".format(p=plan))
+
+    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
+<thead>
+    <tr>
+    <th><b>Program</b></th>
+    <th><b>Number Gotten</b></th>
+    <th>Number Targets</th>
+    <th>Fraction Gotten</th>
+    <th>Number Gotten (APO) </th>
+    <th>Number Targets (APO) </th>
+    <th>Fraction Gotten (APO) </th>
+    <th>Number Gotten (LCO)</th>
+    <th>Number Targets (LCO)</th>
+    <th>Fraction Gotten (LCO)</th>
+    </tr>
+</thead>""")
+
+    row_template = """<tr>
+<td align='right'><b>{program}</b></td>
+<td align='right'><b>{ngot}</b></td>
+<td align='right'>{ntarget}</td>
+<td align='right'>{fgot:5.2f}</td>
+<td align='right'>{ngot_apo}</td>
+<td align='right'>{ntarget_apo}</td>
+<td align='right'>{fgot_apo:5.2f}</td>
+<td align='right'>{ngot_lco}</td>
+<td align='right'>{ntarget_lco}</td>
+<td align='right'>{fgot_lco:5.2f}</td>
+</tr>"""
+
+    ps = np.array([p.decode().strip() for p in stats['program']])
+    isci = np.where(ps != 'CALIBRATION')[0]
+
+    fp.write(row_template.format(program='All',
+                                 ngot=stats['ngot'][isci].sum(),
+                                 ntarget=stats['ntarget'][isci].sum(),
+                                 fgot=stats['ngot'][isci].sum() /
+                                 stats['ntarget'][isci].sum(),
+                                 ngot_apo=stats['ngot_apo'][isci].sum(),
+                                 ntarget_apo=stats['ntarget_apo'][isci].sum(),
+                                 fgot_apo=stats['ngot_apo'][isci].sum() /
+                                 stats['ntarget_apo'][isci].sum(),
+                                 ngot_lco=stats['ngot_lco'][isci].sum(),
+                                 ntarget_lco=stats['ntarget_lco'][isci].sum(),
+                                 fgot_lco=stats['ngot_lco'][isci].sum() /
+                                 stats['ntarget_lco'][isci].sum()))
+
+    for s in stats[isci]:
+        fp.write(row_template.format(program=s['program'].decode().strip(),
+                                     ngot=s['ngot'],
+                                     ntarget=s['ntarget'],
+                                     fgot=s['fgot'],
+                                     ngot_apo=s['ngot_apo'],
+                                     ntarget_apo=s['ntarget_apo'],
+                                     fgot_apo=s['fgot_apo'],
+                                     ngot_lco=s['ngot_lco'],
+                                     ntarget_lco=s['ntarget_lco'],
+                                     fgot_lco=s['fgot_lco']))
+
+    fp.write("</table>")
+    fp.write("</body>")
+    fp.write("</html>")
+    fp.close()

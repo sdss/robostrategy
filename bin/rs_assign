@@ -27,7 +27,7 @@ import robostrategy.params as params
 import sdss_access.path
 import multiprocessing
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 cadencelist = cadence.CadenceList()
 
 
@@ -101,7 +101,7 @@ def field_options(ifield):
     field_cadences = all_cadences[icadences]
 
     for field_cadence in field_cadences:
-        print(field_cadence)
+        print(field_cadence, flush=True)
         f = field.Field(racen=fields_entry['racen'],
                         deccen=fields_entry['deccen'],
                         observatory=observatory)
@@ -109,8 +109,13 @@ def field_options(ifield):
             f.pa = np.float32(fields_entry[paname])
         f.targets_fromarray(targets)
 
+        print("got targets", flush=True)
+
         f.set_field_cadence(field_cadence)
+        print("set cadence", flush=True)
         f.assign(include_calibration=False, kaiju=False)
+
+        print("assigned", flush=True)
 
         last = field_cadence.split('-')[-1]
         if(last[0] == 'n'):
@@ -121,6 +126,7 @@ def field_options(ifield):
             field_cadence_base = field_cadence.split('-')[0]
             assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
             for indx in np.arange(minn, ncadence + 1, dtype=np.int32):
+                print("indx = {indx}".format(indx=indx), flush=True)
                 fcadence = '{base}-{n}'.format(base=field_cadence_base,
                                                n=indx)
                 assign_entry = make_assign_entry(f, fields_entry,
@@ -252,12 +258,12 @@ if __name__ == '__main__':
     all_cadences = np.array(all_cadences)
 
     # Make list of all unique target cadences
-    tcadences = [x.decode().strip() for x in targets_all['cadence']]
+    tcadences = [x.strip() for x in targets_all['cadence']]
     utcadences = np.unique(np.array(tcadences))
     nutcadences = len(utcadences)
 
     # Make list of all unique target programs
-    tprograms = [x.decode().strip() for x in targets_all['program']]
+    tprograms = [x.strip() for x in targets_all['program']]
     utprograms = np.unique(np.array(tprograms))
     ifgotprogram = np.where(utprograms == fgot_program)[0]
     if(len(ifgotprogram) == 1):

@@ -23,7 +23,7 @@ import robostrategy.field as field
 import robostrategy.allocate
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def field_to_json(indx=None):

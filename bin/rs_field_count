@@ -23,7 +23,7 @@ import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def make_count_entry(f, fields_entry, utcadences,
@@ -90,12 +90,12 @@ if __name__ == '__main__':
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     # Make list of all unique target cadences
-    tcadences = [x.decode().strip() for x in targets_all['cadence']]
+    tcadences = [x.strip() for x in targets_all['cadence']]
     utcadences = np.unique(np.array(tcadences))
     nutcadences = len(utcadences)
 
     # Make list of all unique target programs
-    tprograms = [x.decode().strip() for x in targets_all['program']]
+    tprograms = [x.strip() for x in targets_all['program']]
     utprograms = np.unique(np.array(tprograms))
     nutprograms = len(utprograms)
 

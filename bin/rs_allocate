@@ -25,7 +25,7 @@ import robostrategy.params as params
 import roboscheduler.cadence as cadence
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 if __name__ == '__main__':
@@ -78,9 +78,9 @@ if __name__ == '__main__':
                                   observatory=observatory)
     field_options = fitsio.read(options_file)
     foarr = fitsio.read(options_file, ext=3)
-    foprograms = np.array([x.decode().strip() for x in foarr['program']])
+    foprograms = np.array([x.strip() for x in foarr['program']])
     foarr = fitsio.read(options_file, ext=2)
-    focadences = np.array([x.decode().strip() for x in foarr['cadence']])
+    focadences = np.array([x.strip() for x in foarr['cadence']])
     nfields = len(field_options)
 
     # Alterations to values in field options here

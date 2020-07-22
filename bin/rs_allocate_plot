@@ -23,7 +23,7 @@ import fitsio
 import robostrategy.allocate
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path()
+sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 if __name__ == '__main__':
@@ -51,7 +51,7 @@ if __name__ == '__main__':
                                         plan=plan, observatory=observatory)
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
 
-    cadences = [c.decode().strip() for c in allocate.field_array['cadence']]
+    cadences = [c.strip() for c in allocate.field_array['cadence']]
     base_cadences = np.array([c.split('-')[0] for c in cadences])
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
