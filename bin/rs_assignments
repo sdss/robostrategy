@@ -62,6 +62,7 @@ if __name__ == '__main__':
                                                  observatory=observatory)
 
     assignment_dtype = np.dtype([('pk', np.int64),
+                                 ('catalogid', np.int64),
                                  ('ra', np.float64),
                                  ('dec', np.float64),
                                  ('cadence', cadence.fits_type),
@@ -98,11 +99,12 @@ if __name__ == '__main__':
             for iexp in np.arange(nexposures):
                 iassigned = np.where(assignments[:, iexp] >= 0)[0]
                 if(len(iassigned) > 0):
-                    tassigned = [f.targetID2indx[x]
+                    tassigned = [f.catalogid2indx[x]
                                  for x in assignments[iassigned, iexp]]
                     tmp_assignment = np.zeros(len(tassigned),
                                               dtype=assignment_dtype)
                     tmp_assignment['pk'] = f.target_pk[tassigned]
+                    tmp_assignment['catalogid'] = f.target_catalogid[tassigned]
                     tmp_assignment['ra'] = f.target_ra[tassigned]
                     tmp_assignment['dec'] = f.target_dec[tassigned]
                     tmp_assignment['cadence'] = f.target_cadence[tassigned]

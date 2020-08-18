@@ -54,7 +54,7 @@ if __name__ == '__main__':
     ntargets_map, hdr = fitsio.read(completeness_file, header=True, ext=2)
     nside = np.int32(hdr['NSIDE'])
     ncadence = np.int32(hdr['NCADENCE'])
-    nprogram = np.int32(hdr['NPROGRAM'])
+    ncarton = np.int32(hdr['NCARTON'])
 
     for icadence in np.arange(ncadence + 1):
 
@@ -112,23 +112,23 @@ if __name__ == '__main__':
         plt.savefig(fgot_png_file)
         plt.clf()
 
-    for iprogram in np.arange(nprogram):
+    for icarton in np.arange(ncarton):
 
         ntargets_map, hdr = fitsio.read(completeness_file, header=True,
-                                        ext=(ncadence + 1 + iprogram) * 3 + 2)
-        program = hdr['PROGRAM'].strip()
+                                        ext=(ncadence + 1 + icarton) * 3 + 2)
+        carton = hdr['CARTON'].strip()
         ngot_map = fitsio.read(completeness_file,
-                               ext=(ncadence + 1 + iprogram) * 3 + 3)
+                               ext=(ncadence + 1 + icarton) * 3 + 3)
         fgot_map = fitsio.read(completeness_file,
-                               ext=(ncadence + 1 + iprogram) * 3 + 4)
+                               ext=(ncadence + 1 + icarton) * 3 + 4)
 
         fig = plt.figure(figsize=(8, 4))
         healpy.mollview(
             np.arcsinh(ntargets_map),
-            title='$\sinh^{-1}$(Number of targets) ' + program,
+            title='$\sinh^{-1}$(Number of targets) ' + carton,
             rot=(270., 0., 0.))
         ntargets_png_file = sdss_path.full(
-            'rsAssignmentsPng', name='ntargets-program-{c}'.format(c=program),
+            'rsAssignmentsPng', name='ntargets-carton-{c}'.format(c=carton),
             plan=plan, observatory=observatory)
         if(kaiju):
             ntargets_png_file = ntargets_png_file.replace('rsAssignments',
@@ -139,10 +139,10 @@ if __name__ == '__main__':
         fig = plt.figure(figsize=(8, 4))
         healpy.mollview(
             np.arcsinh(ngot_map),
-            title='$\sinh^{-1}$(Number of targets gotten) ' + program,
+            title='$\sinh^{-1}$(Number of targets gotten) ' + carton,
             rot=(270., 0., 0.))
         ngot_png_file = sdss_path.full(
-            'rsAssignmentsPng', name='ngot-program-{c}'.format(c=program),
+            'rsAssignmentsPng', name='ngot-carton-{c}'.format(c=carton),
             plan=plan, observatory=observatory)
         if(kaiju):
             ngot_png_file = ngot_png_file.replace('rsAssignments',
@@ -153,11 +153,11 @@ if __name__ == '__main__':
         fig = plt.figure(figsize=(8, 4))
         healpy.mollview(
             np.arcsinh(fgot_map),
-            title='Fraction of targets gotten ' + program,
+            title='Fraction of targets gotten ' + carton,
             min=-0.1, max=1.,
             rot=(270., 0., 0.))
         fgot_png_file = sdss_path.full(
-            'rsAssignmentsPng', name='fgot-program-{c}'.format(c=program),
+            'rsAssignmentsPng', name='fgot-carton-{c}'.format(c=carton),
             plan=plan, observatory=observatory)
         if(kaiju):
             fgot_png_file = fgot_png_file.replace('rsAssignments',

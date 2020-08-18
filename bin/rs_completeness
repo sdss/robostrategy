@@ -87,8 +87,8 @@ if __name__ == '__main__':
     ikeep = np.where(unique_base_cadences != "")[0]
     unique_base_cadences = unique_base_cadences[ikeep]
 
-    programs = np.array([x.strip() for x in targets['program']])
-    unique_programs = np.unique(programs)
+    cartons = np.array([x.strip() for x in targets['carton']])
+    unique_cartons = np.unique(cartons)
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     hdr = dict()
     hdr['NSIDE'] = nside
     hdr['NCADENCE'] = len(unique_base_cadences)
-    hdr['NPROGRAM'] = len(unique_programs)
+    hdr['NCARTON'] = len(unique_cartons)
     hdr['NTARGETS'] = ntargets
     hdr['NGOT'] = ngot
     hdr['FGOT'] = fgot
@@ -154,23 +154,23 @@ if __name__ == '__main__':
         fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
         fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
 
-    for indx in np.arange(len(unique_programs)):
-        unique_program = unique_programs[indx]
-        print(unique_program)
+    for indx in np.arange(len(unique_cartons)):
+        unique_carton = unique_cartons[indx]
+        print(unique_carton)
 
-        iprogram = np.where(programs == unique_program)[0]
-        ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[iprogram],
-                                                    got=got[iprogram])
+        icarton = np.where(cartons == unique_carton)[0]
+        ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icarton],
+                                                    got=got[icarton])
 
-        ntargets = len(np.where(outtargets['covered'][iprogram])[0])
-        ngot = np.int32(got[iprogram].sum())
+        ntargets = len(np.where(outtargets['covered'][icarton])[0])
+        ngot = np.int32(got[icarton].sum())
         if(ntargets > 0):
             fgot = np.float32(ngot) / np.float32(ntargets)
         else:
             fgot = np.float32(-1.)
 
         hdr = dict()
-        hdr['PROGRAM'] = unique_program
+        hdr['CARTON'] = unique_carton
         hdr['NTARGETS'] = ntargets
         hdr['NGOT'] = ngot
         hdr['FGOT'] = fgot

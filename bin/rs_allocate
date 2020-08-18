@@ -78,7 +78,7 @@ if __name__ == '__main__':
                                   observatory=observatory)
     field_options = fitsio.read(options_file)
     foarr = fitsio.read(options_file, ext=3)
-    foprograms = np.array([x.strip() for x in foarr['program']])
+    focartons = np.array([x.strip() for x in foarr['carton']])
     foarr = fitsio.read(options_file, ext=2)
     focadences = np.array([x.strip() for x in foarr['cadence']])
     nfields = len(field_options)
@@ -93,17 +93,17 @@ if __name__ == '__main__':
                 scales[indx] = scale
         for indx in np.arange(len(field_options)):
             field_options['valuegot'][indx] = (
-                field_options['valuegot_pc'][indx, :] * scales).sum()
+                field_options['valuegot_pcd'][indx, :] * scales).sum()
     except KeyError:
         print("No ValueRescale")
 
     minimum_ntargets = dict()
     amtstr = 'AllocationMinimumTargetsAt{obs}'.format(obs=observatory.upper())
     if(amtstr in rsParams.cfg):
-        for program in rsParams.cfg['Programs']:
-            if(program in rsParams.cfg[amtstr]):
-                minnum = rsParams.cfg.get(amtstr, program)
-                minimum_ntargets[program] = minnum
+        for carton in rsParams.cfg['Cartons']:
+            if(carton in rsParams.cfg[amtstr]):
+                minnum = rsParams.cfg.get(amtstr, carton)
+                minimum_ntargets[carton] = minnum
     print(minimum_ntargets)
 
     field_slots_file = sdss_path.full('rsFieldSlots', plan=plan,
@@ -141,7 +141,7 @@ if __name__ == '__main__':
                               observe_all_fields=all_fields,
                               observe_all_cadences=all_cadences,
                               dark_prefer=dark_prefer,
-                              programs=foprograms,
+                              cartons=focartons,
                               minimum_ntargets=minimum_ntargets)
     allocate.construct()
     status = allocate.solve()
