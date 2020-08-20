@@ -27,7 +27,7 @@ sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def make_count_entry(f, fields_entry, utcadences,
-                     utprograms, count_dtype):
+                     utcartons, count_dtype):
     count_entry = np.zeros(1, dtype=count_dtype)
 
     count_entry['fieldid'] = fields_entry['fieldid']
@@ -40,12 +40,12 @@ def make_count_entry(f, fields_entry, utcadences,
     for indx in np.arange(len(utcadences), dtype=np.int32):
         utcadence = utcadences[indx]
         ic = np.where(f.target_cadence == utcadence)[0]
-        count_entry['nwithin_pc'][0, indx] = f.target_within[ic].sum()
+        count_entry['nwithin_pcd'][0, indx] = f.target_within[ic].sum()
 
-    for indx in np.arange(len(utprograms), dtype=np.int32):
-        utprogram = utprograms[indx]
-        ip = np.where(f.target_program == utprogram)[0]
-        count_entry['nwithin_pp'][0, indx] = f.target_within[ip].sum()
+    for indx in np.arange(len(utcartons), dtype=np.int32):
+        utcarton = utcartons[indx]
+        ip = np.where(f.target_carton == utcarton)[0]
+        count_entry['nwithin_pct'][0, indx] = f.target_within[ip].sum()
 
     return(count_entry)
 
@@ -94,18 +94,18 @@ if __name__ == '__main__':
     utcadences = np.unique(np.array(tcadences))
     nutcadences = len(utcadences)
 
-    # Make list of all unique target programs
-    tprograms = [x.strip() for x in targets_all['program']]
-    utprograms = np.unique(np.array(tprograms))
-    nutprograms = len(utprograms)
+    # Make list of all unique target cartons
+    tcartons = [x.strip() for x in targets_all['carton']]
+    utcartons = np.unique(np.array(tcartons))
+    nutcartons = len(utcartons)
 
     count_dtype = [('fieldid', np.int32),
                    ('racen', np.float64),
                    ('deccen', np.float64),
                    ('ntargets', np.int32),
                    ('nwithin', np.int32),
-                   ('nwithin_pc', np.int32, nutcadences),
-                   ('nwithin_pp', np.int32, nutprograms)]
+                   ('nwithin_pcd', np.int32, nutcadences),
+                   ('nwithin_pct', np.int32, nutcartons)]
 
     count_array = np.zeros(len(fields_array), dtype=count_dtype)
 
@@ -128,7 +128,7 @@ if __name__ == '__main__':
         f.targets_fromarray(targets)
 
         ce = make_count_entry(f, fields_entry, utcadences,
-                              utprograms, count_dtype)[0]
+                              utcartons, count_dtype)[0]
         count_array[ifield] = ce
 
     outdir = os.path.dirname(fields_file)
@@ -142,7 +142,7 @@ if __name__ == '__main__':
     cadence_arr['cadence'] = utcadences
     fitsio.write(count_file, cadence_arr, clobber=False)
 
-    program_dtype = [('program', cadence.fits_type)]
-    program_arr = np.zeros(len(utprograms), dtype=program_dtype)
-    program_arr['program'] = utprograms
-    fitsio.write(count_file, program_arr, clobber=False)
+    carton_dtype = [('carton', cadence.fits_type)]
+    carton_arr = np.zeros(len(utcartons), dtype=carton_dtype)
+    carton_arr['carton'] = utcartons
+    fitsio.write(count_file, carton_arr, clobber=False)

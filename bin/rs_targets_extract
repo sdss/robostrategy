@@ -24,69 +24,120 @@ import robostrategy.params as params
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdss_access.path
 
+from sdssdb.peewee.sdss5db import database
+database.set_profile('operations')
+
 sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def get_targets(cfg=None):
-    target0 = [('targetid', np.int32),
+    target0 = [('catalogid', np.int64),
                ('pk', np.int64),
                ('ra', np.float64),
                ('dec', np.float64),
-               ('value', np.int32),
+               ('pmra', np.float32),
+               ('pmdec', np.float32),
+               ('epoch', np.float32),
+               ('value', np.float32),
                ('priority', np.int32),
-               ('program', np.dtype('a30')),
-               ('version', np.dtype('a30')),
-               ('cadence', cadence.fits_type),
-               ('category', np.dtype('a30'))]
+               ('carton', np.unicode_, 30),
+               ('program', np.unicode_, 15),
+               ('mapper', np.unicode_, 5),
+               ('category', np.unicode_, 15),
+               ('plan', np.unicode_, 10),
+               ('tag', np.unicode_, 10),
+               ('cadence', np.unicode_, 30)]
 
     targets = np.zeros(0, dtype=target0)
 
-    for program in cfg['Programs']:
-        version = cfg['Programs'][program]
-        print("Extracting program {p}, version {v}".format(p=program,
-                                                           v=version))
+    for carton in cfg['Cartons']:
+        version = cfg['Cartons'][carton]
+        print("Extracting carton {p}, version {v}".format(p=carton,
+                                                          v=version))
 
+        # nt = (targetdb.Target.select(targetdb.Target.pk)
+        #       .join(targetdb.Carton)
+        #       .where((targetdb.Carton.label == carton) &
+        #              (targetdb.Carton.version == version))).count()
+ 
         nt = (targetdb.Target.select(targetdb.Target.pk)
-              .join(targetdb.Program)
-              .where((targetdb.Program.label == program) &
-                     (targetdb.Program.version == version))).count()
+              .join(targetdb.CartonToTarget)
+              .join(targetdb.Carton)
+              .join(targetdb.Version)
+              .where((targetdb.Carton.carton == carton) &
+                     (targetdb.Version.tag == version))).count()
 
-        print(" ... {nt} targets".format(nt=nt))
+        print(" ... {nt} targets".format(nt=nt), flush=True)
         if(nt > 0):
             tmp_targets = np.zeros(nt, dtype=target0)
 
             ts = (targetdb.Target.select(targetdb.Target.ra,
                                          targetdb.Target.dec,
+                                         targetdb.Target.pmra,
+                                         targetdb.Target.pmdec,
+                                         targetdb.Target.epoch,
                                          targetdb.Target.pk,
-                                         targetdb.Target.value,
-                                         targetdb.Target.priority,
-                                         targetdb.Program.label.alias('program'),
-                                         targetdb.Program.version,
-                                         targetdb.TargetCadence.name.alias('cadence'))
-                  .join(targetdb.Program).switch(targetdb.Target)
-                  .join(targetdb.TargetCadence)
-                  .where((targetdb.Program.label == program) &
-                         (targetdb.Program.version == version))).dicts()
+                                         targetdb.Target.catalogid,
+                                         targetdb.CartonToTarget.priority,
+                                         targetdb.Carton.carton,
+                                         targetdb.Carton.program,
+                                         targetdb.Mapper.label.alias('mapper'),
+                                         targetdb.Category.label.alias('category'),
+                                         targetdb.Version.plan,
+                                         targetdb.Version.tag)
+                  .join(targetdb.CartonToTarget)
+                  .join(targetdb.Carton)
+                  .join(targetdb.Mapper).switch(targetdb.Carton)
+                  .join(targetdb.Version).switch(targetdb.Carton)
+                  .join(targetdb.Category).switch(targetdb.Target)
+                  .where((targetdb.Carton.carton == carton) &
+                         (targetdb.Version.tag == version))).dicts()
+
+#                  .join(targetdb.TargetCadence)
+                                         # targetdb.Target.value,
+                                         # targetdb.Target.priority,
             
-            for indx, t in zip(np.arange(nt), ts):
+            for indx, t in enumerate(ts):
                 tmp_targets['ra'][indx] = t['ra']
                 tmp_targets['dec'][indx] = t['dec']
+                tmp_targets['pmra'][indx] = t['pmra']
+                tmp_targets['pmdec'][indx] = t['pmdec']
+                tmp_targets['epoch'][indx] = t['epoch']
                 tmp_targets['pk'][indx] = t['pk']
-                tmp_targets['program'][indx] = t['program']
-                tmp_targets['version'][indx] = t['version']
-                tmp_targets['cadence'][indx] = t['cadence']
-                tmp_targets['value'][indx] = t['value']
+                tmp_targets['catalogid'][indx] = t['catalogid']
                 tmp_targets['priority'][indx] = t['priority']
-                tmp_targets['category'][indx] = 'SCIENCE'
+                tmp_targets['carton'][indx] = t['carton']
+                tmp_targets['program'][indx] = t['program']
+                tmp_targets['mapper'][indx] = t['mapper']
+                tmp_targets['category'][indx] = t['category']
+                tmp_targets['plan'][indx] = t['plan']
+                tmp_targets['tag'][indx] = t['tag']
+                tmp_targets['value'][indx] = 1.
+                tmp_targets['cadence'][indx] = c2c['CartonToCadence'][carton]
 
             targets = np.append(targets, tmp_targets)
 
+    # uniquify on catalogid; NOTE THAT THIS BREAKS CASES WHERE
+    # TARGETS ARE IN MORE THAN ONE CARTON
+    cid, indx_cid = np.unique(targets['catalogid'], return_index=True)
+    targets = targets[indx_cid]
+
+    # Now add SPIDERS fake targets
+    spitargets_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'scratch',
+                                   'spiders',
+                                   'rsTargets-spiders-fake0-{obs}.fits')
+    spitargets_file = spitargets_file.format(obs=observatory)
+    spitargets = fitsio.read(spitargets_file)
+    catalogid_max = targets['catalogid'].max()
+    spitargets['catalogid'] = (np.arange(len(spitargets), dtype=np.int64) +
+                               catalogid_max + 1)
+    targets = np.append(targets, spitargets)
+
     # Now add skies and standards
     nrandom = 4000000
-    for skystandard in ['STANDARD', 'SKY']:
-        for instrument in ['APOGEE', 'BOSS']:
+    for skystandard in ['standard', 'sky']:
+        for instrument in ['apogee', 'boss']:
             category = "{ss}_{inst}".format(ss=skystandard, inst=instrument)
-            print(category)
             costhrandom = np.random.random(size=nrandom) * 2. - 1.
             thrandom = np.arccos(costhrandom) * 180. / np.pi
             decrandom = 90. - thrandom
@@ -96,12 +147,17 @@ def get_targets(cfg=None):
             new_targets['dec'] = decrandom
             new_targets['pk'] = -1
             new_targets['program'] = 'CALIBRATION'
-            new_targets['version'] = 'fake'
+            new_targets['plan'] = 'fake'
+            new_targets['priority'] = 10000000
+            new_targets['value'] = 0.
+            new_targets['tag'] = 'fake'
             new_targets['cadence'] = 'none'
+            new_targets['carton'] = 'CALIBRATION'
+            new_targets['mapper'] = 'CALIBRATION'
             new_targets['category'] = category
+            new_targets['catalogid'] = (targets['catalogid'].max() + 1 +
+                                        np.arange(len(new_targets)))
             targets = np.append(targets, new_targets)
-
-    targets['targetid'] = np.arange(len(targets), dtype=np.int32)
 
     return(targets)
 
@@ -122,6 +178,12 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    c2cfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+                           'cadence-list.cfg')
+    c2c = configparser.ConfigParser(allow_no_value=True)
+    c2c.optionxform = str
+    c2c.read(c2cfile)
+
     rsParams = params.RobostrategyParams(plan=plan)
 
     cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
@@ -131,6 +193,9 @@ if __name__ == '__main__':
     cfg.read(cfgfile)
 
     targets = get_targets(cfg=cfg)
+    print(len(targets))
+
+    print(np.unique(targets['carton']))
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)

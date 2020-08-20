@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: rs_cadences_ggsp
+# @Filename: rs_cadences_extract
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -22,6 +22,9 @@ import fitsio
 import roboscheduler.cadence as cadence
 import sdss_access.path
 import pickle
+
+from sdssdb.peewee.sdss5db import database
+database.set_profile('operations')
 
 sdss_path = sdss_access.path.Path(release='sdss5')
 

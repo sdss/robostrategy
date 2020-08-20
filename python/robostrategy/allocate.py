@@ -180,7 +180,7 @@ class AllocateLST(object):
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
-                 observatory=None, programs=None,
+                 observatory=None, cartons=None,
                  observe_all_fields=[], observe_all_cadences=[],
                  dark_prefer=1., minimum_ntargets={}):
         if(filename is None):
@@ -188,7 +188,7 @@ class AllocateLST(object):
             self.fields = fields
             self.field_slots = field_slots
             self.field_options = field_options
-            self.programs = programs
+            self.cartons = cartons
             self.minimum_ntargets = minimum_ntargets
             self.nfields = len(self.field_options)
         else:
@@ -307,7 +307,7 @@ class AllocateLST(object):
                                                 self.slots.nlst))
                 alloc[curr_cadence]['needed'] = float(curr_slot['needed'])
                 alloc[curr_cadence]['needed_sb'] = [float(n) for n in curr_slot['needed_sb']]
-                alloc[curr_cadence]['ngot_pp'] = curr_option['ngot_pp']
+                alloc[curr_cadence]['ngot_pct'] = curr_option['ngot_pct']
                 alloc[curr_cadence]['value'] = float(curr_option['valuegot'] *
                                                      prefer)
 
@@ -367,7 +367,7 @@ class AllocateLST(object):
                                                              ssb=iskybrightness)
                         if(ccadence['slots'][ilst, iskybrightness]):
                             var = solver.NumVar(0.0,
-                                                ccadence['needed_sb'][iskybrightness],
+                                                ccadence['needed'],
                                                 name)
                             if(minimize_time is False):
                                 objective.SetCoefficient(var,
@@ -418,7 +418,7 @@ class AllocateLST(object):
         mint_constraints = dict()
         mint_index = dict()
         for cname in self.minimum_ntargets:
-            index = np.where(self.programs == cname)[0]
+            index = np.where(self.cartons == cname)[0]
             mint_constraints[cname] = solver.Constraint(float(self.minimum_ntargets[cname]),
                                                         float(10000000.))
             mint_index[cname] = index[0]
@@ -445,7 +445,7 @@ class AllocateLST(object):
                                     imint = mint_index[cname]
                                     mint_constraints[cname].SetCoefficient(
                                         var, invneeded *
-                                        float(ccadence['ngot_pp'][imint]))
+                                        float(ccadence['ngot_pct'][imint]))
                 field_constraints.append(field_constraint)
 
         # Constrain sum of each slot to be less than total. Here the
@@ -599,9 +599,9 @@ class AllocateLST(object):
         fitsio.write(filename, self.fields, clobber=False)
         fitsio.write(filename, self.field_slots, clobber=False)
         fitsio.write(filename, self.field_options, clobber=False)
-        programs_arr = np.zeros(len(self.programs),
-                                dtype=[('program', 'a40')])
-        fitsio.write(filename, programs_arr, clobber=False)
+        cartons_arr = np.zeros(len(self.cartons),
+                               dtype=[('carton', 'a40')])
+        fitsio.write(filename, cartons_arr, clobber=False)
         return
 
     def fromfits(self, filename=None):
@@ -624,7 +624,7 @@ class AllocateLST(object):
         self.fields = fitsio.read(filename, ext=3)
         self.field_slots = fitsio.read(filename, ext=4)
         self.field_options = fitsio.read(filename, ext=5)
-        self.programs = fitsio.read(filename, ext=6)
+        self.cartons = fitsio.read(filename, ext=6)
         return
 
     def _available_lst(self):
