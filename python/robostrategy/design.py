@@ -44,7 +44,7 @@ betaLen = 15
 
 
 class DesignBase(object):
-    """Design class
+    """Design base class
 
     Parameters:
     ----------
@@ -133,20 +133,6 @@ class DesignBase(object):
 
     assignment : ndarray of np.int32
         (npositioner) array of catalogid for each positioner
-
-    Methods:
-    -------
-
-    targets_fromarray() : read targets from an ndarray
-    targets_fromfits() : read targets from a FITS file
-    targets_toarray() : write targets to an ndarray
-    tofits() : write targets (and assignments) to a FITS file
-    assign() : assign targets to robots for cadence
-    plot() : plot assignments of robots to targets
-
-    Notes:
-    -----
-
 """
     def __init__(self, racen=None, deccen=None, pa=0.,
                  observatory='apo'):
@@ -222,7 +208,7 @@ class DesignBase(object):
         Notes:
         ------
 
-        Sets attributes assignments and target_assignment
+        Sets attributes assignments and target_assignments
 """
         self.assignments = np.zeros(len(self.robotgrid.robotDict),
                                     dtype=np.int32) - 1
@@ -624,7 +610,7 @@ class DesignGreedy(DesignBase):
         self.set_assignments()
 
 
-class DesignOptimal(DesignBase):
+class DesignOptimize(DesignBase):
     def __init__(self, racen=None, deccen=None, pa=0.,
                  observatory='apo'):
         super().__init__(racen=racen, deccen=deccen, pa=pa,
@@ -632,6 +618,20 @@ class DesignOptimal(DesignBase):
         return
 
     def assign(self, check_collisions=True):
+        """Assigns using CP-SAT to optimize number of targets
+
+        Parameters
+        ----------
+
+        check_collisions : boolean
+            whether to add collision constraints (default True)
+
+        Notes
+        -----
+
+        Assigns the robots in the robotGrid object attribute "robotgrid"
+        Sets ndarray attributes "assignments" and "target_assignments"
+"""
 
         rg = self.robotgrid
 
@@ -737,6 +737,8 @@ class DesignOptimal(DesignBase):
 
 
 class DesignOptimalFast(DesignBase):
+    """Test class. Not actually faster."""
+
     def __init__(self, racen=None, deccen=None, pa=0.,
                  observatory='apo'):
         super().__init__(racen=racen, deccen=deccen, pa=pa,
