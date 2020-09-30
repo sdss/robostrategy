@@ -21,6 +21,7 @@ import fitsio
 import matplotlib
 import matplotlib.pyplot as plt
 import sdss_access.path
+import robostrategy.params as params
 
 try:
     import mpl_toolkits.basemap as basemap
@@ -58,8 +59,18 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    rsParams = params.RobostrategyParams(plan=plan)
+    if('Rotate' in rsParams.cfg['Fields']):
+        rotate = True
+        paname = rsParams.cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
+
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
+    if(rotate):
+        fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields = fitsio.read(fields_file)
 
     field_cadence_file = sdss_path.full('rsFieldCadences',

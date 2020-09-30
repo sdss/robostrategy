@@ -93,6 +93,7 @@ if __name__ == '__main__':
         if(('mwm_rv' in cn) & ('_v' not in cn)):
             print(cn)
             c = cadencelist.cadence_consistency(cn, 'bhm_rm_174x8')
+            c = cadencelist.cadence_consistency(cn, 'bhm_rm_lite4_100x8')
             c = cadencelist.cadence_consistency(cn, 'bhm_rm_lite5_100x8')
 
     pkl_file = cadences_file + ".pkl"

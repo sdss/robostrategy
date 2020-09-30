@@ -236,7 +236,7 @@ class Field(object):
                 irobot = self.robotID2indx[robotID]
                 curr_assignment = self.assignments[irobot, iexp]
                 if(curr_assignment >= 0):
-                    tindx = self.catalogid2indx[curr_assignment]
+                    tindx = self.rsid2indx[curr_assignment]
                     self.target_assigned[tindx] = 1
                     self.target_assignments[tindx, iexp] = robotID
 
@@ -330,9 +330,9 @@ class Field(object):
         except ValueError:
             self.target_carton = np.array(['CARTON'] * self.ntarget)
 
-        self.catalogid2indx = dict()
+        self.rsid2indx = dict()
         for itarget in np.arange(self.ntarget, dtype=np.int32):
-            self.catalogid2indx[self.target_catalogid[itarget]] = itarget
+            self.rsid2indx[self.target_rsid[itarget]] = itarget
         return
 
     def _targets_fromarray_mastergrid(self):
@@ -342,7 +342,7 @@ class Field(object):
                 fiberType = kaiju.ApogeeFiber
             else:
                 fiberType = kaiju.BossFiber
-            self.mastergrid.addTarget(targetID=self.target_catalogid[itarget],
+            self.mastergrid.addTarget(targetID=self.target_rsid[itarget],
                                       x=self.target_x[itarget],
                                       y=self.target_y[itarget],
                                       priority=self.target_priority[itarget],
@@ -353,12 +353,13 @@ class Field(object):
         self.target_within = np.zeros(self.ntarget, dtype=np.bool)
         for tid, t in self.mastergrid.targetDict.items():
             try:
-                itarget = self.catalogid2indx[tid]
+                itarget = self.rsid2indx[tid]
             except KeyError:
+                print(self.target_rsid)
                 print(self.target_catalogid)
-                print(self.catalogid2indx)
+                print(self.rsid2indx)
                 print(type(self.target_catalogid[0]))
-                print(self.catalogid2indx[4459954173])
+                print(self.rsid2indx[4459954173])
                 print(tid)
                 sys.exit(1)
             self.target_within[itarget] = len(t.validRobotIDs) > 0
@@ -368,7 +369,7 @@ class Field(object):
         self.robot_validitargets = dict()
         for rid in self.mastergrid.robotDict:
             robot = self.mastergrid.robotDict[rid]
-            self.robot_validitargets[rid] = np.array([self.catalogid2indx[x]
+            self.robot_validitargets[rid] = np.array([self.rsid2indx[x]
                                                       for x in robot.validTargetIDs])
         return
 
@@ -405,6 +406,11 @@ class Field(object):
             self.target_catalogid = np.arange(0, self.ntarget * 10, 10,
                                               dtype=np.int64)
             np.random.shuffle(self.target_catalogid)
+        try:
+            self.target_rsid = self.target_array['rsid']
+        except:
+            print("FAKE TARGET_RSID")
+            self.target_rsid = self.target_catalogid
         self.target_pk = self.target_array['pk']
         self.target_x, self.target_y = self.radec2xy(self.target_ra,
                                                      self.target_dec)
@@ -454,6 +460,7 @@ class Field(object):
 
         Required columns:
          'ra', 'dec' should be np.float64
+         'rsid' should be np.int64
          'catalogid' should be np.int64
          'cadence' should be str or bytes
 
@@ -515,6 +522,7 @@ class Field(object):
 """
         target_array_dtype = np.dtype([('ra', np.float64),
                                        ('dec', np.float64),
+                                       ('rsid', np.int64),
                                        ('catalogid', np.int64),
                                        ('pk', np.int64),
                                        ('cadence', cadence.fits_type),
@@ -528,6 +536,7 @@ class Field(object):
         target_array['ra'] = self.target_ra
         target_array['dec'] = self.target_dec
         target_array['pk'] = self.target_pk
+        target_array['rsid'] = self.target_rsid
         target_array['catalogid'] = self.target_catalogid
         target_array['cadence'] = self.target_cadence
         target_array['category'] = self.target_category
@@ -608,7 +617,7 @@ class Field(object):
         if(self.assignments is not None):
             target_got = np.zeros(self.ntarget, dtype=np.int32)
             iassigned = np.where(self.assignments.flatten() >= 0)[0]
-            itarget = np.array([self.catalogid2indx[x] for x in
+            itarget = np.array([self.rsid2indx[x] for x in
                                 self.assignments.flatten()[iassigned]])
             target_got[itarget] = 1
             for indx in np.arange(len(target_cadence)):
@@ -699,7 +708,7 @@ class Field(object):
 
             curr_robot_targets[robotID] = np.zeros(0, dtype=np.int32)
             if(len(robot.validTargetIDs) > 0):
-                robot_targets = np.array([self.catalogid2indx[x]
+                robot_targets = np.array([self.rsid2indx[x]
                                           for x in robot.validTargetIDs])
                 curr_icalib = np.where((iscalib[robot_targets] > 0) &
                                        ((requires_boss == 0) |
@@ -733,7 +742,7 @@ class Field(object):
             # Now make ordered list of robots to use
             exposure_assignments = self.assignments[:, iexp]
             robot_indx = np.where(exposure_assignments >= 0)[0]
-            target_indx = np.array([self.catalogid2indx[x]
+            target_indx = np.array([self.rsid2indx[x]
                                     for x in exposure_assignments[robot_indx]], dtype=np.int32)
             assignment_nexp = np.zeros(self.mastergrid.nRobots,
                                        dtype=np.int32)
@@ -768,14 +777,14 @@ class Field(object):
                                 except:
                                     print("unassign failure 1")
                             rg.assignRobot2Target(robotID,
-                                                  self.target_catalogid[itry])
+                                                  self.target_rsid[itry])
                             ## TODO: isCollidedWithAssigned
                             if(rg.isCollidedWithAssigned(robotID) == False):
                                 got = True
                             else:
                                 got = False
                         if(got):
-                            calibration_assignments[indx] = self.target_catalogid[itry]
+                            calibration_assignments[indx] = self.target_rsid[itry]
                             got_calib[itry] = 1
                             robot_used[indx] = 1
                             nassigned = nassigned + 1
@@ -801,15 +810,15 @@ class Field(object):
                 robotID = self.indx2RobotID[irobot]
                 ifree = np.sort(np.where(self.assignments[irobot, :] == -1)[0])
                 for itry in ifree:
-                    catalogid = self.assignments[irobot, iexp]
+                    rsid = self.assignments[irobot, iexp]
                     if(kaiju):
                         self.robotgrids[itry].assignRobot2Target(robotID,
-                                                                 catalogid)
+                                                                 rsid)
                         ica = self.robotgrids[itry].isCollidedWithAssigned(robotID)
                     else:
                         ica = False
                     if(ica == False):
-                        self.assignments[irobot, itry] = catalogid
+                        self.assignments[irobot, itry] = rsid
                         self.assignments[irobot, iexp] = -1
                         break
                     if(kaiju):
@@ -958,7 +967,7 @@ class Field(object):
             robotID = self.indx2RobotID[irobot]
             cRobot = self.mastergrid.robotDict[robotID]
             if(len(cRobot.validTargetIDs) > 0):
-                itargets = np.array([self.catalogid2indx[x]
+                itargets = np.array([self.rsid2indx[x]
                                      for x in cRobot.validTargetIDs])
                 it = np.where((got_target[itargets] == 0) &
                               (self.target_incadence[itargets] > 0) &
@@ -974,7 +983,7 @@ class Field(object):
                     if(kaiju):
                         for tindx, itarget in enumerate(ifull):
                             for iexp in np.arange(nexp, dtype=np.int32):
-                                tid = self.target_catalogid[itarget]
+                                tid = self.target_rsid[itarget]
                                 try:
                                     self.robotgrids[iexp].assignRobot2Target(robotID, tid)
                                 except:
@@ -982,8 +991,8 @@ class Field(object):
                                     print(robotID)
                                     print(tid)
                                     print(itarget)
-                                    print(self.catalogid2indx[tid])
-                                    print(self.target_catalogid[itarget])
+                                    print(self.rsid2indx[tid])
+                                    print(self.target_rsid[itarget])
                                     for v in self.mastergrid.robotDict[robotID].validTargetIDs:
                                         print(v)
                                     for v in self.robotgrids[iexp].robotDict[robotID].validTargetIDs:
@@ -998,18 +1007,18 @@ class Field(object):
                                     print("unassign failure 6")
                     p = cadence.Packing(self.field_cadence)
                     p.pack_targets_greedy(
-                        target_ids=self.target_catalogid[ifull],
+                        target_ids=self.target_rsid[ifull],
                         target_cadences=self.target_cadence[ifull],
                         value=self.target_value[ifull],
                         exposure_mask=emask)
-                    target_catalogids = p.exposures  # make sure this returns catalogid
-                    iassigned = np.where(target_catalogids >= 0)[0]
+                    target_rsids = p.exposures  # make sure this returns rsid
+                    iassigned = np.where(target_rsids >= 0)[0]
                     nassigned = len(iassigned)
                     if(nassigned > 0):
-                        itarget = np.array([self.catalogid2indx[x]
-                                            for x in target_catalogids[iassigned]])
+                        itarget = np.array([self.rsid2indx[x]
+                                            for x in target_rsids[iassigned]])
                         got_target[itarget] = 1
-                    self.assignments[irobot, :] = target_catalogids
+                    self.assignments[irobot, :] = target_rsids
                     if(kaiju):
                         for iexp, rg in enumerate(self.robotgrids):
                             ctarget = self.assignments[irobot, iexp]
@@ -1146,7 +1155,7 @@ class Field(object):
     def _next_robot(self, robotIDs=None, doneRobots=None, got_target=None,
                     kaiju=True):
         """Get next robot in order of highest priority of remaining targets"""
-        maxPriority = np.zeros(len(robotIDs), dtype=np.int32) - 9999
+        minPriority = np.zeros(len(robotIDs), dtype=np.int32) - 9999
         for indx, robotID in enumerate(robotIDs):
             if(doneRobots[indx] == np.bool(False)):
                 if(len(self.robot_validitargets[robotID]) > 0):
@@ -1154,11 +1163,11 @@ class Field(object):
                     inot = np.where(got_target[itargets] == 0)[0]
                     if(len(inot) > 0):
                         it = itargets[inot]
-                        maxPriority[indx] = self.target_priority[it].max()
+                        minPriority[indx] = self.target_priority[it].min()
                 else:
-                    maxPriority[indx] = - 99999
-        imax = np.argmax(maxPriority)
-        return(imax)
+                    minPriority[indx] = - 99999
+        imin = np.argmin(minPriority)
+        return(imin)
 
     def add_observations(self):
         """For assigned targets, add observations if possible
@@ -1180,12 +1189,12 @@ class Field(object):
 
         # Assign the robots
         for indx in np.arange(self.mastergrid.nRobots):
-            catalogids = np.unique(self.assignments[indx, :])[0]
-            igd = np.where(catalogids != -1)[0]
+            rsids = np.unique(self.assignments[indx, :])[0]
+            igd = np.where(rsids != -1)[0]
             igd2 = np.where(self.target_category[igd] != 'CALIBRATION')[0]
-            catalogids = catalogids[igd[igd2]]
-            tcs = self.target_cadence[catalogids] # This won't work?
-            if(len(catalogids) > 0):
+            rsids = rsids[igd[igd2]]
+            tcs = self.target_cadence[rsids]  # This won't work?
+            if(len(rsids) > 0):
                 p = cadence.Packing(self.field_cadence)
                 p.import_exposures(self.assignments[indx, :])
                 ok = True
@@ -1202,9 +1211,9 @@ class Field(object):
         nexp = self.nexposures
         for i in np.arange(nexp):
             for rindx, robotID in enumerate(self.robotgrids[i].robotDict):
-                catalogid = self.assignments[rindx, i]
-                if(catalogid >= 0):
-                    self.robotgrids[i].assignRobot2Target(robotID, catalogid)
+                rsid = self.assignments[rindx, i]
+                if(rsid >= 0):
+                    self.robotgrids[i].assignRobot2Target(robotID, rsid)
             for rindx, robotID in enumerate(self.robotgrids[i].robotDict):
                 itarget = self.assignments[rindx, i]
                 if(itarget < 0):

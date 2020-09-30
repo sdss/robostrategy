@@ -69,7 +69,8 @@ if __name__ == '__main__':
                                   observatory=observatory)
     targets_all = fitsio.read(targets_file)
 
-    targets_covered_dtype = [('catalogid', np.int64),
+    targets_covered_dtype = [('rsid', np.int64),
+                             ('catalogid', np.int64),
                              ('pk', np.int64),
                              ('ra', np.float64),
                              ('dec', np.float64),
@@ -78,6 +79,7 @@ if __name__ == '__main__':
                              ('within_hex', np.int32),
                              ('within_hex_fields', np.int32, 30)]
     targets_covered = np.zeros(len(targets_all), dtype=targets_covered_dtype)
+    targets_covered['rsid'] = targets_all['rsid']
     targets_covered['catalogid'] = targets_all['catalogid']
     targets_covered['pk'] = targets_all['pk']
     targets_covered['ra'] = targets_all['ra']

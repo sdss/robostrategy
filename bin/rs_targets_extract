@@ -31,7 +31,8 @@ sdss_path = sdss_access.path.Path(release='sdss5')
 
 
 def get_targets(cfg=None):
-    target0 = [('catalogid', np.int64),
+    target0 = [('rsid', np.int64),
+               ('catalogid', np.int64),
                ('pk', np.int64),
                ('ra', np.float64),
                ('dec', np.float64),
@@ -119,8 +120,8 @@ def get_targets(cfg=None):
 
     # uniquify on catalogid; NOTE THAT THIS BREAKS CASES WHERE
     # TARGETS ARE IN MORE THAN ONE CARTON
-    cid, indx_cid = np.unique(targets['catalogid'], return_index=True)
-    targets = targets[indx_cid]
+    # cid, indx_cid = np.unique(targets['catalogid'], return_index=True)
+    # targets = targets[indx_cid]
 
     # Now add SPIDERS fake targets
     spitargets_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'scratch',
@@ -129,6 +130,10 @@ def get_targets(cfg=None):
     spitargets_file = spitargets_file.format(obs=observatory)
     spitargets = fitsio.read(spitargets_file)
     catalogid_max = targets['catalogid'].max()
+    for c in np.unique(spitargets['carton']):
+        ii = np.where(spitargets['carton'] == c)[0]
+        c = c.strip()
+        spitargets['cadence'][ii] = c2c['CartonToCadence'][c]
     spitargets['catalogid'] = (np.arange(len(spitargets), dtype=np.int64) +
                                catalogid_max + 1)
     targets = np.append(targets, spitargets)
@@ -159,6 +164,7 @@ def get_targets(cfg=None):
                                         np.arange(len(new_targets)))
             targets = np.append(targets, new_targets)
 
+    targets['rsid'] = np.arange(len(targets), dtype=np.int64)
     return(targets)
 
 

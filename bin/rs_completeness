@@ -79,7 +79,7 @@ if __name__ == '__main__':
     icovered = np.where(targets_covered['within_hex'] > 0)[0]
     outtargets['covered'][icovered] = 1
 
-    cadences = np.array([c.strip() for c in targets['cadence']])
+    cadences = targets['cadence']
     base_cadences = np.array([c.split('-')[0] for c in cadences])
     base_cadences = np.array(["_".join(c.split('_')[0:-1])
                               for c in base_cadences])
@@ -87,17 +87,18 @@ if __name__ == '__main__':
     ikeep = np.where(unique_base_cadences != "")[0]
     unique_base_cadences = unique_base_cadences[ikeep]
 
-    cartons = np.array([x.strip() for x in targets['carton']])
+    cartons = targets['carton']
     unique_cartons = np.unique(cartons)
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
     assigned = fitsio.read(assigned_file)
 
-    gotpk = np.zeros(targets['pk'].max() + 1, dtype=np.int8)
-    gotpk[assigned['pk']] = 1
-    got = gotpk[targets['pk']]
-    outtargets['got'] = got
+    gotrsid = dict()
+    for a in assigned:
+        gotrsid[a['rsid']] = 1
+    outtargets['got'] = np.array([gotrsid[x] if x in gotrsid else 0
+                                  for x in outtargets['rsid']])
 
     nside = 32
     hpix = healpy.pixelfunc.ang2pix(nside, targets['ra'],
@@ -108,10 +109,10 @@ if __name__ == '__main__':
 
     icadence = np.where(cadences != "none")[0]
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
-                                                got=got[icadence])
+                                                got=outtargets['got'][icadence])
 
     ntargets = len(np.where(outtargets['covered'][icadence])[0])
-    ngot = np.int32(got[icadence].sum())
+    ngot = np.int32(outtargets['got'][icadence].sum())
     if(ntargets > 0):
         fgot = np.float32(ngot) / np.float32(ntargets)
     else:
@@ -135,10 +136,10 @@ if __name__ == '__main__':
 
         icadence = np.where(base_cadences == unique_base_cadence)[0]
         ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
-                                                    got=got[icadence])
+                                                    got=outtargets['got'][icadence])
 
         ntargets = len(np.where(outtargets['covered'][icadence])[0])
-        ngot = np.int32(got[icadence].sum())
+        ngot = np.int32(outtargets['got'][icadence].sum())
         if(ntargets > 0):
             fgot = np.float32(ngot) / np.float32(ntargets)
         else:
@@ -160,10 +161,10 @@ if __name__ == '__main__':
 
         icarton = np.where(cartons == unique_carton)[0]
         ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icarton],
-                                                    got=got[icarton])
+                                                    got=outtargets['got'][icarton])
 
         ntargets = len(np.where(outtargets['covered'][icarton])[0])
-        ngot = np.int32(got[icarton].sum())
+        ngot = np.int32(outtargets['got'][icarton].sum())
         if(ntargets > 0):
             fgot = np.float32(ngot) / np.float32(ntargets)
         else:

@@ -45,7 +45,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     target_got = np.zeros(f.ntarget, dtype=np.int32)
     igot = np.where(f.assignments[:, 0:nvisit] >= 0)
     gotids, gotn = np.unique(f.assignments[igot], return_counts=True)
-    gotindx = np.array([f.catalogid2indx[x] for x in gotids], dtype=np.int32)
+    gotindx = np.array([f.rsid2indx[x] for x in gotids], dtype=np.int32)
     try:
         tgot = gotindx[gotn >= f.target_nexposures[gotindx]]
     except:
@@ -107,11 +107,16 @@ def field_options(ifield):
         f.pa = np.float32(fields_entry[paname])
     f.targets_fromarray(targets)
 
-    icadences = np.where(cadence_mask[ifield, :] != 0)[0]
+    try:
+        icadences = np.where(cadence_mask[ifield, :] != 0)[0]
+    except:
+        print(ifield)
+        print(cadence_mask.shape)
+        sys.exit(1)
     field_cadences = all_cadences[icadences]
 
     for field_cadence in field_cadences:
-        print(field_cadence, flush=True)
+        print("{fc} {fi}".format(fc=field_cadence, fi=fieldid), flush=True)
         f = field.Field(racen=fields_entry['racen'],
                         deccen=fields_entry['deccen'],
                         observatory=observatory)
@@ -119,13 +124,13 @@ def field_options(ifield):
             f.pa = np.float32(fields_entry[paname])
         f.targets_fromarray(targets)
 
-        print("got targets", flush=True)
+        print("got targets {fi}".format(fi=fieldid), flush=True)
 
         f.set_field_cadence(field_cadence)
-        print("set cadence", flush=True)
+        print("set cadence {fi}".format(fi=fieldid), flush=True)
         f.assign(include_calibration=False, kaiju=False)
 
-        print("assigned", flush=True)
+        print("assigned {fi}".format(fi=fieldid), flush=True)
 
         last = field_cadence.split('-')[-1]
         if(last[0] == 'n'):
@@ -233,7 +238,7 @@ if __name__ == '__main__':
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
     fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
-    fgot_carton = 'mwm_galactic'
+    fgot_carton = 'mwm_gg_core'
 
     if('Rotate' in rsParams.cfg['Fields']):
         rotate = True
@@ -251,6 +256,7 @@ if __name__ == '__main__':
     if(rotate):
         fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
+    print(fields_file)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
@@ -306,8 +312,12 @@ if __name__ == '__main__':
     ikeep = np.where((fields_array['fieldid'] >= start) &
                      (fields_array['fieldid'] <= end))[0]
 
-    with multiprocessing.Pool() as pool:
-        pool.map(field_options, ikeep)
+    if(len(ikeep) > 10):
+        with multiprocessing.Pool() as pool:
+            pool.map(field_options, ikeep)
+    else:
+        for ifield in ikeep:
+            field_options(ifield)
 
     if(test):
         sys.exit(0)
