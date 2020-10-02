@@ -1155,7 +1155,7 @@ class Field(object):
     def _next_robot(self, robotIDs=None, doneRobots=None, got_target=None,
                     kaiju=True):
         """Get next robot in order of highest priority of remaining targets"""
-        minPriority = np.zeros(len(robotIDs), dtype=np.int32) - 9999
+        minPriority = np.zeros(len(robotIDs), dtype=np.int32) + 99999999
         for indx, robotID in enumerate(robotIDs):
             if(doneRobots[indx] == np.bool(False)):
                 if(len(self.robot_validitargets[robotID]) > 0):
@@ -1165,7 +1165,7 @@ class Field(object):
                         it = itargets[inot]
                         minPriority[indx] = self.target_priority[it].min()
                 else:
-                    minPriority[indx] = - 99999
+                    minPriority[indx] = 9999999
         imin = np.argmin(minPriority)
         return(imin)
 
