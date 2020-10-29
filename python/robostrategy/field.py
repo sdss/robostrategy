@@ -1006,10 +1006,15 @@ class Field(object):
                                 except:
                                     print("unassign failure 6")
                     p = cadence.Packing(self.field_cadence)
+
+                    # Unholy hack here; since greedy packing just sorts
+                    # by the "value" it is given and assigns in decreasing
+                    # order, if we take negative of priority, that will
+                    # assign from highest priority down.
                     p.pack_targets_greedy(
                         target_ids=self.target_rsid[ifull],
                         target_cadences=self.target_cadence[ifull],
-                        value=self.target_value[ifull],
+                        value= - self.target_priority[ifull],
                         exposure_mask=emask)
                     target_rsids = p.exposures  # make sure this returns rsid
                     iassigned = np.where(target_rsids >= 0)[0]
