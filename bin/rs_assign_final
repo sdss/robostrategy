@@ -24,7 +24,8 @@ import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
 
-sdss_path = sdss_access.path.Path(release='sdss5')
+#sdss_path = sdss_access.path.Path(release='sdss5')
+sdss_path = sdss_access.path.Path()
 
 
 def assign_field(indx):
