@@ -23,10 +23,11 @@ import robostrategy.field as field
 import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
+import pdb
 
-#sdss_path = sdss_access.path.Path(release='sdss5')
-sdss_path = sdss_access.path.Path()
-
+user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
+sdss_path = sdss_access.path.Path(release='sdss5')
+os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
 
 def assign_field(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -98,6 +99,7 @@ if __name__ == '__main__':
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
+    print(cadences_file)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
