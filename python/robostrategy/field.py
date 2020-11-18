@@ -115,6 +115,10 @@ class Field(object):
     target_incadence : ndarray of np.bool
         whether each target is allowed in the field cadence (set by assign())
 
+    target_duplicated: ndarray of np.bool
+        whether each target was already "target_assigned" in a different field
+        (set by assign() using a shared dictionary)
+
     target_assigned : ndarray of np.int32
         (ntarget) array of 0 or 1, indicating whether target is assigned
 
@@ -881,7 +885,7 @@ class Field(object):
                                              fiberType=t.fiberType)
         return
 
-    def assign(self, include_calibration=True, kaiju=True):
+    def assign(self, include_calibration=True, kaiju=True, coordinated_targets=None):
         """Assign targets to robots within the field
 
         Parameters:
@@ -919,6 +923,10 @@ class Field(object):
 
         It does not use the target priorities yet.
 
+        assign() can also accept a multiprocessor-managed dictionary
+        to coordinate targets falling in multiple fields to avoid
+        duplicate observations
+
         assign() also sets the target_incadence attribute, which
         tells you wich targets fit somehow into the field cadence.
 """
@@ -948,6 +956,13 @@ class Field(object):
         if(len(iok) == 0):
             return
 
+        if coordianted_targets is not None:
+            self.target_duplicated = np.zeros(self.ntarget, dtype=np.int32)
+            for id_idx,irsid in enumerate(self.target_rsid):
+                if irsid in coordinated_targets.keys():
+                    if coordinated_targets[irsid]:
+                        self.target_duplicated[id_idx] = 1
+
         # Set up robotgrids
         if(kaiju):
             self.make_robotgrids()
@@ -971,6 +986,7 @@ class Field(object):
                                      for x in cRobot.validTargetIDs])
                 it = np.where((got_target[itargets] == 0) &
                               (self.target_incadence[itargets] > 0) &
+                              (self.target_duplicated[itargets] == 0) &
                               ((self.target_requires_boss[itargets] == 0) |
                                (cRobot.hasBoss > 0)) &
                               ((self.target_requires_apogee[itargets] == 0) |
@@ -1020,8 +1036,17 @@ class Field(object):
                     iassigned = np.where(target_rsids >= 0)[0]
                     nassigned = len(iassigned)
                     if(nassigned > 0):
-                        itarget = np.array([self.rsid2indx[x]
-                                            for x in target_rsids[iassigned]])
+                        itarget_list = []
+                        for x in target_rsids[iassigned]:
+                            itarget_list.append(x)
+                            if x in coordinated_targets.keys():
+                                if coordinated_targets[x]: #Should be False
+                                    print("Target {} observed in different field since initial check".format(x))
+                                coordinated_targets[x]=True
+                         itarget = np.array(itarget_list)
+
+#                        itarget = np.array([self.rsid2indx[x]
+#                                            for x in target_rsids[iassigned]])
                         got_target[itarget] = 1
                     self.assignments[irobot, :] = target_rsids
                     if(kaiju):
