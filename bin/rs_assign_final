@@ -17,6 +17,7 @@ import argparse
 import os
 import sys
 import multiprocessing
+import itertools.repeat as repeat
 import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -29,7 +30,10 @@ user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
 os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
 
-def assign_field(indx):
+def assign_field(input):
+    dup_dict = input[0]
+    indx = input[1]
+
     fieldid = allocate.field_array['fieldid'][indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
@@ -50,7 +54,7 @@ def assign_field(indx):
     f.set_field_cadence(field_cadence)
 
     if(f.field_cadence != 'none'):
-        f.assign(kaiju=kaiju)
+        f.assign(kaiju=kaiju,coordinated_targets=dup_dict)
 
     field_assigned_file = sdss_path.full('rsFieldAssignments',
                                          plan=plan,
@@ -112,5 +116,17 @@ if __name__ == '__main__':
     ikeep = np.where((allocate.field_array['fieldid'] >= start) &
                      (allocate.field_array['fieldid'] <= end))[0]
 
-    with multiprocessing.Pool() as pool:
-        pool.map(assign_field, ikeep)
+    target_covered_file = sdss.path.full('rsTargetsCovered', plan=plan,
+                                              observatory=observatory)
+    targets_covered = fits.getdata(target_covered_file)
+    in_hex = targets_covered['in_hex']
+    duplicated = targets_covered[in_hex > 1]
+
+    with multiprocessing.Manager() as manager:
+        d = manager.dict()
+
+        for irsid in duplicated['rsid']:
+            d[irsid]=False
+
+        with multiprocessing.Pool() as pool:
+            pool.map(assign_field, zip(repeat(d,len(ikeep)),ikeep))
