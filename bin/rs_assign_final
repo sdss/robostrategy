@@ -17,7 +17,6 @@ import argparse
 import os
 import sys
 import multiprocessing
-from itertools import repeat
 import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -32,10 +31,13 @@ user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
 os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
 
-def assign_field(input):
-    dup_dict = input[0]
-    indx = input[1]
-    print("Extra field id print {}".format(indx))
+coordinated_dict = None
+
+def assign_field(indx):
+    print(time.ctime(time.time()))
+    if coordinated_dict is None:
+        print('No coordination!')
+
     fieldid = allocate.field_array['fieldid'][indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
@@ -56,7 +58,7 @@ def assign_field(input):
     f.set_field_cadence(field_cadence)
 
     if(f.field_cadence != 'none'):
-        f.assign(kaiju=kaiju,coordinated_targets=dup_dict)
+        f.assign(kaiju=kaiju,coordinated_targets=coordinated_dict)
 
     field_assigned_file = sdss_path.full('rsFieldAssignments',
                                          plan=plan,
@@ -96,6 +98,8 @@ if __name__ == '__main__':
     start = args.start
     end = args.end
     coordinate = args.coordinate
+    print(time.ctime(time.time()))
+
     print("kaiju = {kaiju}".format(kaiju=kaiju))
 
     rsParams = params.RobostrategyParams(plan=plan)
@@ -129,24 +133,12 @@ if __name__ == '__main__':
         targets_covered = fitsio.read(target_covered_file)
         in_hex = targets_covered['within_hex']
         duplicated = targets_covered[in_hex > 1]
-        temp_dict = {x:False for x in duplicated['rsid']}
+        coordinated_dict = {x:False for x in duplicated['rsid']}
 
-        print("beginning multiprocessing section")
-        with multiprocessing.Manager() as manager:
-            d = manager.dict(temp_dict)
-            print('Initiate Pool processing')
-
-            t1 = time.time()
-            test = 12 in d.keys()
-            t2 = time.time()
-            test2 = 12 in temp_dict.keys()
-            t3 = time.time()
-            print('Time to search shared dict: {}'.format(t2-t1))
-            print('Time to search regular dict: {}'.format(t3-t2))
-
-            pdb.set_trace()
-            with multiprocessing.Pool() as pool:
-                pool.map(assign_field, zip(repeat(d,len(ikeep)),ikeep))
+        for i in ikeep:
+            assign_field(i)
     else:
         with multiprocessing.Pool() as pool:
-            pool.map(assign_field,zip(repeat(None, len(ikeep)),ikeep))
+            pool.map(assign_field,ikeep)
+    print(time.ctime(time.time()))
+

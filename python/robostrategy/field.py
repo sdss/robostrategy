@@ -1038,13 +1038,15 @@ class Field(object):
                     if(nassigned > 0):
                         if coordinated_targets is not None:
                             itarget_list = []
+                            itarget_idx_list = []
                             for x in target_rsids[iassigned]:
                                 itarget_list.append(x)
+                                itarget_idx_list.append(self.rsid2indx[x])
                                 if x in coordinated_targets.keys():
                                     if coordinated_targets[x]: #Should be False
                                         print("Target {} observed in different field since initial check".format(x))
                                     coordinated_targets[x]=True
-                            itarget = np.array(itarget_list)
+                            itarget = np.array(itarget_idx_list)
                         else: 
                             itarget = np.array([self.rsid2indx[x]
                                                 for x in target_rsids[iassigned]])
