@@ -956,8 +956,8 @@ class Field(object):
         if(len(iok) == 0):
             return
 
-        if coordianted_targets is not None:
-            self.target_duplicated = np.zeros(self.ntarget, dtype=np.int32)
+        self.target_duplicated = np.zeros(self.ntarget, dtype=np.int32)
+        if coordinated_targets is not None:
             for id_idx,irsid in enumerate(self.target_rsid):
                 if irsid in coordinated_targets.keys():
                     if coordinated_targets[irsid]:
@@ -1036,17 +1036,18 @@ class Field(object):
                     iassigned = np.where(target_rsids >= 0)[0]
                     nassigned = len(iassigned)
                     if(nassigned > 0):
-                        itarget_list = []
-                        for x in target_rsids[iassigned]:
-                            itarget_list.append(x)
-                            if x in coordinated_targets.keys():
-                                if coordinated_targets[x]: #Should be False
-                                    print("Target {} observed in different field since initial check".format(x))
-                                coordinated_targets[x]=True
-                         itarget = np.array(itarget_list)
-
-#                        itarget = np.array([self.rsid2indx[x]
-#                                            for x in target_rsids[iassigned]])
+                        if coordinated_targets is not None:
+                            itarget_list = []
+                            for x in target_rsids[iassigned]:
+                                itarget_list.append(x)
+                                if x in coordinated_targets.keys():
+                                    if coordinated_targets[x]: #Should be False
+                                        print("Target {} observed in different field since initial check".format(x))
+                                    coordinated_targets[x]=True
+                            itarget = np.array(itarget_list)
+                        else: 
+                            itarget = np.array([self.rsid2indx[x]
+                                                for x in target_rsids[iassigned]])
                         got_target[itarget] = 1
                     self.assignments[irobot, :] = target_rsids
                     if(kaiju):
