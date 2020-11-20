@@ -22,8 +22,12 @@ import fitsio
 import sdss_access.path
 import robostrategy.allocate
 
+user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
-img_tag = "<a href='{png_file}'><img src='{png_file}' width=300px/></a>"
+os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+
+img_tag = "<a href='{png_file}'><img 
+src='{png_file}' width=300px/></a>"
 
 if __name__ == '__main__':
 

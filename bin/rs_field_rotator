@@ -38,7 +38,9 @@ import sys
 import argparse
 
 import sdss_access.path
+user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
+os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
 
 
 def calc_sky_vertices(fdata, pa, vertex_tan):
