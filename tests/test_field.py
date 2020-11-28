@@ -159,6 +159,10 @@ def test_assign_robot_epoch():
     assert f.assignments['robotID'][f.rsid2indx[tid], 1] == -1
     assert f.assignments['robotID'][f.rsid2indx[tid], 2] == -1
     assert f.assignments['robotID'][f.rsid2indx[tid], 3] == -1
+    assert f._robot2indx[rid, 0] == f.rsid2indx[tid]
+    assert f._robot2indx[rid, 1] == -1
+    assert f._robot2indx[rid, 2] == -1
+    assert f._robot2indx[rid, 3] == -1
 
     f.assign_robot_epoch(rsid=tid, robotID=rid, epoch=1, nexp=2)
     assert f.available_robot_epoch(robotID=rid, epoch=0, nexp=1)[0] == True
@@ -167,6 +171,8 @@ def test_assign_robot_epoch():
     assert f.available_robot_epoch(robotID=rid, epoch=1, nexp=2)[0] == False
     assert f.assignments['robotID'][f.rsid2indx[tid], 2] == rid
     assert f.assignments['robotID'][f.rsid2indx[tid], 3] == rid
+    assert f._robot2indx[rid, 2] == f.rsid2indx[tid]
+    assert f._robot2indx[rid, 3] == f.rsid2indx[tid]
 
     f.unassign_epoch(rsid=tid, epoch=0)
     assert f.available_robot_epoch(robotID=rid, epoch=0, nexp=1)[0] == True
@@ -203,8 +209,12 @@ def test_available_robot_epochs():
             assert rid not in ar[0]
             assert rid in ar[1]
 
+            assert f._robot2indx[rid, 0] == f.rsid2indx[tid0]
+
             f.unassign(rsid=tid0)
             f.unassign(rsid=tid1)
+
+            assert f._robot2indx[rid, 0] == - 1
 
 
 def test_assign_epochs():
@@ -243,6 +253,11 @@ def test_assign_epochs():
                       f.assignments['robotID'][indx1, 0]) &
                      (f.assignments['robotID'][indx2, 0] !=
                       f.assignments['robotID'][indx0, 0])))
+
+            assert f._robot2indx[rid, 0] == indx0
+            assert f._robot2indx[rid, 1] == indx1
+            assert f._robot2indx[rid, 2] == indx0
+            assert f._robot2indx[rid, 3] == indx1
 
             return
 
