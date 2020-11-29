@@ -9,11 +9,16 @@ import re
 import numpy as np
 import fitsio
 import scipy.optimize as optimize
+import matplotlib.pyplot as plt
+import mplcursors
 
 import roboscheduler.cadence as cadence
 import kaiju
 import kaiju.robotGrid
 
+# alpha and beta lengths for plotting
+_alphaLen = 7.4
+_betaLen = 15
 
 # Type for targets array
 targets_dtype = np.dtype([('ra', np.float64),
@@ -1080,3 +1085,92 @@ class Field(object):
                     nproblems = nproblems + 1
 
         return(nproblems)
+
+    def plot_robot(self, robot, color=None, ax=None):
+        xr = robot.xPos
+        yr = robot.yPos
+        xa = xr + _alphaLen * np.cos(robot.alpha / 180. * np.pi)
+        ya = yr + _alphaLen * np.sin(robot.alpha / 180. * np.pi)
+        xb = xa + _betaLen * np.cos((robot.alpha + robot.beta) / 180. * np.pi)
+        yb = ya + _betaLen * np.sin((robot.alpha + robot.beta) / 180. * np.pi)
+        ax.plot(np.array([xr, xa]), np.array([yr, ya]), color=color, alpha=0.5)
+        ax.plot(np.array([xa, xb]), np.array([ya, yb]), color=color, linewidth=3)
+
+    def plot(self, iexp=None, robotID=False, catalogid=False):
+        """Plot assignments of robots to targets for field """
+        target_cadences = np.sort(np.unique(self.targets['cadence']))
+
+        colors = ['black', 'green', 'blue', 'cyan', 'purple', 'red',
+                  'magenta', 'grey']
+
+        fig = plt.figure(figsize=(10 * 0.7, 7 * 0.7))
+        axfig = fig.add_axes([0., 0., 0.7, 1.])
+        axleg = fig.add_axes([0.71, 0., 0.26, 1.])
+
+        if(self.assignments is not None):
+            target_got = np.zeros(len(self.targets), dtype=np.int32)
+            target_robotid = np.zeros(len(self.targets), dtype=np.int32)
+            itarget = np.where(self.assignments['robotID'][:, iexp] >= 0)[0]
+            target_got[itarget] = 1
+            target_robotid[itarget] = self.assignments['robotID'][itarget, iexp]
+            for indx in np.arange(len(target_cadences)):
+                itarget = np.where((target_got > 0) & (self.targets['cadence'] ==
+                                                       target_cadences[indx]))[0]
+
+                axfig.scatter(self.targets['x'][itarget],
+                              self.targets['y'][itarget], s=4)
+
+                icolor = indx % len(colors)
+                for i in itarget:
+                    robot = self.robotgrids[iexp].robotDict[target_robotid[i]]
+                    self.plot_robot(robot, color=colors[icolor], ax=axfig)
+
+        for indx in np.arange(len(target_cadences)):
+            itarget = np.where(self.targets['cadence'] == target_cadences[indx])[0]
+            icolor = indx % len(colors)
+            axfig.scatter(self.targets['x'][itarget],
+                          self.targets['y'][itarget], s=2, color=colors[icolor],
+                          label=target_cadences[indx])
+            axleg.plot(self.targets['x'][itarget],
+                       self.targets['y'][itarget], linewidth=4, color=colors[icolor],
+                       label=target_cadences[indx])
+
+        xcen = np.array([self.robotgrids[iexp].robotDict[r].xPos
+                         for r in self.robotgrids[iexp].robotDict],
+                        dtype=np.float32)
+        ycen = np.array([self.robotgrids[iexp].robotDict[r].yPos
+                         for r in self.robotgrids[iexp].robotDict],
+                        dtype=np.float32)
+        robotid = np.array([str(r)
+                            for r in self.robotgrids[iexp].robotDict])
+        axfig.scatter(xcen, ycen, s=6, color='grey', label='Used robot')
+        axleg.plot(xcen, ycen, linewidth=4, color='grey', label='Used robot')
+
+        if(robotID):
+            for cx, cy, cr in zip(xcen, ycen, robotid):
+                plt.text(cx, cy, cr, color='grey', fontsize=8,
+                         clip_on=True)
+
+        if(catalogid):
+            for cx, cy, ct in zip(self.target_x, self.target_y,
+                                  self.target_catalogid):
+                plt.text(cx, cy, ct, fontsize=8, clip_on=True)
+
+        used = (self._robot2indx[iexp, :] >= 0)
+
+        inot = np.where(used == False)[0]
+        axfig.scatter(xcen[inot], ycen[inot], s=20, color='grey',
+                      label='Unused robot')
+        axleg.plot(xcen[inot], ycen[inot], color='grey',
+                   linewidth=4, label='Unused robot')
+        for i in robotid[inot]:
+            self.plot_robot(self.robotgrids[iexp].robotDict[int(i)],
+                            color='grey', ax=axfig)
+
+        plt.xlim([-370., 370.])
+        plt.ylim([-370., 370.])
+
+        h, ell = axleg.get_legend_handles_labels()
+        axleg.clear()
+        axleg.legend(h, ell, loc='upper left')
+        axleg.axis('off')
