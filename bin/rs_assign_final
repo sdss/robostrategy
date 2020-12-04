@@ -67,6 +67,90 @@ def assign_field(indx):
     f.tofits(field_assigned_file)
 
 
+def find_non_overlapping_fields(racen, deccen, fieldidx, observatory=None):
+
+        if observatory == 'apo':  # copied radii from rs_fields's calls to sloane.Sloane()
+            diameter = 1.49 * 2
+        elif observatory == 'lco:
+            diameter = 0.95 * 2
+        else:
+            raise ValueError('{} is not a valid observatory'.format(observatory))
+
+        sidx = np.argsort(deccen)
+        ra = racen[sidx]
+        dec = deccen[sidx]
+        fid = fieldidx[sidx]
+
+
+        non_overlap_ids = []
+        cur_idx = 0  # indices to sorted arrays
+
+        while cur_idx lt len(sidx):
+            non_overlap_ids.append(fid[cur_idx])
+            cur_ra = ra[cur_idx]
+            cur_dec = dec[cur_idx]
+            
+            # Find next field far enough away in declination to no overlap current field
+            deltas = dec - cur_dec
+            far_away = np.where(deltas > diameter)[0]
+            if len(far_away) == 0:
+                cur_idx = 1e6
+            else:
+                cur_idx = np.min(far_away)
+
+            # Additional "too close in DEC" fields are possible if their RA are far enough
+            too_close = np.where( (deltas <= diameter) & (deltas >= 0))[0]
+            ra_diff = (ra[too_close] - cur_ra) * np.cos(np.deg2rad(cur_dec))
+
+            if cur_idx < 1e6:  # Need to be non-overlapping with both current and next field
+                ra_diff2 = (ra[too_close] - ra[cur_idx]) * np.cos(np.deg2rad(cur_dec))
+                still_ok = np.where((np.abs(ra_diff) > diameter) & (np.abs(ra_diff2) > diamter))[0]
+            else:
+                still_ok = np.where(np.abs(ra_diff) > diamter)[0]
+
+            if len(still_ok)) > 0:  # Don't forget still_ok are indices of too_close
+                ok_idx = 0 
+                ok_list = [] # This is a list of indexes to still_ok_sort
+         
+                ra_diff_kp = ra_diff[still_ok] 
+                ordered_ok = np.argsort(ra_diff_kp) 
+                ra_diff_kp_sort = ra_diff_kp[ordered_ok] 
+                still_ok_sort = still_ok[ordered_ok] 
+         
+                while ok_idx < len(still_ok_sort): 
+                    ok_list.append(ok_idx) 
+                    cur_ra_diff = ra_diff_kp_sort[ok_idx] 
+                    ok_far_away = np.where(ra_diff_kp_sort - cur_ra_diff > diameter)[0]
+                    if len(ok_far_away) == 0:
+                        ok_idx = 1e6 #to break while loop
+                    else:
+                        ok_idx = np.min(ok_far_away)
+                
+                for x in ok_list:
+                    non_overlap_ids.append(too_close[still_ok_sort[x]])    
+
+
+        remaining_ids = np.setdiff1d(fieldid, non_overlap_ids)
+        return non_overlap_ids, remaining_ids
+
+def mark_duplicates(done_fieldids, plan=plan, observatory=observatory):
+
+    for fieldid in done_fieldids:
+        field_assigned_file = sdss_path.full('rsFieldAssignments',
+                                             plan=plan,
+                                             observatory=observatory,
+                                             fieldid=fieldid)
+
+        allocation = fitsio.read(field_assigned_file, ext=2)
+        assigned = np.unique(allocation) # returns all rsids with assignments
+        for one in assigned:
+            if one in coordinated_dict.keys():
+                coordinated_dict[one] = True
+
+
+
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -127,15 +211,36 @@ if __name__ == '__main__':
                      (allocate.field_array['fieldid'] <= end))[0]
 
     if coordinate:
+        #JKC In this attempt, do the following
+        # 1 first come up with a set of non-overlapping fields. CREATE SEPARATE FUNCTION   -> DONE
+        # 2 Run on multiprocesser. Then build the dictionary and CREATE SEPARATE FUNCTION to mark as done the pre-processed fields
+        # Finally, run sequentially the remaining fields as before
+
+        print('Running non-overlapping fields')
+        print(time.ctime(time.time()))
+        parallel_ids, sequential_ids = find_non_overlapping_fields(allocate.field_array['racen'][ikeep], 
+                                                                   allocate.field_array['deccen'][ikeep], 
+                                                                   ikeep, observatory=observatory)
+
+        with multiprocessing.Pool() as pool:
+            pool.map(assign_field,parallel_ids)
+
         print("Identifying duplicate targets")
+        print(time.ctime(time.time()))
         target_covered_file = sdss_path.full('rsTargets', plan=plan,
-                                                  observatory=observatory).replace('rsTargets','rsTargetsCovered')
+                                             observatory=observatory).replace('rsTargets','rsTargetsCovered')
         targets_covered = fitsio.read(target_covered_file)
         in_hex = targets_covered['within_hex']
         duplicated = targets_covered[in_hex > 1]
         coordinated_dict = {x:False for x in duplicated['rsid']}
 
-        for i in ikeep:
+        print("Updating Duplicate targets observed in fields")
+        print(time.ctime(time.time()))
+        mark_duplicates(allocate.field_array['fieldid'][parallel_ids], plan=plan, observatory=observatory) # coordinated_dict is global
+
+        print("Running remaining fields sequentially")
+        print(time.ctime(time.time()))
+        for i in sequential_ids:
             assign_field(i)
     else:
         with multiprocessing.Pool() as pool:
