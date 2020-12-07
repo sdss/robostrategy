@@ -26,6 +26,7 @@ import sdss_access.path
 import pdb
 import fitsio
 import time
+from astropy.coordinates.angle_utilities import angular_separation
 
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
@@ -67,36 +68,26 @@ def assign_field(indx):
     f.tofits(field_assigned_file)
 
 
-def ra_steps(ra_array, dec, diameter):
+def pick_one(racen, deccen, fieldidx, d):
+    '''
+    Given a set of input fields, take the first one
+    and remove all fields from further consideration
+    that are closer than d
+    '''
 
-       factor =  np.cos(np.deg2rad(dec))
-       kp_idx = []
- 
-       sidx = np.argsort(ra_array)
-       assert len(sidx) == len(ra_array)
+    all_d = np.array([0])
+    oneidx = fieldidx[0]
+    ra0 = racen[0]
+    dec0 = deccen[0]
 
-       for idx, cur_ra in enumerate(ra_array[sidx]):
-           if idx == 0:
-               kp_idx.append(idx)
-               prev_ra = cur_ra.copy()
-           else:
-               d = (cur_ra - prev_ra)
-               if d*factor > diameter:
-                   if idx == len(ra_array)- 1:
-                       print('Here')
-                       if d > 180:
-                          d-=360
-                          if np.abs(d)*factor < diameter:
-                              continue
-                   kp_idx.append(idx)
-                   prev_ra = cur_ra.copy()
-       
-#       print(ra_array)
-#       print(ra_array[sidx[kp_idx]])
-       return sidx[kp_idx]
+    for idx,(ra1,dec1) in enumerate(zip(racen[1:], deccen[1:])):
+        new_d = angular_separation(np.deg2rad(ra0), np.deg2rad(dec0), np.deg2rad(ra1), np.deg2rad(dec1))
+        all_d = np.append(all_d, np.rad2deg(new_d))
+
+
+    return oneidx, racen[all_d >d], deccen[all_d > d], fieldidx[all_d > d]
 
 def find_non_overlapping_fields(racen, deccen, fieldidx, observatory=None):
-
         if observatory == 'apo':  # copied radii from rs_fields's calls to sloane.Sloane()
             diameter = 1.49 * 2
         elif observatory == 'lco':
@@ -104,71 +95,24 @@ def find_non_overlapping_fields(racen, deccen, fieldidx, observatory=None):
         else:
             raise ValueError('{} is not a valid observatory'.format(observatory))
 
-        sidx = np.argsort(deccen)
-        ra = racen[sidx]
-        dec = deccen[sidx]
-        fid = fieldidx[sidx]
+        cur_fields = fieldidx.copy()
+        cur_ra = racen.copy()
+        cur_dec = deccen.copy()
+        max_iter = len(racen)
+        counter = 0 # safeguard my while loop
 
+        parallel_ids = np.array([],dtype='int')
+        while len(cur_fields) > 0:
+             if counter > max_iter:
+                  raise RunTimeError('While loop exceeds max iteration')
+             kp_fid, cur_ra, cur_dec, cur_fields = pick_one(cur_ra, cur_dec, cur_fields,diameter)
+             parallel_ids=np.append(parallel_ids, kp_fid)
+             counter += 1
 
-        non_overlap_ids = []
-        cur_idx = 0  # indices to sorted arrays
+        serial_ids = np.setdiff1d(fieldidx, parallel_ids)
+ 
+        return parallel_ids, serial_ids        
 
-        while cur_idx < len(sidx):
-            non_overlap_ids.append(fid[cur_idx])
-            cur_ra = ra[cur_idx]
-            cur_dec = dec[cur_idx]
-       
-     
-            # Find next field far enough away in declination to no overlap current field
-            deltas = dec - cur_dec
-            far_away = np.where(deltas > diameter)[0]
-            if len(far_away) == 0:
-                cur_idx = 1e6
-            else:
-                cur_idx = np.min(far_away)
-
-            # Additional "too close in DEC" fields are possible if their RA are far enough
-            too_close = np.where( (deltas < diameter) & (deltas > 0))[0]
-            ra_diff = (ra[too_close] - cur_ra) * np.cos(np.deg2rad(cur_dec))
-            ra_diff[ra_diff > 180] -= 360
-            ra_diff[ra_diff < -180] += 360
-
-            if cur_idx < 1e6:  # Need to be non-overlapping with both current and next field
-                ra_diff2 = (ra[too_close] - ra[cur_idx]) * np.cos(np.deg2rad(cur_dec))
-                ra_diff2[ra_diff2 > 180] -= 360
-                ra_diff2[ra_diff2 < -180] += 360
-                still_ok = np.where((np.abs(ra_diff) > diameter) & (np.abs(ra_diff2) > diameter))[0]
-            else:
-                still_ok = np.where(np.abs(ra_diff) > diameter)[0]
-
-            if len(still_ok) > 0:  # Don't forget still_ok are indices of too_close
-                 ok_list = ra_steps(ra[too_close[still_ok]], cur_dec, diameter)
-                 for x in ok_list:
-                     non_overlap_ids.append(fid[too_close[still_ok[x]]])
-
-#                ok_idx = 0 
-#                ok_list = [] # This is a list of indexes to still_ok_sort
-#         
-#                ra_diff_kp = ra_diff[still_ok] 
-#                ordered_ok = np.argsort(ra_diff_kp) 
-#                ra_diff_kp_sort = ra_diff_kp[ordered_ok] 
-#                still_ok_sort = still_ok[ordered_ok] 
-#         
-#                while ok_idx < len(still_ok_sort): 
-#                    ok_list.append(ok_idx) 
-#                    cur_ra_diff = ra_diff_kp_sort[ok_idx] 
-#                    ok_far_away = np.where(ra_diff_kp_sort - cur_ra_diff > diameter)[0]
-#                    if len(ok_far_away) == 0:
-#                        ok_idx = 1e6 #to break while loop
-#                    else:
-#                        ok_idx = np.min(ok_far_away)
-#                
-#                for x in ok_list:
-#                    non_overlap_ids.append(too_close[still_ok_sort[x]])    
-
-
-        remaining_ids = np.setdiff1d(fieldidx, non_overlap_ids)
-        return non_overlap_ids, remaining_ids
 
 def mark_duplicates(done_fieldids, plan=plan, observatory=observatory):
 
@@ -248,11 +192,6 @@ if __name__ == '__main__':
                      (allocate.field_array['fieldid'] <= end))[0]
 
     if coordinate:
-        #JKC In this attempt, do the following
-        # 1 first come up with a set of non-overlapping fields. CREATE SEPARATE FUNCTION   -> DONE
-        # 2 Run on multiprocesser. Then build the dictionary and CREATE SEPARATE FUNCTION to mark as done the pre-processed fields
-        # Finally, run sequentially the remaining fields as before
-
         print('Running non-overlapping fields')
         print(time.ctime(time.time()))
         parallel_ids, sequential_ids = find_non_overlapping_fields(allocate.field_array['racen'][ikeep], 
@@ -273,7 +212,7 @@ if __name__ == '__main__':
 
         print("Updating Duplicate targets observed in fields")
         print(time.ctime(time.time()))
-        mark_duplicates(allocate.field_array['fieldid'][parallel_ids], plan=plan, observatory=observatory) # coordinated_dict is global
+        mark_duplicates(parallel_ids, plan=plan, observatory=observatory) # coordinated_dict is global
 
         print("Running remaining fields sequentially")
         print(time.ctime(time.time()))
@@ -282,5 +221,6 @@ if __name__ == '__main__':
     else:
         with multiprocessing.Pool() as pool:
             pool.map(assign_field,ikeep)
+    print('DONE: rs_assign_final')
     print(time.ctime(time.time()))
 
