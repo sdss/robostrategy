@@ -4,7 +4,7 @@ numpy
 pyyaml
 pygments
 matplotlib
-sdss-roboscheduler
-sdss-kaiju
+# sdss-roboscheduler
+# sdss-kaiju
 sdss-tree>=2.15.2
 sdss-access>=0.2.3
