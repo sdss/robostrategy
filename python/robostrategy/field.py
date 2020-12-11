@@ -11,14 +11,9 @@ import fitsio
 import scipy.optimize as optimize
 import matplotlib.pyplot as plt
 import ortools.sat.python.cp_model as cp_model
-
-# Work-around for documentation
-try:
-    import roboscheduler.cadence as cadence
-    import kaiju
-    import kaiju.robotGrid
-except:
-    pass
+import roboscheduler.cadence as cadence
+import kaiju
+import kaiju.robotGrid
 
 # alpha and beta lengths for plotting
 _alphaLen = 7.4
