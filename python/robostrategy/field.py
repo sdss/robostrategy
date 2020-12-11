@@ -1185,7 +1185,17 @@ class Field(object):
         self.decollide_unassigned()
 
     def assess(self):
-        """Assess the current results of assignment in field"""
+        """Assess the current results of assignment in field
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        results : str
+            String describing results
+"""
         out = ""
 
         out = out + "Field cadence: {fc}\n".format(fc=self.field_cadence.name)
@@ -1335,7 +1345,21 @@ class Field(object):
 
         return(nproblems)
 
-    def plot_robot(self, robot, color=None, ax=None):
+    def _plot_robot(self, robot, color=None, ax=None):
+        """Plot a single robot
+
+        Parameters
+        ----------
+
+        robot : Robot object
+            instance of robot to plot
+
+        color : str
+            color to make beta arm
+
+        ax : Axes object
+            matplotlib Axes object to plot on
+"""
         xr = robot.xPos
         yr = robot.yPos
         xa = xr + _alphaLen * np.cos(robot.alpha / 180. * np.pi)
@@ -1346,7 +1370,20 @@ class Field(object):
         ax.plot(np.array([xa, xb]), np.array([ya, yb]), color=color, linewidth=3)
 
     def plot(self, iexp=None, robotID=False, catalogid=False):
-        """Plot assignments of robots to targets for field """
+        """Plot assignments of robots to targets for field
+
+        Parameters
+        ----------
+
+        iexp : int or np.int32
+            index of exposure to plot
+
+        robotID : bool
+            if True, plot the robotID for each robot (default False)
+
+        catalogid : bool
+            if True, plot to catalogid for each target (default False)
+"""
         target_cadences = np.sort(np.unique(self.targets['cadence']))
 
         colors = ['black', 'green', 'blue', 'cyan', 'purple', 'red',
@@ -1372,7 +1409,7 @@ class Field(object):
                 icolor = indx % len(colors)
                 for i in itarget:
                     robot = self.robotgrids[iexp].robotDict[target_robotid[i]]
-                    self.plot_robot(robot, color=colors[icolor], ax=axfig)
+                    self._plot_robot(robot, color=colors[icolor], ax=axfig)
 
         for indx in np.arange(len(target_cadences)):
             itarget = np.where(self.targets['cadence'] == target_cadences[indx])[0]
@@ -1413,7 +1450,7 @@ class Field(object):
         axleg.plot(xcen[inot], ycen[inot], color='grey',
                    linewidth=4, label='Unused robot')
         for i in robotid[inot]:
-            self.plot_robot(self.robotgrids[iexp].robotDict[int(i)],
+            self._plot_robot(self.robotgrids[iexp].robotDict[int(i)],
                             color='grey', ax=axfig)
 
         plt.xlim([-370., 370.])
