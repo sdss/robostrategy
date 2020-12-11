@@ -12,17 +12,7 @@ product robostrategy. The overview and more complete documentation of
 how robostrategy works is at:
 https://wiki.sdss.org/display/OPS/Robostrategy+Overview.
 
-Reference
----------
-
 .. toctree::
    :maxdepth: 1
 
    api
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
