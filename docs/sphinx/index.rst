@@ -5,7 +5,10 @@
 
 :tocdepth: 2
 
-.. rubric:: :header_no_toc:`Welcome to robostrategy's documentation!`
+.. rubric:: :header_no_toc:`robostrategy documentation`
+
+Overview
+=========================
 
 This page has reference developer documentation for the SDSS Python
 product robostrategy. The overview and more complete documentation of
