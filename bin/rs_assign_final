@@ -36,8 +36,6 @@ coordinated_dict = None
 
 def assign_field(indx):
     print(time.ctime(time.time()))
-    if coordinated_dict is None:
-        print('No coordination!')
 
     fieldid = allocate.field_array['fieldid'][indx]
     if((fieldid % 1) == 0):
@@ -72,7 +70,7 @@ def pick_one(racen, deccen, fieldidx, d):
     '''
     Given a set of input fields, take the first one
     and remove all fields from further consideration
-    that are closer than d
+    that are closer than d (in degrees)
     '''
 
     all_d = np.array([0])
@@ -101,20 +99,20 @@ def find_non_overlapping_fields(racen, deccen, fieldidx, observatory=None):
         max_iter = len(racen)
         counter = 0 # safeguard my while loop
 
-        parallel_ids = np.array([],dtype='int')
+        parallel_idx = np.array([],dtype='int')
         while len(cur_fields) > 0:
              if counter > max_iter:
                   raise RunTimeError('While loop exceeds max iteration')
              kp_fid, cur_ra, cur_dec, cur_fields = pick_one(cur_ra, cur_dec, cur_fields,diameter)
-             parallel_ids=np.append(parallel_ids, kp_fid)
+             parallel_idx=np.append(parallel_idx, kp_fid)
              counter += 1
 
-        serial_ids = np.setdiff1d(fieldidx, parallel_ids)
+        serial_idx = np.setdiff1d(fieldidx, parallel_idx)
  
-        return parallel_ids, serial_ids        
+        return parallel_idx, serial_idx        
 
 
-def mark_duplicates(done_fieldids, plan=plan, observatory=observatory):
+def mark_duplicates(done_fieldids, plan=None, observatory=None):
 
     for fieldid in done_fieldids:
         field_assigned_file = sdss_path.full('rsFieldAssignments',
@@ -191,12 +189,14 @@ if __name__ == '__main__':
     ikeep = np.where((allocate.field_array['fieldid'] >= start) &
                      (allocate.field_array['fieldid'] <= end))[0]
 
+
+# NEED TO DO SOME REWRITING. assign_field works on field index
     if coordinate:
         print('Running non-overlapping fields')
         print(time.ctime(time.time()))
         parallel_ids, sequential_ids = find_non_overlapping_fields(allocate.field_array['racen'][ikeep], 
                                                                    allocate.field_array['deccen'][ikeep], 
-                                                                   ikeep, observatory=observatory)
+                                                                   ikeep,observatory=observatory)
 
         with multiprocessing.Pool() as pool:
             pool.map(assign_field,parallel_ids)
@@ -212,7 +212,8 @@ if __name__ == '__main__':
 
         print("Updating Duplicate targets observed in fields")
         print(time.ctime(time.time()))
-        mark_duplicates(parallel_ids, plan=plan, observatory=observatory) # coordinated_dict is global
+        mark_duplicates(allocate.field_array['fieldid'][parallel_ids], plan=plan, 
+                        observatory=observatory) # coordinated_dict is global
 
         print("Running remaining fields sequentially")
         print(time.ctime(time.time()))
