@@ -113,7 +113,9 @@ intersphinx_mapping = {'python': ('https://docs.python.org/3.6', None),
                        'astropy': ('http://docs.astropy.org/en/latest', None),
                        'numpy': ('http://docs.scipy.org/doc/numpy/', None)}
 
-autodoc_mock_imports = ['_tkinter']
+autodoc_mock_imports = ['_tkinter', 'roboscheduler',
+                        'roboscheduler.cadence',
+                        'kaiju', 'kaiju.robotGrid']
 autodoc_member_order = 'groupwise'
 
 napoleon_use_rtype = False
