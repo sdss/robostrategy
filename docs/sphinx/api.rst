@@ -1,13 +1,13 @@
 
 .. _api:
 
-robostrategy Reference
+API Reference
 =========================
 
-.. _api-main:
+.. _api-field:
 
-Main
-----
+Field
+-----
 
 .. automodule:: robostrategy.field
    :members:
