@@ -4,7 +4,7 @@ numpy
 pyyaml
 pygments
 matplotlib
-fitsio
+# fitsio
 scipy
 ortools
 # sdss-roboscheduler

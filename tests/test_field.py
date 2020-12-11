@@ -34,6 +34,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None):
 
 def test_field_init():
     clist = cadence.CadenceList()
+    clist.reset()
 
     clist.add_cadence(name='single_1x1', nepochs=1,
                       skybrightness=[1.],
@@ -80,6 +81,7 @@ def test_field_init():
 
 def test_radec():
     clist = cadence.CadenceList()
+    clist.reset()
 
     clist.add_cadence(name='single_1x1', nepochs=1,
                       skybrightness=[1.],
@@ -98,6 +100,7 @@ def test_radec():
 
 def test_target_fromarray():
     clist = cadence.CadenceList()
+    clist.reset()
 
     clist.add_cadence(name='single_1x1', nepochs=1,
                       skybrightness=[1.],
@@ -113,6 +116,7 @@ def test_target_fromarray():
 
 def test_flags():
     clist = cadence.CadenceList()
+    clist.reset()
 
     clist.add_cadence(name='single_1x1', nepochs=1,
                       skybrightness=[1.],
@@ -134,6 +138,15 @@ def test_flags():
 
 def test_assign_robot_epoch():
     clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
 
     clist.add_cadence(name='single_2x2', nepochs=2,
                       skybrightness=[1.] * 2,
@@ -183,6 +196,15 @@ def test_assign_robot_epoch():
 
 def test_available_robot_epochs():
     clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
 
     clist.add_cadence(name='single_2x2', nepochs=2,
                       skybrightness=[1.] * 2,
@@ -197,7 +219,6 @@ def test_available_robot_epochs():
 
     for rid in f.robotgrids[0].robotDict:
         tids = f.robotgrids[0].robotDict[rid].validTargetIDs
-        print(tids)
         if(len(tids) > 1):
             tid0 = tids[0]
             tid1 = tids[1]
@@ -219,6 +240,15 @@ def test_available_robot_epochs():
 
 def test_assign_epochs():
     clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
 
     clist.add_cadence(name='single_2x2', nepochs=2,
                       skybrightness=[1.] * 2,
@@ -264,6 +294,15 @@ def test_assign_epochs():
 
 def test_append_targets():
     clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
 
     clist.add_cadence(name='single_2x2', nepochs=2,
                       skybrightness=[1.] * 2,
@@ -283,10 +322,21 @@ def test_append_targets():
     assert len(f.assignments) == 100
     assert f.assignments['robotID'].shape == (100, 4)
     assert len(f.robotgrids[0].targetDict.keys()) == 100
+    for i, t in enumerate(f.targets):
+        assert f.rsid2indx[t['rsid']] == i
 
 
 def test_collisions():
     clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
 
     clist.add_cadence(name='single_2x2', nepochs=2,
                       skybrightness=[1.] * 2,
@@ -308,7 +358,6 @@ def test_collisions():
     tid1 = tids1[0]
 
     rids1 = np.array(f.robotgrids[0].targetDict[tids1[0]].validRobotIDs)
-    print(rids1)
     tid2 = tid1 + ntot
     rid2 = rids1[rids1 != rid1][0]
 
@@ -316,3 +365,60 @@ def test_collisions():
     f.assign_robot_epoch(rsid=tid2, robotID=rid2, epoch=0, nexp=2)
     assert f.robotgrids[0].isCollided(rid1) is True
     assert f.robotgrids[0].isCollided(rid2) is True
+
+
+def test_assign_boss_in_apogee():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='APOGEE')
+
+    clist.add_cadence(name='single_1x1_boss', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1_boss')
+    ntot = 400
+    targets(f, nt=ntot, seed=101)
+
+    f.assign_science()
+    f.decollide_unassigned()
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() > 0
+    for r in f.robotgrids[0].robotDict:
+        if(f.robotgrids[0].robotDict[r].assignedTargetID >= 0):
+            assert f.robotgrids[0].robotDict[r].hasApogee
+
+            
+def test_assign_cp_model():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1')
+    ntot = 400
+    targets(f, nt=ntot, seed=101)
+
+    f.assign_full_cp_model(rsids=f.targets['rsid'])
+    f.decollide_unassigned()
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() > 0

@@ -1,0 +1,129 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: field_efficiency_tests
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import robostrategy.field as field
+import roboscheduler.cadence as cadence
+
+# np.random.seed(100)
+
+
+def targets(f=None, nt=100, rsid_start=0, ra=None, dec=None,
+            cadence=None, category=None):
+    t_dtype = np.dtype([('ra', np.float64),
+                        ('dec', np.float64),
+                        ('priority', np.int32),
+                        ('category', np.unicode_, 30),
+                        ('cadence', np.unicode_, 30),
+                        ('catalogid', np.int64),
+                        ('rsid', np.int64)])
+    t = np.zeros(nt, dtype=t_dtype)
+    if(ra is None):
+        t['ra'] = 180. - 1.5 + 3.0 * np.random.random(nt)
+    else:
+        t['ra'] = ra
+    if(dec is None):
+        t['dec'] = 0. - 1.5 + 3.0 * np.random.random(nt)
+    else:
+        t['dec'] = dec
+    t['priority'] = 1
+    if(category is None):
+        t['category'] = 'science'
+    else:
+        t['category'] = category
+    if(cadence is None):
+        t['cadence'] = 'single_1x1'
+    else:
+        t['cadence'] = cadence
+    t['catalogid'] = np.arange(nt, dtype=np.int64)
+    t['rsid'] = np.arange(nt, dtype=np.int64) + rsid_start
+    f.targets_fromarray(t)
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Test field assignment efficiency')
+
+    parser.add_argument('-n', '--ntest', dest='ntest',
+                        type=int, help='Number of randoms to run',
+                        default=1, required=False)
+
+    parser.add_argument('-c', '--calibrators', dest='calibrators',
+                        action='store_true', default=False,
+                        help='Include calibration stars',
+                        required=False)
+
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    parser.add_argument('-e', '--assign-epochs', dest='assign_epochs',
+                        type=str, help='Method to assign epochs',
+                        choices=['first', 'fewestcompeting'],
+                        default='first', required=False)
+
+    args = parser.parse_args()
+    ntest = args.ntest
+    observatory = args.observatory
+    calibrators = args.calibrators
+    assign_epochs = args.assign_epochs
+
+    clist = cadence.CadenceList()
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
+
+    nts = [100, 200, 400, 800, 1600]
+
+    for nt in nts:
+
+        nta = np.zeros(ntest, dtype=np.int32)
+        for i in range(ntest):
+            f = field.Field(racen=180., deccen=0., pa=45, observatory=observatory,
+                            field_cadence='single_1x1', fieldid=1)
+            f.methods['assign_epochs'] = assign_epochs
+            np.random.seed()
+            targets(f=f, nt=nt, cadence='single_1x1')
+            if(calibrators):
+                targets(f=f, nt=120, cadence='single_1x1', category='sky_boss',
+                        rsid_start=f.targets['rsid'].max() + 1)
+                targets(f=f, nt=120, cadence='single_1x1', category='standard_boss',
+                        rsid_start=f.targets['rsid'].max() + 1)
+                targets(f=f, nt=120, cadence='single_1x1', category='sky_apogee',
+                        rsid_start=f.targets['rsid'].max() + 1)
+                targets(f=f, nt=120, cadence='single_1x1', category='standard_apogee',
+                        rsid_start=f.targets['rsid'].max() + 1)
+
+            if(calibrators):
+                f.assign_calibrations()
+
+            #   f.assign_science()
+            f.assign_full_cp_model(rsids=f.targets['rsid'])
+            f.decollide_unassigned()
+            nta[i] = f.assignments['assigned'].sum()
+
+        ntam = nta.mean()
+        print("Standard algorithm: {nt} input -> {nta:4.2f} assigned".format(nt=nt,
+                                                                             nta=ntam))
