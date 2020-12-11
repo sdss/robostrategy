@@ -114,7 +114,7 @@ intersphinx_mapping = {'python': ('https://docs.python.org/3.6', None),
                        'numpy': ('http://docs.scipy.org/doc/numpy/', None)}
 
 autodoc_mock_imports = ['_tkinter', 'roboscheduler',
-                        'roboscheduler.cadence',
+                        'roboscheduler.cadence', 'fitsio',
                         'kaiju', 'kaiju.robotGrid']
 autodoc_member_order = 'groupwise'
 
