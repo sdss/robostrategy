@@ -9,7 +9,7 @@ robostrategy Reference
 Main
 ----
 
-.. automodule:: robostrategy.main
+.. automodule:: robostrategy.field
    :members:
    :undoc-members:
    :show-inheritance:
