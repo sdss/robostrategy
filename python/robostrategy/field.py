@@ -207,8 +207,11 @@ class Field(object):
             self.calibrations[n] = np.zeros(0, dtype=np.int32)
         self._set_field_cadence(field_cadence)
         targets = fitsio.read(filename, ext=1)
-        self.targets_fromarray(targets)
-        self.assignments = fitsio.read(filename, ext=2)
+        try:
+            assignments = fitsio.read(filename, ext=2)
+        except OSError:
+            assignments = None
+        self.targets_fromarray(target_array=targets, assignment_array=assignments)
         for assignment, target in zip(self.assignments, self.targets):
             for iexp in range(self.field_cadence.nexp_total):
                 if(assignment['robotID'][iexp] >= 0):
@@ -403,7 +406,7 @@ class Field(object):
         self.targets_fromarray(t)
         return
 
-    def targets_fromarray(self, target_array=None):
+    def targets_fromarray(self, target_array=None, assignment_array=None):
         """Read in targets from ndarray
 
         Parameters
@@ -411,6 +414,9 @@ class Field(object):
 
         target_array : ndarray
             array with target information
+
+        assignment_array : ndarray
+            if not None, array with assignment information (default None)
 """
         # Read in
         targets = np.zeros(len(target_array), dtype=targets_dtype)
@@ -452,8 +458,12 @@ class Field(object):
         # Set up outputs
         assignments = np.zeros(len(targets),
                                dtype=self.assignments_dtype)
-        assignments['fiberType'] = targets['fiberType']
-        assignments['robotID'] = -1
+        if(assignment_array is None):
+            assignments['fiberType'] = targets['fiberType']
+            assignments['robotID'] = -1
+        else:
+            for n in self.assignments_dtype.names:
+                assignments[n] = assignment_array[n]
 
         _is_calibration = np.zeros(len(targets), dtype=np.bool)
         for i, t in enumerate(targets):
@@ -637,7 +647,7 @@ class Field(object):
         available = free.sum() >= nexp
         spare_calibrations = np.unique(self.targets['rsid'][robot2indx[spare]])
 
-        return available, spare_calibrations
+        return available, free.sum(), spare_calibrations
 
     def assign_robot_epoch(self, rsid=None, robotID=None, epoch=None, nexp=None):
         """Assign an rsid to a particular robot-epoch
@@ -743,6 +753,45 @@ class Field(object):
             self.calibrations[category][iexp] = self.calibrations[category][iexp] + 1
         return
 
+    def _set_assigned(self, itarget=None):
+        self.assignments['assigned'][itarget] = (self.assignments['robotID'][itarget, :] >= 0).sum() > 0
+        return
+
+    def unassign_exposure(self, rsid=None, iexp=None, reset_assigned=True):
+        """Unassign an rsid from a particular exposure
+
+        Parameters:
+        ----------
+
+        rsid : np.int64
+            rsid of target to unassign
+
+        iexp : int or np.int32
+            exposure to unassign from
+
+        reset_assigned : bool
+            if set, reset "assigned" setting in assignments (default True)
+"""
+        itarget = self.rsid2indx[rsid]
+        category = self.targets['category'][itarget]
+        rg = self.robotgrids[iexp]
+        robotID = self.assignments['robotID'][itarget, iexp]
+        if(robotID >= 0):
+            if(rg.robotDict[robotID].assignedTargetID == rsid):
+                rg.unassignTarget(rsid)
+                self.assignments['robotID'][itarget, iexp] = -1
+                self._robot2indx[robotID, iexp] = -1
+                if(self._is_calibration[itarget]):
+                    self.calibrations[category][iexp] = self.calibrations[category][iexp] - 1
+            else:
+                print("Inconsistency: assignments says rsid {rsid} on robotID {robotID}".format(rsid=rsid,
+                                                                                                robotID=robotID))
+                print("But robot thinks its assignment is to {ati}.".format(ati=rg.robotDict[robotID].assignedTargetID))
+
+        if(reset_assigned is True):
+            self._set_assigned(itarget=itarget)
+        return
+
     def unassign_epoch(self, rsid=None, epoch=None):
         """Unassign an rsid from a particular epoch
 
@@ -750,10 +799,10 @@ class Field(object):
         ----------
 
         rsid : np.int64
-            rsid of target to assign
+            rsid of target to unassign
 
         epoch : int or np.int32
-            epoch to check
+            epoch to unassign from
 
         Returns:
         -------
@@ -761,24 +810,11 @@ class Field(object):
         status : int
             0 if the target had been assigned and was successfully removed
 """
-        itarget = self.rsid2indx[rsid]
-        category = self.targets['category'][itarget]
         iexpst = self.field_cadence.epoch_indx[epoch]
         iexpnd = self.field_cadence.epoch_indx[epoch + 1]
-        nexp = 0
         for iexp in np.arange(iexpst, iexpnd):
-            rg = self.robotgrids[iexp]
-            robotID = self.assignments['robotID'][itarget, iexp]
-            if(robotID >= 0):
-                if(rg.robotDict[robotID].assignedTargetID == rsid):
-                    rg.unassignTarget(rsid)
-                    self.assignments['robotID'][itarget, iexp] = -1
-                    self._robot2indx[robotID, iexp] = -1
-                    nexp = nexp + 1
-        self.assignments['assigned'][itarget] = (self.assignments['robotID'][itarget, :] >= 0).sum() > 0
-        if(nexp > 0):
-            if(category in self.calibrations):
-                self.calibrations[category][iexpst:iexpnd] = self.calibrations[category][iexpst:iexpnd] - 1
+            self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=False)
+        self._set_assigned(itarget=self.rsid2indx[rsid])
         return 0
 
     def unassign(self, rsid=None):
@@ -794,7 +830,7 @@ class Field(object):
             self.unassign_epoch(rsid=rsid, epoch=epoch)
         return
 
-    def available_robot_epochs(self, rsid=None, epochs=None, nexps=None, iscalib=False):
+    def available_epochs(self, rsid=None, epochs=None, nexps=None, iscalib=False):
         """Find robots available for each epoch
 
         Parameters:
@@ -804,10 +840,10 @@ class Field(object):
             rsid of target to assign
 
         epochs : ndarray of np.int32
-            epochs to assign to
+            epochs to assign to (default all)
 
         nexps : ndarray of np.int32
-            number of exposures needed
+            number of exposures needed (default 1 per epoch)
 
         calib : bool
             True if this is a calibration target; will not bump other calibs
@@ -815,34 +851,51 @@ class Field(object):
         Returns:
         --------
 
-        availableRobotIDs : list of lists
-            for each epoch, list of available robotIDs sorted by robotID
+        available : dictionary, with key value pairs below
+            'availableRobotIDs' : list of lists
+                for each epoch, list of available robotIDs sorted by robotID
 
-        spareCalibrations : list of list of lists
-            for each epoch and each robotID, list of spare calibrations
-            availability relies upon removing
+            'nFrees' : list of lists
+                for each epoch, list of number of free exposures for each available robot
+
+            'spareCalibrations' : list of list of lists
+                for each epoch and each robotID, list of spare calibrations
+                availability relies upon removing
 """
+        if(epochs is None):
+            epochs = np.arange(self.field_cadence.nepochs, dtype=np.int32)
+        if(nexps is None):
+            nexps = np.ones(len(epochs))
         validRobotIDs = self.masterTargetDict[rsid].validRobotIDs
         validRobotIDs = np.array(validRobotIDs)
         validRobotIDs.sort()
         availableRobotIDs = [[]] * len(epochs)
         spareCalibrations = [[[]]] * len(epochs)
+        nFrees = [[]] * len(epochs)
         for iepoch, epoch in enumerate(epochs):
             nexp = nexps[iepoch]
             arlist = []
             sclist = []
+            nflist = []
             for robotID in validRobotIDs:
-                ok, sc = self.available_robot_epoch(rsid=rsid,
-                                                    robotID=robotID,
-                                                    epoch=epoch,
-                                                    nexp=nexp,
-                                                    iscalib=iscalib)
+                ok, nfree, sc = self.available_robot_epoch(rsid=rsid,
+                                                           robotID=robotID,
+                                                           epoch=epoch,
+                                                           nexp=nexp,
+                                                           iscalib=iscalib)
                 if(ok):
                     arlist.append(robotID)
+                    nflist.append(nfree)
                     sclist.append(sc)
             availableRobotIDs[iepoch] = arlist
             spareCalibrations[iepoch] = sclist
-        return availableRobotIDs, spareCalibrations
+            nFrees[iepoch] = nflist
+
+        available = dict()
+        available['availableRobotIDs'] = availableRobotIDs
+        available['nFrees'] = nFrees
+        available['spareCalibrations'] = spareCalibrations
+        return(available)
 
     def assign_epochs(self, rsid=None, epochs=None, nexps=None):
         """Assign target to robots in a set of epochs
@@ -872,10 +925,9 @@ class Field(object):
             iscalib = True
         else:
             iscalib = False
-        availableRobotIDs, spareCalibrations = self.available_robot_epochs(rsid=rsid,
-                                                                           epochs=epochs,
-                                                                           nexps=nexps,
-                                                                           iscalib=iscalib)
+        available = self.available_epochs(rsid=rsid, epochs=epochs, nexps=nexps, iscalib=iscalib)
+        availableRobotIDs = available['availableRobotIDs']
+        spareCalibrations = available['spareCalibrations']
 
         # Check if there are robots available
         nRobotIDs = np.array([len(x) for x in availableRobotIDs])
@@ -940,10 +992,9 @@ class Field(object):
                     iscalib = True
                 else:
                     iscalib = False
-                availableRobotIDs, spareCalibrations = self.available_robot_epochs(rsid=rsid,
-                                                                                   epochs=epochs,
-                                                                                   nexps=nexps,
-                                                                                   iscalib=iscalib)
+                available = self.available_epochs(rsid=rsid, epochs=epochs, nexps=nexps,
+                                                  iscalib=iscalib)
+                availableRobotIDs = available['availableRobotIDs']
 
                 navailable[indx] = 1
                 for ari in availableRobotIDs:

@@ -194,7 +194,7 @@ def test_assign_robot_epoch():
     assert f.assignments['robotID'][f.rsid2indx[tid], 1] == -1
 
 
-def test_available_robot_epochs():
+def test_available_epochs():
     clist = cadence.CadenceList()
     clist.reset()
 
@@ -225,8 +225,10 @@ def test_available_robot_epochs():
 
             f.assign_robot_epoch(rsid=tid0, robotID=rid, epoch=0, nexp=1)
 
-            ar, sc = f.available_robot_epochs(rsid=tid1, epochs=[0, 1],
-                                          nexps=[2, 2])
+            av = f.available_epochs(rsid=tid1, epochs=[0, 1], nexps=[2, 2])
+            ar = av['availableRobotIDs']
+            nf = av['nFrees']
+            sc = av['spareCalibrations']
             assert rid not in ar[0]
             assert rid in ar[1]
 
