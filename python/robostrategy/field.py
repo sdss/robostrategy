@@ -1038,7 +1038,7 @@ class Field(object):
         indxs = np.array([self.rsid2indx[r] for r in rsids], dtype=np.int32)
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
-            iormore = np.where((self.targets['priority'][indxs] == priority) &
+            iormore = np.where((self.targets['priority'][indxs] >= priority) &
                                (self._is_calibration[indxs] == False))[0]
             self._set_competing_targets(rsids[iormore])
             iassign = np.where(self.targets['priority'][indxs] == priority)[0]
