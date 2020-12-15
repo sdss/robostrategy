@@ -75,16 +75,17 @@ if __name__ == '__main__':
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
 
-    parser.add_argument('-e', '--assign-epochs', dest='assign_epochs',
+    parser.add_argument('-m', '--method', dest='method',
                         type=str, help='Method to assign epochs',
-                        choices=['first', 'fewestcompeting'],
-                        default='first', required=False)
+                        choices=['greedy-dumb', 'greedy-fewest',
+                                 'constraint'],
+                        default='greedy-dumb', required=False)
 
     args = parser.parse_args()
     ntest = args.ntest
     observatory = args.observatory
     calibrators = args.calibrators
-    assign_epochs = args.assign_epochs
+    method = args.method
 
     clist = cadence.CadenceList()
     clist.add_cadence(name='single_1x1', nepochs=1,
@@ -103,7 +104,10 @@ if __name__ == '__main__':
         for i in range(ntest):
             f = field.Field(racen=180., deccen=0., pa=45, observatory=observatory,
                             field_cadence='single_1x1', fieldid=1)
-            f.methods['assign_epochs'] = assign_epochs
+            if(method == 'greedy-dumb'):
+                f.methods['assign_epochs'] = 'first'
+            if(method == 'greedy-fewest'):
+                f.methods['assign_epochs'] = 'fewestcompeting'
             np.random.seed()
             targets(f=f, nt=nt, cadence='single_1x1')
             if(calibrators):
@@ -120,10 +124,16 @@ if __name__ == '__main__':
                 f.assign_calibrations()
 
             #   f.assign_science()
-            f.assign_full_cp_model(rsids=f.targets['rsid'])
+            if(method == 'constraint'):
+                f.assign_full_cp_model(rsids=f.targets['rsid'])
+            else:
+                f.assign_science()
             f.decollide_unassigned()
             nta[i] = f.assignments['assigned'].sum()
+            if(f.validate() > 0):
+                print("Uh oh")
 
         ntam = nta.mean()
-        print("Standard algorithm: {nt} input -> {nta:4.2f} assigned".format(nt=nt,
-                                                                             nta=ntam))
+        print("{method} algorithm: {nt} input -> {nta:4.2f} assigned".format(nt=nt,
+                                                                             nta=ntam,
+                                                                             method=method))
