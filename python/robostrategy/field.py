@@ -459,8 +459,8 @@ class Field(object):
             targets['within'][itarget] = len(t.validRobotIDs) > 0
 
         # Determine if it is within the field cadence
-        for itarget, cadence in enumerate(targets['cadence']):
-            ok = clist.cadence_consistency(cadence,
+        for itarget, target_cadence in enumerate(targets['cadence']):
+            ok = clist.cadence_consistency(target_cadence,
                                            self.field_cadence.name,
                                            return_solutions=False)
             targets['incadence'][itarget] = ok
