@@ -118,7 +118,24 @@ def field_options(ifield):
         sys.exit(1)
     field_cadences = all_cadences[icadences]
 
-    for field_cadence in field_cadences:
+    print(field_cadences)
+
+    for full_field_cadence in field_cadences:
+        last = full_field_cadence.split('-')[-1]
+        if(last[0] == 'n'):
+            n_field_cadence = True
+            if(last != 'n'):
+                minn = int(last[1:])
+            else:
+                minn = 1
+            field_cadence_base = full_field_cadence.split('-')[0]
+            field_cadence = field_cadence_base + "-n"
+        else:
+            n_field_cadence = False
+            minn = 0
+            field_cadence_base = ''
+            field_cadence = full_field_cadence
+
         print("{fc} {fi}".format(fc=field_cadence, fi=fieldid), flush=True)
         f = field.Field(racen=fields_entry['racen'],
                         deccen=fields_entry['deccen'],
@@ -136,12 +153,7 @@ def field_options(ifield):
         print("assigned {fi}".format(fi=fieldid), flush=True)
 
         last = field_cadence.split('-')[-1]
-        if(last[0] == 'n'):
-            if(last != 'n'):
-                minn = int(last[1:])
-            else:
-                minn = 1
-            field_cadence_base = field_cadence.split('-')[0]
+        if(n_field_cadence):
             assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
             for indx in np.arange(minn, ncadence + 1, dtype=np.int32):
                 fcadence = '{base}-{n}'.format(base=field_cadence_base,
