@@ -101,6 +101,7 @@ if __name__ == '__main__':
     for nt in nts:
 
         nta = np.zeros(ntest, dtype=np.int32)
+        nti = np.zeros(ntest, dtype=np.int32)
         for i in range(ntest):
             f = field.Field(racen=180., deccen=0., pa=45, observatory=observatory,
                             field_cadence='single_1x1', fieldid=1)
@@ -132,8 +133,11 @@ if __name__ == '__main__':
             nta[i] = f.assignments['assigned'].sum()
             if(f.validate() > 0):
                 print("Uh oh")
+            nti[i] = f.targets['within'].sum()
 
+        ntim = nti.mean()
         ntam = nta.mean()
-        print("{method} algorithm: {nt} input -> {nta:4.2f} assigned".format(nt=nt,
-                                                                             nta=ntam,
-                                                                             method=method))
+        print("{method} algorithm: {nti:4.2f} covered -> {nta:4.2f} assigned ({p:3.1f}%)".format(nti=ntim,
+                                                                                            nta=ntam,
+                                                                                            method=method,
+                                                                                            p=100.* ntam / ntim))
