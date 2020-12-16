@@ -31,7 +31,10 @@ targets_dtype = np.dtype([('ra', np.float64),
                           ('x', np.float64),
                           ('y', np.float64),
                           ('within', np.int32),
+                          ('incadence', np.int32),
                           ('priority', np.int32),
+                          ('program', np.unicode_, 30),
+                          ('carton', np.unicode_, 30),
                           ('category', np.unicode_, 30),
                           ('cadence', np.unicode_, 30),
                           ('fiberType', np.unicode_, 10),
@@ -455,6 +458,13 @@ class Field(object):
             t = self.masterTargetDict[rsid]
             targets['within'][itarget] = len(t.validRobotIDs) > 0
 
+        # Determine if it is within the field cadence
+        for itarget, cadence in enumerate(targets['cadence']):
+            ok = clist.cadence_consistency(cadence,
+                                           self.field_cadence.name,
+                                           return_solutions=False)
+            targets['incadence'][itarget] = ok
+
         # Set up outputs
         assignments = np.zeros(len(targets),
                                dtype=self.assignments_dtype)
@@ -465,6 +475,7 @@ class Field(object):
             for n in self.assignments_dtype.names:
                 assignments[n] = assignment_array[n]
 
+        # Create internal look-up of whether it is a calibration target
         _is_calibration = np.zeros(len(targets), dtype=np.bool)
         for i, t in enumerate(targets):
             _is_calibration[i] = t['category'] in self.required_calibrations
