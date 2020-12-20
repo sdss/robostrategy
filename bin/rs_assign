@@ -29,7 +29,7 @@ import multiprocessing
 
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites user specified directory
 
 cadencelist = cadence.CadenceList()
 
@@ -44,49 +44,39 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     assign_entry['cadence'] = field_cadence
     nvisit = cadencelist.cadences[field_cadence].nexposures
     assign_entry['nvisit'] = nvisit
-    assign_entry['ntargets'] = f.ntarget
-    target_got = np.zeros(f.ntarget, dtype=np.int32)
-    igot = np.where(f.assignments[:, 0:nvisit] >= 0)
-    gotids, gotn = np.unique(f.assignments[igot], return_counts=True)
+    assign_entry['ntargets'] = len(f.targets)
+    target_got = np.zeros(len(f.targets), dtype=np.int32)
+    igot = np.where(f._robot2indx[:, 0:nvisit] >= 0)
+    gotids, gotn = np.unique(f._robot2indx[igot], return_counts=True)
     gotindx = np.array([f.rsid2indx[x] for x in gotids], dtype=np.int32)
-    try:
-        tgot = gotindx[gotn >= f.target_nexposures[gotindx]]
-    except:
-        print(f.target_nexposures[gotindx])
-        print(len(igot))
-        print(igot)
-        print(f.assignments.min())
-        print(f.assignments.max())
-        print(gotids)
-        print(gotindx)
-        sys.exit(1)
+    tgot = gotindx[gotn >= 0]
     target_got[tgot] = 1
-    iok = np.where((f.target_incadence) & (f.target_within))[0]
+    iok = np.where((f.targets['incadence']) & (f.target_within))[0]
     assign_entry['nwithin'] = len(iok)
     assign_entry['ngot'] = target_got.sum()
-    assign_entry['valuegot'] = f.target_value[tgot].sum()
+    assign_entry['valuegot'] = f.targets['value'][tgot].sum()
 
     for indx in np.arange(len(utcadences), dtype=np.int32):
         utcadence = utcadences[indx]
-        ic = np.where((f.target_cadence == utcadence) &
-                      (f.target_incadence))[0]
-        assign_entry['nwithin_pcd'][0, indx] = f.target_within[ic].sum()
+        ic = np.where((f.targets['cadence'] == utcadence) &
+                      (f.targets['incadence']))[0]
+        assign_entry['nwithin_pcd'][0, indx] = f.targets['within'][ic].sum()
         assign_entry['ngot_pcd'][0, indx] = target_got[ic].sum()
-        icg = np.where((f.target_cadence == utcadence) &
+        icg = np.where((f.targets['cadence'] == utcadence) &
                        (target_got > 0) &
-                       (f.target_incadence))[0]
-        assign_entry['valuegot_pcd'][0, indx] = f.target_value[icg].sum()
+                       (f.targets['incadence']))[0]
+        assign_entry['valuegot_pcd'][0, indx] = f.targets['value'][icg].sum()
 
     for indx in np.arange(len(utcartons), dtype=np.int32):
         utcarton = utcartons[indx]
-        ip = np.where((f.target_carton == utcarton) &
-                      (f.target_incadence))[0]
-        assign_entry['nwithin_pct'][0, indx] = f.target_within[ip].sum()
+        ip = np.where((f.targets['carton'] == utcarton) &
+                      (f.targets['incadence']))[0]
+        assign_entry['nwithin_pct'][0, indx] = f.targets['within'][ip].sum()
         assign_entry['ngot_pct'][0, indx] = target_got[ip].sum()
-        ipg = np.where((f.target_carton == utcarton) &
+        ipg = np.where((f.targets['carton'] == utcarton) &
                        (target_got > 0) &
-                       (f.target_incadence))[0]
-        assign_entry['valuegot_pct'][0, indx] = f.target_value[ipg].sum()
+                       (f.targets['incadence']))[0]
+        assign_entry['valuegot_pct'][0, indx] = f.targets['value'][ipg].sum()
 
     return(assign_entry[0])
 
@@ -103,11 +93,16 @@ def field_options(ifield):
                                        fieldid=fieldid)
     targets = fitsio.read(field_target_file)
 
-    f = field.Field(racen=fields_entry['racen'],
-                    deccen=fields_entry['deccen'],
-                    observatory=observatory)
     if(rotate):
-        f.pa = np.float32(fields_entry[paname])
+        pa = np.float32(fields_entry[paname])
+    else:
+        pa = 0.
+
+    f = field.Field(fieldid=fieldid,
+                    racen=fields_entry['racen'],
+                    deccen=fields_entry['deccen'],
+                    pa=pa,
+                    observatory=observatory)
     f.targets_fromarray(targets)
 
     try:
@@ -137,18 +132,20 @@ def field_options(ifield):
             field_cadence = full_field_cadence
 
         print("{fc} {fi}".format(fc=field_cadence, fi=fieldid), flush=True)
-        f = field.Field(racen=fields_entry['racen'],
-                        deccen=fields_entry['deccen'],
-                        observatory=observatory)
         if(rotate):
-            f.pa = np.float32(fields_entry[paname])
+            pa = np.float32(fields_entry[paname])
+        else:
+            pa = 0.
+
+        f = field.Field(fieldid=fieldid,
+                        racen=fields_entry['racen'],
+                        deccen=fields_entry['deccen'],
+                        pa=pa,
+                        observatory=observatory,
+                        field_cadence=field_cadence)
         f.targets_fromarray(targets)
 
-        print("got targets {fi}".format(fi=fieldid), flush=True)
-
-        f.set_field_cadence(field_cadence)
-        print("set cadence {fi}".format(fi=fieldid), flush=True)
-        f.assign(include_calibration=False, kaiju=False)
+        f.assign()
 
         print("assigned {fi}".format(fi=fieldid), flush=True)
 
@@ -363,9 +360,8 @@ if __name__ == '__main__':
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
     cadence_arr['cadence'] = utcadences
     fitsio.write(options_file, cadence_arr, clobber=False)
-    
+
     carton_dtype = [('carton', cadence.fits_type)]
     carton_arr = np.zeros(len(utcartons), dtype=carton_dtype)
     carton_arr['carton'] = utcartons
     fitsio.write(options_file, carton_arr, clobber=False)
-    

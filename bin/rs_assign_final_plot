@@ -27,7 +27,7 @@ import sdss_access.path
 
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites user specified directory
 
 matplotlib.rcParams['figure.figsize'] = [10, 10]
 
@@ -81,33 +81,30 @@ if __name__ == '__main__':
         if((fieldid % 1) == 0):
             print(fieldid)
 
-        f = field.Field(racen=allocate.fields['racen'][indx],
-                        deccen=allocate.fields['deccen'][indx],
-                        observatory=observatory)
         field_assigned_file = sdss_path.full('rsFieldAssignments',
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
-        f.fromfits(field_assigned_file)
+        f = field.Field(filename=field_assigned_file)
 
-        isassigned = np.zeros(len(f.target_array), dtype=np.int32)
-        if(f.assignments is not None):
-            iassignments = np.where(f.assignments >= 0)
-            isassigned[f.assignments[iassignments]] = 1
+        isassigned = np.zeros(len(f.targets), dtype=np.int32)
+        if(f._robot2indx is not None):
+            iassignments = np.where(f._robot2indx >= 0)
+            isassigned[f._robot2indx[iassignments]] = 1
         iassigned = np.where(isassigned)[0]
 
-        if(f.assignments is not None):
-            assignments_flat = f.assignments.flatten()
-            isused = (assignments_flat >= 0) > 0
+        if(f._robot2indx is not None):
+            robot2indx_flat = f._robot2indx.flatten()
+            isused = (robot2indx_flat >= 0) > 0
             iused = np.where(isused)[0]
         else:
             iused = []
 
         # May need to specify BOSS or APOGEE for covered?
-        icovered = np.where(f.target_covered)[0]
+        icovered = np.where(f.targets['within'])[0]
 
-        if(f.assignments is not None):
-            ntot = len(f.assignments)
+        if(f._robot2indx is not None):
+            ntot = len(f._robot2indx)
         else:
             ntot = 0
 

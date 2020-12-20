@@ -131,13 +131,17 @@ if __name__ == '__main__':
                                                 within_circle] = fieldid
         targets_covered['within_circle'][icircle] = within_circle + 1
 
-        f = field.Field(racen=fields_entry['racen'],
-                        deccen=fields_entry['deccen'],
-                        observatory=observatory)
         if(rotate):
-            f.pa = np.float32(fields_entry[paname])
+            pa = np.float32(fields_entry[paname])
+        else:
+            pa = 0.
+
+        f = field.Field(fieldid=fieldid,
+                        racen=fields_entry['racen'],
+                        deccen=fields_entry['deccen'],
+                        observatory=observatory, pa=pa)
         f.targets_fromarray(target_array=targets)
-        ihex = icheck[indx[np.where(f.target_within)[0]]]
+        ihex = icheck[indx[np.where(f.targets['within'])[0]]]
         within_hex = targets_covered['within_hex'][ihex]
         targets_covered['within_hex_fields'][ihex, within_hex] = fieldid
         targets_covered['within_hex'][ihex] = within_hex + 1
@@ -145,7 +149,7 @@ if __name__ == '__main__':
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
-        fitsio.write(field_target_file, targets, clobber=True)
+        f.tofits(field_target_file)
 
     targets_covered_base = 'rsTargetsCovered-{plan}-{obs}.fits'
     targets_covered_base = targets_covered_base.format(plan=plan,

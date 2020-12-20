@@ -91,8 +91,7 @@ class Field(object):
         observatory field observed from, 'apo' or 'lco' (default 'apo')
 
     field_cadence : str
-        field cadence (default 'none'; if not set explicitly, you need
-        to call Field.set_field_cadence() subsequently)
+        field cadence (default 'none')
 
     Attributes:
     ----------
@@ -165,6 +164,8 @@ class Field(object):
         self.assignments = None
         self.rsid2indx = dict()
         self.targets = np.zeros(0, dtype=targets_dtype)
+        self.target_duplicated = np.zeros(0, dtype=np.int32)
+        self._is_calibration = np.zeros(0, dtype=np.bool)
         if(filename is not None):
             self.fromfits(filename=filename)
         else:
@@ -173,6 +174,7 @@ class Field(object):
             self.pa = pa
             self.observatory = observatory
             self.collisionBuffer = collisionBuffer
+            self.mastergrid = self._robotGrid()
             self.required_calibrations = dict()
             self.required_calibrations['sky_boss'] = 80
             self.required_calibrations['standard_boss'] = 80
@@ -181,7 +183,7 @@ class Field(object):
             self.calibrations = dict()
             for n in self.required_calibrations:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
-            self._set_field_cadence(field_cadence)
+            self.set_field_cadence(field_cadence)
         self._set_radius()
         self.flagdict = _flagdict
         self._competing_targets = None
@@ -197,6 +199,7 @@ class Field(object):
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
         self.collisionBuffer = hdr['CBUFFER']
+        self.mastergrid = self._robotGrid()
         field_cadence = hdr['FCADENCE']
         self.required_calibrations = dict()
         for name in hdr:
@@ -208,19 +211,20 @@ class Field(object):
         self.calibrations = dict()
         for n in self.required_calibrations:
             self.calibrations[n] = np.zeros(0, dtype=np.int32)
-        self._set_field_cadence(field_cadence)
+        self.set_field_cadence(field_cadence)
         targets = fitsio.read(filename, ext=1)
         try:
             assignments = fitsio.read(filename, ext=2)
         except OSError:
             assignments = None
         self.targets_fromarray(target_array=targets, assignment_array=assignments)
-        for assignment, target in zip(self.assignments, self.targets):
-            for iexp in range(self.field_cadence.nexp_total):
-                if(assignment['robotID'][iexp] >= 0):
-                    self.assign_robot_exposure(robotID=assignment['robotID'][iexp],
-                                               rsid=target['rsid'], iexp=iexp)
-        self.decollide_unassigned()
+        if(self.assignments is not None):
+            for assignment, target in zip(self.assignments, self.targets):
+                for iexp in range(self.field_cadence.nexp_total):
+                    if(assignment['robotID'][iexp] >= 0):
+                        self.assign_robot_exposure(robotID=assignment['robotID'][iexp],
+                                                   rsid=target['rsid'], iexp=iexp)
+            self.decollide_unassigned()
         return
 
     def _arrayify(self, quantity=None, dtype=np.float64):
@@ -246,34 +250,54 @@ class Field(object):
             self.radius = 0.95
         return
 
-    def _set_field_cadence(self, field_cadence='none'):
-        """Set the field cadence, and set up robotgrids and assignments output"""
+    def set_field_cadence(self, field_cadence='none'):
+        """Set the field cadence, and set up robotgrids and assignments output
+
+        Parameters:
+        ----------
+
+        field_cadence : str
+            Name of field cadence
+
+        Notes:
+        ------
+
+        Sets the field cadence. This can only be done once, and note that
+        if the object is instantiated with parameters including field_cadence,
+        this routine is called in the initialization. If the object is
+        instantiated with a file name, if the file header has the FCADENCE
+        keyword set to anything but 'none', this routine will be called.
+
+        The cadence must be one in the CadenceList singleton. Upon
+        setting the field cadence with this routine, the robotgrids,
+        assignments_dtype, assignments, calibrations, and
+        field_cadence attributes.  be configured.
+"""
         if(len(self.robotgrids) > 0):
             print("Cannot reset field_cadence")
             return
         if(field_cadence != 'none'):
             self.field_cadence = clist.cadences[field_cadence]
-            self.mastergrid = self._robotGrid()
             for i in range(self.field_cadence.nexp_total):
                 self.robotgrids.append(self._robotGrid())
             self._robot2indx = np.zeros((len(self.mastergrid.robotDict),
                                          self.field_cadence.nexp_total),
                                         dtype=np.int32) - 1
+            self.assignments_dtype = np.dtype([('assigned', np.int32),
+                                               ('robotID', np.int32,
+                                                (self.field_cadence.nexp_total,)),
+                                               ('fiberType', np.unicode_, 10),
+                                               ('rsflags', np.int32)])
+            self.assignments = np.zeros(0, dtype=self.assignments_dtype)
+            for c in self.calibrations:
+                self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
+                                                dtype=np.int32)
+            self.targets, self.assignments = self._setup_for_cadence(self.targets)
         else:
             self.field_cadence = None
             self.robotgrids = []
-            self.mastergrid = None
+            self.assignments_dtype = None
 
-        self.assignments_dtype = np.dtype([('assigned', np.int32),
-                                           ('robotID', np.int32,
-                                            (self.field_cadence.nexp_total,)),
-                                           ('fiberType', np.unicode_, 10),
-                                           ('rsflags', np.int32)])
-        self.assignments = np.zeros(0, dtype=self.assignments_dtype)
-        self._is_calibration = np.zeros(0, dtype=np.bool)
-        for c in self.calibrations:
-            self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
-                                            dtype=np.int32)
         return
 
     def set_flag(self, rsid=None, flagname=None):
@@ -409,6 +433,44 @@ class Field(object):
         self.targets_fromarray(t)
         return
 
+    def _targets_to_robotgrid(self, targets=None, robotgrid=None):
+        for target in targets:
+            if(target['fiberType'] == 'APOGEE'):
+                fiberType = kaiju.ApogeeFiber
+            else:
+                fiberType = kaiju.BossFiber
+            robotgrid.addTarget(targetID=target['rsid'], x=target['x'],
+                                y=target['y'],
+                                priority=np.float64(target['priority']),
+                                fiberType=fiberType)
+        return
+
+    def _setup_for_cadence(self, targets=None, assignment_array=None):
+        if(targets is None):
+            return(None, None)
+
+        # Determine if it is within the field cadence
+        for itarget, target_cadence in enumerate(targets['cadence']):
+            ok = clist.cadence_consistency(target_cadence,
+                                           self.field_cadence.name,
+                                           return_solutions=False)
+            targets['incadence'][itarget] = ok
+
+        for rg in self.robotgrids:
+            self._targets_to_robotgrid(targets=targets,
+                                       robotgrid=rg)
+
+        # Set up outputs
+        assignments = np.zeros(len(targets),
+                               dtype=self.assignments_dtype)
+        if(assignment_array is None):
+            assignments['fiberType'] = targets['fiberType']
+            assignments['robotID'] = -1
+        else:
+            for n in self.assignments_dtype.names:
+                assignments[n] = assignment_array[n]
+        return(targets, assignments)
+
     def targets_fromarray(self, target_array=None, assignment_array=None):
         """Read in targets from ndarray
 
@@ -437,43 +499,14 @@ class Field(object):
                                                    dec=targets['dec'])
 
         # Add targets to robotGrids
-        for target in targets:
-            if(target['fiberType'] == 'APOGEE'):
-                fiberType = kaiju.ApogeeFiber
-            else:
-                fiberType = kaiju.BossFiber
-            for rg in self.robotgrids:
-                rg.addTarget(targetID=target['rsid'], x=target['x'],
-                             y=target['y'],
-                             priority=np.float64(target['priority']),
-                             fiberType=fiberType)
-            self.mastergrid.addTarget(targetID=target['rsid'], x=target['x'],
-                                      y=target['y'],
-                                      priority=np.float64(target['priority']),
-                                      fiberType=fiberType)
+        self._targets_to_robotgrid(targets=targets,
+                                   robotgrid=self.mastergrid)
 
         # Determine if within
         self.masterTargetDict = self.mastergrid.targetDict
         for itarget, rsid in enumerate(targets['rsid']):
             t = self.masterTargetDict[rsid]
             targets['within'][itarget] = len(t.validRobotIDs) > 0
-
-        # Determine if it is within the field cadence
-        for itarget, target_cadence in enumerate(targets['cadence']):
-            ok = clist.cadence_consistency(target_cadence,
-                                           self.field_cadence.name,
-                                           return_solutions=False)
-            targets['incadence'][itarget] = ok
-
-        # Set up outputs
-        assignments = np.zeros(len(targets),
-                               dtype=self.assignments_dtype)
-        if(assignment_array is None):
-            assignments['fiberType'] = targets['fiberType']
-            assignments['robotID'] = -1
-        else:
-            for n in self.assignments_dtype.names:
-                assignments[n] = assignment_array[n]
 
         # Create internal look-up of whether it is a calibration target
         _is_calibration = np.zeros(len(targets), dtype=np.bool)
@@ -488,10 +521,22 @@ class Field(object):
             else:
                 self.rsid2indx[t['rsid']] = len(self.targets) + itarget
 
+        # If field_cadence is set, set up potential outputs
+        if(self.field_cadence is not None):
+            targets, assignments = self._setup_for_cadence(targets,
+                                                           assignment_array)
+        else:
+            assignments = None
+
+        target_duplicated = np.zeros(len(targets), dtype=np.int32)
+
         self.targets = np.append(self.targets, targets)
-        self.assignments = np.append(self.assignments, assignments, axis=0)
+        self.target_duplicated = np.append(self.target_duplicated,
+                                           target_duplicated)
         self._is_calibration = np.append(self._is_calibration,
                                          _is_calibration)
+        if(assignments is not None):
+            self.assignments = np.append(self.assignments, assignments, axis=0)
 
         return
 
@@ -525,7 +570,10 @@ class Field(object):
         hdr['DECCEN'] = self.deccen
         hdr['OBS'] = self.observatory
         hdr['PA'] = self.pa
-        hdr['FCADENCE'] = self.field_cadence.name
+        if(self.field_cadence is not None):
+            hdr['FCADENCE'] = self.field_cadence.name
+        else:
+            hdr['FCADENCE'] = 'none'
         hdr['CBUFFER'] = self.collisionBuffer
         for indx, rc in enumerate(self.required_calibrations):
             name = 'RCNAME{indx}'.format(indx=indx)
@@ -534,7 +582,8 @@ class Field(object):
             hdr[num] = self.required_calibrations[rc]
         fitsio.write(filename, None, header=hdr, clobber=True)
         fitsio.write(filename, self.targets)
-        fitsio.write(filename, self.assignments)
+        if(self.assignments is not None):
+            fitsio.write(filename, self.assignments)
         return
 
     def collide_robot_exposure(self, rsid=None, robotID=None, iexp=None):
@@ -1234,14 +1283,38 @@ class Field(object):
 
     def assign_science(self):
         """Assign all science targets"""
-        iscience = np.where(self.targets['category'] == 'science')[0]
+        iscience = np.where((self.targets['category'] == 'science') &
+                            (self.target_duplicated == 0))[0]
         np.random.seed(self.fieldid)
         np.random.shuffle(iscience)
         self.assign_cadences(rsids=self.targets['rsid'][iscience])
         return
 
-    def assign(self):
-        """Assign all targets"""
+    def assign(self, coordinated_targets=None):
+        """Assign all targets
+
+        Parameters:
+        ----------
+
+        coordinated_targets : dict
+            dictionary of coordinated targets (keys are rsids, values are bool)
+
+
+        Notes:
+        -----
+
+        Does not true to assign any targets for which
+        coordinated_targets[rsid] is True.
+"""
+
+        # Deal with any targets duplicated
+        self.target_duplicated[:] = 0
+        if(coordinated_targets is not None):
+            for id_idx, rsid in enumerate(self.targets['rsid']):
+                if rsid in coordinated_targets.keys():
+                    if coordinated_targets[rsid]:
+                        self.target_duplicated[id_idx] = 1
+
         self.assign_calibrations()
         self.assign_science()
         self.decollide_unassigned()

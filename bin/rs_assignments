@@ -82,39 +82,31 @@ if __name__ == '__main__':
         if((fieldid % 10) == 0):
             print(fieldid)
 
-        f = field.Field(racen=allocate.fields['racen'][indx],
-                        deccen=allocate.fields['deccen'][indx],
-                        observatory=observatory)
-        if(rotate):
-            f.pa = np.float32(allocate.fields[paname][indx])
-
         field_assigned_file = sdss_path.full('rsFieldAssignments',
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
-        f.fromfits(field_assigned_file, make_grids=False)
+        f = field.Field(field_assigned_file)
 
-        f.set_field_cadence(allocate.field_array['cadence'][indx].strip())
-
-        if(f.assignments is not None):
-            assignments = f.assignments
-            nexposures = assignments.shape[1]
+        if(f._robot2indx is not None):
+            robot2indx = f._robot2indx
+            nexposures = robot2indx.shape[1]
             for iexp in np.arange(nexposures):
-                iassigned = np.where(assignments[:, iexp] >= 0)[0]
+                iassigned = np.where(robot2indx[:, iexp] >= 0)[0]
                 if(len(iassigned) > 0):
                     tassigned = [f.rsid2indx[x]
-                                 for x in assignments[iassigned, iexp]]
+                                 for x in robot2indx[iassigned, iexp]]
                     tmp_assignment = np.zeros(len(tassigned),
                                               dtype=assignment_dtype)
-                    tmp_assignment['pk'] = f.target_pk[tassigned]
-                    tmp_assignment['rsid'] = f.target_rsid[tassigned]
-                    tmp_assignment['catalogid'] = f.target_catalogid[tassigned]
-                    tmp_assignment['ra'] = f.target_ra[tassigned]
-                    tmp_assignment['dec'] = f.target_dec[tassigned]
-                    tmp_assignment['cadence'] = f.target_cadence[tassigned]
-                    tmp_assignment['fieldid'] = fieldid
+                    tmp_assignment['pk'] = f.targets['target_pk'][tassigned]
+                    tmp_assignment['rsid'] = f.targets['rsid'][tassigned]
+                    tmp_assignment['catalogid'] = f.targets['catalogid'][tassigned]
+                    tmp_assignment['ra'] = f.targets['ra'][tassigned]
+                    tmp_assignment['dec'] = f.targets['dec'][tassigned]
+                    tmp_assignment['cadence'] = f.targets['cadence'][tassigned]
+                    tmp_assignment['fieldid'] = f.fieldid
                     tmp_assignment['exposure'] = iexp
-                    tmp_assignment['field_cadence'] = f.field_cadence
+                    tmp_assignment['field_cadence'] = f.field_cadence.name
                     if(count + len(tmp_assignment) > nassignment):
                         assignment = np.append(assignment,
                                                np.zeros(nassignment,

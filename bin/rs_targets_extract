@@ -19,6 +19,7 @@ import os
 import sys
 import numpy as np
 import fitsio
+import kaiju
 import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdssdb.peewee.sdss5db.targetdb as targetdb
@@ -49,6 +50,7 @@ def get_targets(cfg=None):
                ('category', np.unicode_, 15),
                ('plan', np.unicode_, 10),
                ('tag', np.unicode_, 10),
+               ('fiberType', np.unicode_, 10),
                ('cadence', np.unicode_, 30)]
 
     targets = np.zeros(0, dtype=target0)
@@ -58,11 +60,6 @@ def get_targets(cfg=None):
         print("Extracting carton {p}, version {v}".format(p=carton,
                                                           v=version))
 
-        # nt = (targetdb.Target.select(targetdb.Target.pk)
-        #       .join(targetdb.Carton)
-        #       .where((targetdb.Carton.label == carton) &
-        #              (targetdb.Carton.version == version))).count()
- 
         nt = (targetdb.Target.select(targetdb.Target.pk)
               .join(targetdb.CartonToTarget)
               .join(targetdb.Carton)
@@ -99,7 +96,7 @@ def get_targets(cfg=None):
 #                  .join(targetdb.TargetCadence)
                                          # targetdb.Target.value,
                                          # targetdb.Target.priority,
-            
+
             for indx, t in enumerate(ts):
                 tmp_targets['ra'][indx] = t['ra']
                 tmp_targets['dec'][indx] = t['dec']
@@ -116,7 +113,9 @@ def get_targets(cfg=None):
                 tmp_targets['plan'][indx] = t['plan']
                 tmp_targets['tag'][indx] = t['tag']
                 tmp_targets['value'][indx] = 1.
-                tmp_targets['cadence'][indx] = c2c['CartonToCadence'][carton]
+                cadence_name = c2c['CartonToCadence'][carton]
+                tmp_targets['cadence'][indx] = cadence_name
+                tmp_targets['fiberType'][indx] = fiberType[cadence_name]
 
             targets = np.append(targets, tmp_targets)
 
@@ -164,6 +163,10 @@ def get_targets(cfg=None):
             new_targets['category'] = category
             new_targets['catalogid'] = (targets['catalogid'].max() + 1 +
                                         np.arange(len(new_targets)))
+            if(instrument == 'apogee'):
+                new_targets['fiberType'] = 'APOGEE'
+            if(instrument == 'boss'):
+                new_targets['fiberType'] = 'BOSS'
             targets = np.append(targets, new_targets)
 
     targets['rsid'] = np.arange(len(targets), dtype=np.int64)
@@ -185,6 +188,19 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+
+    cadencelist = cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
+
+    fiberType = dict()
+    for c in cadencelist.cadences:
+        instrument = cadencelist.cadences[c].instrument[0]
+        if(instrument == kaiju.ApogeeInstrument):
+            fiberType[c] = 'APOGEE'
+        if(instrument == kaiju.BossInstrument):
+            fiberType[c] = 'BOSS'
 
     c2cfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
                            'cadence-list.cfg')

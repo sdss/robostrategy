@@ -30,9 +30,10 @@ from astropy.coordinates.angle_utilities import angular_separation
 
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites user specified directory
 
 coordinated_dict = None
+
 
 def assign_field(indx):
     print(time.ctime(time.time()))
@@ -41,23 +42,28 @@ def assign_field(indx):
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
 
-    f = field.Field(racen=allocate.field_array['racen'][indx],
-                    deccen=allocate.field_array['deccen'][indx],
-                    observatory=observatory)
     if(rotate):
-        f.pa = np.float32(allocate.fields[paname][indx])
-        print(f.pa)
+        pa = np.float32(allocate.fields[paname][indx])
+    else:
+        pa = 0.
+
+    field_cadence = allocate.field_array['cadence'][indx].strip()
+
+    f = field.Field(fieldid=fieldid,
+                    racen=allocate.field_array['racen'][indx],
+                    deccen=allocate.field_array['deccen'][indx],
+                    pa=pa,
+                    observatory=observatory,
+                    field_cadence=field_cadence)
 
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
-                                       fieldid=fieldid)
+                                       fieldid=fieldid,
+                                       field_cadence=field_cadence)
     f.targets_fromfits(field_target_file)
 
-    field_cadence = allocate.field_array['cadence'][indx].strip()
-    f.set_field_cadence(field_cadence)
-
     if(f.field_cadence != 'none'):
-        f.assign(kaiju=kaiju,coordinated_targets=coordinated_dict)
+        f.assign(coordinated_targets=coordinated_dict)
 
     field_assigned_file = sdss_path.full('rsFieldAssignments',
                                          plan=plan,
@@ -78,38 +84,39 @@ def pick_one(racen, deccen, fieldidx, d):
     ra0 = racen[0]
     dec0 = deccen[0]
 
-    for idx,(ra1,dec1) in enumerate(zip(racen[1:], deccen[1:])):
-        new_d = angular_separation(np.deg2rad(ra0), np.deg2rad(dec0), np.deg2rad(ra1), np.deg2rad(dec1))
+    for idx, (ra1, dec1) in enumerate(zip(racen[1:], deccen[1:])):
+        new_d = angular_separation(np.deg2rad(ra0), np.deg2rad(dec0),
+                                   np.deg2rad(ra1), np.deg2rad(dec1))
         all_d = np.append(all_d, np.rad2deg(new_d))
 
+    return oneidx, racen[all_d > d], deccen[all_d > d], fieldidx[all_d > d]
 
-    return oneidx, racen[all_d >d], deccen[all_d > d], fieldidx[all_d > d]
 
 def find_non_overlapping_fields(racen, deccen, fieldidx, observatory=None):
-        if observatory == 'apo':  # copied radii from rs_fields's calls to sloane.Sloane()
-            diameter = 1.49 * 2
-        elif observatory == 'lco':
-            diameter = 0.95 * 2
-        else:
-            raise ValueError('{} is not a valid observatory'.format(observatory))
+    if observatory == 'apo':  # copied radii from rs_fields's calls to sloane.Sloane()
+        diameter = 1.49 * 2
+    elif observatory == 'lco':
+        diameter = 0.95 * 2
+    else:
+        raise ValueError('{} is not a valid observatory'.format(observatory))
 
-        cur_fields = fieldidx.copy()
-        cur_ra = racen.copy()
-        cur_dec = deccen.copy()
-        max_iter = len(racen)
-        counter = 0 # safeguard my while loop
+    cur_fields = fieldidx.copy()
+    cur_ra = racen.copy()
+    cur_dec = deccen.copy()
+    max_iter = len(racen)
+    counter = 0  # safeguard my while loop
 
-        parallel_idx = np.array([],dtype='int')
-        while len(cur_fields) > 0:
-             if counter > max_iter:
-                  raise RunTimeError('While loop exceeds max iteration')
-             kp_fid, cur_ra, cur_dec, cur_fields = pick_one(cur_ra, cur_dec, cur_fields,diameter)
-             parallel_idx=np.append(parallel_idx, kp_fid)
-             counter += 1
+    parallel_idx = np.array([], dtype='int')
+    while len(cur_fields) > 0:
+        if counter > max_iter:
+            raise RunTimeError('While loop exceeds max iteration')
+        kp_fid, cur_ra, cur_dec, cur_fields = pick_one(cur_ra, cur_dec, cur_fields, diameter)
+        parallel_idx = np.append(parallel_idx, kp_fid)
+        counter += 1
 
-        serial_idx = np.setdiff1d(fieldidx, parallel_idx)
- 
-        return parallel_idx, serial_idx        
+    serial_idx = np.setdiff1d(fieldidx, parallel_idx)
+
+    return parallel_idx, serial_idx
 
 
 def mark_duplicates(done_fieldids, plan=None, observatory=None):
@@ -121,13 +128,10 @@ def mark_duplicates(done_fieldids, plan=None, observatory=None):
                                              fieldid=fieldid)
 
         allocation = fitsio.read(field_assigned_file, ext=2)
-        assigned = np.unique(allocation) # returns all rsids with assignments
+        assigned = np.unique(allocation)  # returns all rsids with assignments
         for one in assigned:
             if one in coordinated_dict.keys():
                 coordinated_dict[one] = True
-
-
-
 
 
 if __name__ == '__main__':
@@ -150,7 +154,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
-    parser.add_argument('-c','--coordinate',dest='coordinate',
+    parser.add_argument('-c', '--coordinate', dest='coordinate',
                         default=False, action='store_true',
                         help='coordinate target overlap')
 
@@ -199,12 +203,12 @@ if __name__ == '__main__':
                                                                    ikeep,observatory=observatory)
 
         with multiprocessing.Pool() as pool:
-            pool.map(assign_field,parallel_ids)
+            pool.map(assign_field, parallel_ids)
 
         print("Identifying duplicate targets")
         print(time.ctime(time.time()))
         target_covered_file = sdss_path.full('rsTargets', plan=plan,
-                                             observatory=observatory).replace('rsTargets','rsTargetsCovered')
+                                             observatory=observatory).replace('rsTargets', 'rsTargetsCovered')
         targets_covered = fitsio.read(target_covered_file)
         in_hex = targets_covered['within_hex']
         duplicated = targets_covered[in_hex > 1]
@@ -212,8 +216,8 @@ if __name__ == '__main__':
 
         print("Updating Duplicate targets observed in fields")
         print(time.ctime(time.time()))
-        mark_duplicates(allocate.field_array['fieldid'][parallel_ids], plan=plan, 
-                        observatory=observatory) # coordinated_dict is global
+        mark_duplicates(allocate.field_array['fieldid'][parallel_ids], plan=plan,
+                        observatory=observatory)  # coordinated_dict is global
 
         print("Running remaining fields sequentially")
         print(time.ctime(time.time()))
@@ -221,7 +225,6 @@ if __name__ == '__main__':
             assign_field(i)
     else:
         with multiprocessing.Pool() as pool:
-            pool.map(assign_field,ikeep)
+            pool.map(assign_field, ikeep)
     print('DONE: rs_assign_final')
     print(time.ctime(time.time()))
-
