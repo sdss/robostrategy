@@ -22,6 +22,7 @@ import astropy.coordinates as coords
 import astropy.units as u
 import fitsio
 import sdss_access.path
+import robostrategy.field as field
 
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
@@ -108,8 +109,9 @@ if __name__ == '__main__':
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
-        targets = fitsio.read(field_target_file)
-        cadences = np.array([c.strip() for c in targets['cadence']])
+        f = field.Field(filename=field_target_file)
+
+        cadences = np.array([c.strip() for c in f.targets['cadence']])
         target_cadences = np.unique(cadences)
 
         cadences = np.array(cfg['Fields'][fieldtype].split())

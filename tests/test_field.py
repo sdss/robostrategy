@@ -294,6 +294,44 @@ def test_assign_epochs():
             return
 
 
+def test_clear_assignments():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='BOSS')
+
+    clist.add_cadence(name='single_2x2', nepochs=2,
+                      skybrightness=[1.] * 2,
+                      delta=[-1.] * 2,
+                      delta_min=[-1.] * 2,
+                      delta_max=[-1.] * 2,
+                      nexp=[2, 2],
+                      instrument='BOSS')
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+    targets(f, nt=500, seed=102)
+
+    f.assign_science()
+    f.decollide_unassigned()
+
+    f.clear_assignments()
+
+    assert len(np.where(f._robot2indx.flatten() >= 0)[0]) == 0
+    assert len(np.where(f.assignments['robotID'].flatten() >= 0)[0]) == 0
+    for rg in f.robotgrids:
+        for robotID in rg.robotDict:
+            assert rg.robotDict[robotID].isAssigned() is False
+    for c in f.calibrations:
+        for cnum in f.calibrations[c]:
+            assert cnum == 0
+
+
 def test_append_targets():
     clist = cadence.CadenceList()
     clist.reset()
@@ -402,7 +440,7 @@ def test_assign_boss_in_apogee():
         if(f.robotgrids[0].robotDict[r].assignedTargetID >= 0):
             assert f.robotgrids[0].robotDict[r].hasApogee
 
-            
+
 def test_assign_cp_model():
     clist = cadence.CadenceList()
     clist.reset()

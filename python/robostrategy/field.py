@@ -227,6 +227,13 @@ class Field(object):
             self.decollide_unassigned()
         return
 
+    def clear_assignments(self):
+        if(self.assignments is not None):
+            iassigned = np.where(self.assignments['assigned'])[0]
+            for i in iassigned:
+                self.unassign(self.targets['rsid'][i])
+        return
+
     def _arrayify(self, quantity=None, dtype=np.float64):
         """Cast quantity as ndarray of numpy.float64"""
         try:

@@ -42,27 +42,16 @@ def assign_field(indx):
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
 
-    if(rotate):
-        pa = np.float32(allocate.fields[paname][indx])
-    else:
-        pa = 0.
-
     field_cadence = allocate.field_array['cadence'][indx].strip()
-
-    f = field.Field(fieldid=fieldid,
-                    racen=allocate.field_array['racen'][indx],
-                    deccen=allocate.field_array['deccen'][indx],
-                    pa=pa,
-                    observatory=observatory,
-                    field_cadence=field_cadence)
 
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
-                                       fieldid=fieldid,
-                                       field_cadence=field_cadence)
-    f.targets_fromfits(field_target_file)
+                                       fieldid=fieldid)
 
-    if(f.field_cadence != 'none'):
+    f = field.Field(filename=field_target_file)
+    f.set_field_cadence(field_cadence)
+
+    if(f.field_cadence is not None):
         f.assign(coordinated_targets=coordinated_dict)
 
     field_assigned_file = sdss_path.full('rsFieldAssignments',

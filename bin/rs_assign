@@ -91,19 +91,7 @@ def field_options(ifield):
     field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                        observatory=observatory,
                                        fieldid=fieldid)
-    targets = fitsio.read(field_target_file)
-
-    if(rotate):
-        pa = np.float32(fields_entry[paname])
-    else:
-        pa = 0.
-
-    f = field.Field(fieldid=fieldid,
-                    racen=fields_entry['racen'],
-                    deccen=fields_entry['deccen'],
-                    pa=pa,
-                    observatory=observatory)
-    f.targets_fromarray(targets)
+    f = field.Field(filename=field_target_file)
 
     try:
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
@@ -132,18 +120,8 @@ def field_options(ifield):
             field_cadence = full_field_cadence
 
         print("{fc} {fi}".format(fc=field_cadence, fi=fieldid), flush=True)
-        if(rotate):
-            pa = np.float32(fields_entry[paname])
-        else:
-            pa = 0.
 
-        f = field.Field(fieldid=fieldid,
-                        racen=fields_entry['racen'],
-                        deccen=fields_entry['deccen'],
-                        pa=pa,
-                        observatory=observatory,
-                        field_cadence=field_cadence)
-        f.targets_fromarray(targets)
+        f.set_field_cadence(full_field_cadence)
 
         f.assign()
 
@@ -168,9 +146,6 @@ def field_options(ifield):
                 else:
                     ngot_pct = np.array([0.])
                 if(ngot_pct.max() > 0):
-                    print(ifgotcarton)
-                    print(utcartons[ifgotcarton])
-                    print(ngot_pct)
                     fgot = ngot_pct / ngot_pct.max()
                     fgot_unique, iunique = np.unique(fgot,
                                                      return_index=True)
@@ -190,6 +165,8 @@ def field_options(ifield):
                                              utcadences, utcartons,
                                              assign_dtype)
             assign_array = np.append(assign_array, assign_entry)
+
+        f.clear_assignments()
 
     # Write out at each field to allow resumption
     hd = {'RSTVER': robostrategy.__version__}
@@ -268,7 +245,6 @@ if __name__ == '__main__':
     if(rotate):
         fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
-    print(fields_file)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)

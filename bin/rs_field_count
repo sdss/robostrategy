@@ -35,19 +35,19 @@ def make_count_entry(f, fields_entry, utcadences,
     count_entry['fieldid'] = fields_entry['fieldid']
     count_entry['racen'] = fields_entry['racen']
     count_entry['deccen'] = fields_entry['deccen']
-    count_entry['ntargets'] = f.ntarget
-    iok = np.where(f.target_within)[0]
+    count_entry['ntargets'] = len(f.targets)
+    iok = np.where(f.targets['within'])[0]
     count_entry['nwithin'] = len(iok)
 
     for indx in np.arange(len(utcadences), dtype=np.int32):
         utcadence = utcadences[indx]
-        ic = np.where(f.target_cadence == utcadence)[0]
-        count_entry['nwithin_pcd'][0, indx] = f.target_within[ic].sum()
+        ic = np.where(f.targets['cadence'] == utcadence)[0]
+        count_entry['nwithin_pcd'][0, indx] = f.targets['within'][ic].sum()
 
     for indx in np.arange(len(utcartons), dtype=np.int32):
         utcarton = utcartons[indx]
-        ip = np.where(f.target_carton == utcarton)[0]
-        count_entry['nwithin_pct'][0, indx] = f.target_within[ip].sum()
+        ip = np.where(f.targets['carton'] == utcarton)[0]
+        count_entry['nwithin_pct'][0, indx] = f.targets['within'][ip].sum()
 
     return(count_entry)
 
@@ -117,17 +117,15 @@ if __name__ == '__main__':
         if((fieldid % 1) == 0):
             print(fieldid, flush=True)
 
+        if(rotate):
+            pa = np.float32(fields_entry[paname])
+        else:
+            pa = 0.
+
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
-        targets = fitsio.read(field_target_file)
-
-        f = field.Field(racen=fields_entry['racen'],
-                        deccen=fields_entry['deccen'],
-                        observatory=observatory)
-        if(rotate):
-            f.pa = np.float32(fields_entry[paname])
-        f.targets_fromarray(targets)
+        f = field.Field(filename=field_target_file)
 
         ce = make_count_entry(f, fields_entry, utcadences,
                               utcartons, count_dtype)[0]
