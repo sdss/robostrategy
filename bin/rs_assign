@@ -42,19 +42,20 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     assign_entry['racen'] = fields_entry['racen']
     assign_entry['deccen'] = fields_entry['deccen']
     assign_entry['cadence'] = field_cadence
-    nvisit = cadencelist.cadences[field_cadence].nexposures
+    nvisit = cadencelist.cadences[field_cadence].nexp_total
     assign_entry['nvisit'] = nvisit
     assign_entry['ntargets'] = len(f.targets)
     target_got = np.zeros(len(f.targets), dtype=np.int32)
-    igot = np.where(f._robot2indx[:, 0:nvisit] >= 0)
-    gotids, gotn = np.unique(f._robot2indx[igot], return_counts=True)
-    gotindx = np.array([f.rsid2indx[x] for x in gotids], dtype=np.int32)
-    tgot = gotindx[gotn >= 0]
-    target_got[tgot] = 1
-    iok = np.where((f.targets['incadence']) & (f.target_within))[0]
+    target_assigned = f.assignments['robotID'][:, 0:nvisit] >= 0
+    target_nexposures = np.array([cadencelist.cadences[t].nexp_total
+                                  if(t != 'none') else 1
+                                  for t in f.targets['cadence']])
+    igot = np.where(target_assigned.sum(axis=1) >= target_nexposures)[0]
+    target_got[igot] = 1
+    iok = np.where((f.targets['incadence']) & (f.targets['within']))[0]
     assign_entry['nwithin'] = len(iok)
     assign_entry['ngot'] = target_got.sum()
-    assign_entry['valuegot'] = f.targets['value'][tgot].sum()
+    assign_entry['valuegot'] = f.targets['value'][igot].sum()
 
     for indx in np.arange(len(utcadences), dtype=np.int32):
         utcadence = utcadences[indx]
@@ -123,7 +124,8 @@ def field_options(ifield):
 
         f.set_field_cadence(full_field_cadence)
 
-        f.assign()
+        f.assign_science()
+        f.decollide_unassigned()
 
         print("assigned {fi}".format(fi=fieldid), flush=True)
 
@@ -166,7 +168,7 @@ def field_options(ifield):
                                              assign_dtype)
             assign_array = np.append(assign_array, assign_entry)
 
-        f.clear_assignments()
+        f.clear_field_cadence()
 
     # Write out at each field to allow resumption
     hd = {'RSTVER': robostrategy.__version__}
@@ -179,12 +181,12 @@ def field_options(ifield):
         options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptionsTest')
     fitsio.write(options_file, assign_array, header=hd, clobber=True)
 
-    cadence_dtype = [('cadence', cadence.fits_type)]
+    cadence_dtype = [('cadence', np.unicode_, 30)]
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
     cadence_arr['cadence'] = utcadences
     fitsio.write(options_file, cadence_arr, clobber=False)
 
-    carton_dtype = [('carton', cadence.fits_type)]
+    carton_dtype = [('carton', np.unicode_, 30)]
     carton_arr = np.zeros(len(utcartons), dtype=carton_dtype)
     carton_arr['carton'] = utcartons
     fitsio.write(options_file, carton_arr, clobber=False)
@@ -282,7 +284,7 @@ if __name__ == '__main__':
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('ntargets', np.int32),
-                    ('cadence', cadence.fits_type),
+                    ('cadence', np.unicode_, 30),
                     ('nvisit', np.int32),
                     ('nwithin', np.int32),
                     ('ngot', np.int32),
@@ -332,12 +334,12 @@ if __name__ == '__main__':
     hd = {'RSTVER': robostrategy.__version__}
     fitsio.write(options_file, assign_all, header=hd, clobber=True)
 
-    cadence_dtype = [('cadence', cadence.fits_type)]
+    cadence_dtype = [('cadence', np.unicode_, 30)]
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
     cadence_arr['cadence'] = utcadences
     fitsio.write(options_file, cadence_arr, clobber=False)
 
-    carton_dtype = [('carton', cadence.fits_type)]
+    carton_dtype = [('carton', np.unicode_, 30)]
     carton_arr = np.zeros(len(utcartons), dtype=carton_dtype)
     carton_arr['carton'] = utcartons
     fitsio.write(options_file, carton_arr, clobber=False)

@@ -137,12 +137,12 @@ if __name__ == '__main__':
     count_file = os.path.join(outdir, cfilebase)
     fitsio.write(count_file, count_array, clobber=True)
 
-    cadence_dtype = [('cadence', cadence.fits_type)]
+    cadence_dtype = [('cadence', np.unicode_, 30)]
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
     cadence_arr['cadence'] = utcadences
     fitsio.write(count_file, cadence_arr, clobber=False)
 
-    carton_dtype = [('carton', cadence.fits_type)]
+    carton_dtype = [('carton', np.unicode_, 30)]
     carton_arr = np.zeros(len(utcartons), dtype=carton_dtype)
     carton_arr['carton'] = utcartons
     fitsio.write(count_file, carton_arr, clobber=False)

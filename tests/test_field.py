@@ -5,7 +5,8 @@ import robostrategy.field as field
 import roboscheduler.cadence as cadence
 
 
-def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None):
+def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
+            category='science'):
     t_dtype = np.dtype([('ra', np.float64),
                         ('dec', np.float64),
                         ('priority', np.int32),
@@ -24,7 +25,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None):
     else:
         t['dec'] = dec
     t['priority'] = 1
-    t['category'] = 'science'
+    t['category'] = category
     t['cadence'] = 'single_1x1'
     t['catalogid'] = np.arange(nt, dtype=np.int64)
     t['rsid'] = np.arange(nt, dtype=np.int64) + rsid_start
@@ -406,6 +407,123 @@ def test_collisions():
     assert f.robotgrids[0].isCollided(rid1) is True
     assert f.robotgrids[0].isCollided(rid2) is True
 
+
+def test_assign_science():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='APOGEE')
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1')
+    ntot = 400
+    targets(f, nt=ntot, seed=101)
+
+    f.assign_science()
+    f.decollide_unassigned()
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() > 0
+    for rg in f.robotgrids:
+        for robotID in rg.robotDict:
+            assert rg.isCollided(robotID) is False
+
+
+def test_assign():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='APOGEE')
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1')
+
+    ntot = 600
+    targets(f, nt=ntot, seed=101)
+    ntot = 100
+    targets(f, nt=ntot, seed=102, category='boss_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=103, category='boss_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=104, category='apogee_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=105, category='apogee_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+
+    f.assign()
+
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() > 0
+
+
+def test_clear():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='APOGEE')
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1')
+
+    ntot = 600
+    targets(f, nt=ntot, seed=101)
+    ntot = 100
+    targets(f, nt=ntot, seed=102, category='boss_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=103, category='boss_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=104, category='apogee_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=105, category='apogee_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+
+    f.assign_science()
+    f.decollide_unassigned()
+
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() > 0
+
+    nassigned = f.assignments['assigned'].sum()
+    assignments = np.copy(f.assignments)
+    _robot2indx = np.copy(f._robot2indx)
+
+    f.clear_field_cadence()
+    assert f.field_cadence is None
+
+    f.set_field_cadence('single_1x1')
+    f.assign_science()
+    f.decollide_unassigned()
+
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() > 0
+    assert f.assignments['assigned'].sum() == nassigned
+    for indx, aorig, anew in zip(range(len(assignments)),
+                                 assignments, f.assignments):
+        for n in aorig.dtype.names:
+            assert aorig[n] == anew[n]
 
 def test_assign_boss_in_apogee():
     clist = cadence.CadenceList()

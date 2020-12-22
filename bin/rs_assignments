@@ -68,7 +68,7 @@ if __name__ == '__main__':
                                  ('catalogid', np.int64),
                                  ('ra', np.float64),
                                  ('dec', np.float64),
-                                 ('cadence', cadence.fits_type),
+                                 ('cadence', np.unicode_, 30),
                                  ('fieldid', np.int32),
                                  ('exposure', np.int32),
                                  ('field_cadence', cadence.fits_type)])

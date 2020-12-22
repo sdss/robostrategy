@@ -33,6 +33,7 @@ targets_dtype = np.dtype([('ra', np.float64),
                           ('within', np.int32),
                           ('incadence', np.int32),
                           ('priority', np.int32),
+                          ('value', np.float32),
                           ('program', np.unicode_, 30),
                           ('carton', np.unicode_, 30),
                           ('category', np.unicode_, 30),
@@ -232,6 +233,23 @@ class Field(object):
             iassigned = np.where(self.assignments['assigned'])[0]
             for i in iassigned:
                 self.unassign(self.targets['rsid'][i])
+        return
+
+    def clear_field_cadence(self):
+        if(self.assignments is not None):
+            self.clear_assignments()
+
+        for i in range(self.field_cadence.nexp_total):
+            self.robotgrids[i] = None
+        self.robotgrids = []
+        self._robot2indx = None
+        self.field_cadence = None
+        self.assignments_dtype = None
+        self.assignments = None
+        for c in self.calibrations:
+            for n in self.required_calibrations:
+                self.calibrations[n] = np.zeros(0, dtype=np.int32)
+            
         return
 
     def _arrayify(self, quantity=None, dtype=np.float64):
@@ -458,10 +476,11 @@ class Field(object):
 
         # Determine if it is within the field cadence
         for itarget, target_cadence in enumerate(targets['cadence']):
-            ok = clist.cadence_consistency(target_cadence,
-                                           self.field_cadence.name,
-                                           return_solutions=False)
-            targets['incadence'][itarget] = ok
+            if(target_cadence in clist.cadences):
+                ok = clist.cadence_consistency(target_cadence,
+                                               self.field_cadence.name,
+                                               return_solutions=False)
+                targets['incadence'][itarget] = ok
 
         for rg in self.robotgrids:
             self._targets_to_robotgrid(targets=targets,
@@ -496,10 +515,17 @@ class Field(object):
             if(n in target_array.dtype.names):
                 targets[n] = target_array[n]
 
+        # Default value of 1 for priority and value
+        if('value' not in target_array.dtype.names):
+            targets['value'] = 1.
+        if('priority' not in target_array.dtype.names):
+            targets['priority'] = 1.
+
         # Set fiber type
-        targets['fiberType'] = np.array(['APOGEE' if clist.cadences[c].instrument == cadence.Instrument.ApogeeInstrument
-                                         else 'BOSS'
-                                         for c in targets['cadence']])
+        if('fiberType' not in target_array.dtype.names):
+            targets['fiberType'] = np.array(['APOGEE' if clist.cadences[c].instrument == cadence.Instrument.ApogeeInstrument
+                                             else 'BOSS'
+                                             for c in targets['cadence']])
 
         # Convert ra/dec to x/y
         targets['x'], targets['y'] = self.radec2xy(ra=targets['ra'],
@@ -1291,6 +1317,7 @@ class Field(object):
     def assign_science(self):
         """Assign all science targets"""
         iscience = np.where((self.targets['category'] == 'science') &
+                            (self.targets['incadence']) &
                             (self.target_duplicated == 0))[0]
         np.random.seed(self.fieldid)
         np.random.shuffle(iscience)

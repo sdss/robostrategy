@@ -19,7 +19,6 @@ import os
 import sys
 import numpy as np
 import fitsio
-import kaiju
 import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdssdb.peewee.sdss5db.targetdb as targetdb
@@ -127,7 +126,7 @@ def get_targets(cfg=None):
     # Now add SPIDERS fake targets
     spitargets_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'scratch',
                                    'spiders',
-                                   'rsTargets-spiders-fake0-{obs}.fits')
+                                   'rsTargets-spiders-fake1-{obs}.fits')
     spitargets_file = spitargets_file.format(obs=observatory)
     spitargets = fitsio.read(spitargets_file)
     catalogid_max = targets['catalogid'].max()
@@ -196,10 +195,10 @@ if __name__ == '__main__':
 
     fiberType = dict()
     for c in cadencelist.cadences:
-        instrument = cadencelist.cadences[c].instrument[0]
-        if(instrument == kaiju.ApogeeInstrument):
+        instrument = cadencelist.cadences[c].instrument
+        if(instrument == cadence.Instrument.ApogeeInstrument):
             fiberType[c] = 'APOGEE'
-        if(instrument == kaiju.BossInstrument):
+        if(instrument == cadence.Instrument.BossInstrument):
             fiberType[c] = 'BOSS'
 
     c2cfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
