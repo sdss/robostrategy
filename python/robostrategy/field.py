@@ -697,33 +697,37 @@ class Field(object):
         if(self.field_cadence.nexp[epoch] == 1):
             iexp = self.field_cadence.epoch_indx[epoch]
 
-            # Check if this is an "extra" calibration target; i.e. not necessary
-            # so should not bump any other calibration targets
-            isspare = False
-            if(iscalib & (rsid is not None)):
-                cat = self.targets['category'][self.rsid2indx[rsid]]
-                if(self.calibrations[cat][iexp] >= self.required_calibrations[cat]):
-                    isspare = True
-
             robot2indx = self._robot2indx[robotID, iexp]
             unassigned = robot2indx < 0
-            spare = False
-
-            if((isspare is False) & (unassigned is False) & (self._is_calibration[robot2indx])):
-                category = self.targets['category'][robot2indx]
-                spare = self.calibrations[category][iexp] >= self.required_calibrations[category]
-                if(spare):
-                    spare_calibrations = np.array([self.targets['rsid'][robot2indx]])
+            spare_calibrations = np.zeros(0, dtype=np.int64)
+            free = False
+            if(unassigned):
+                free = True
             else:
-                spare_calibrations = np.zeros(0, dtype=np.int64)
+                # Check if this is an "extra" calibration target; i.e. not necessary
+                # so should not bump any other calibration targets
+                isspare = False
+                if(iscalib & (rsid is not None)):
+                    cat = self.targets['category'][self.rsid2indx[rsid]]
+                    if(self.calibrations[cat][iexp] >= self.required_calibrations[cat]):
+                        isspare = True
 
-            free = unassigned | spare
+                spare = False
+                if((isspare is False) & (unassigned is False) & (self._is_calibration[robot2indx])):
+                    category = self.targets['category'][robot2indx]
+                    spare = self.calibrations[category][iexp] >= self.required_calibrations[category]
+                    if(spare):
+                        spare_calibrations = np.array([self.targets['rsid'][robot2indx]])
+                        free = True
 
             if(free):
                 free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
                                                    iexp=iexp) is False
 
-            return free, 1, spare_calibrations
+            if(free):
+                return True, 1, spare_calibrations
+            else:
+                return False, 0, spare_calibrations
 
         # Consider exposures for this epoch
         iexpst = self.field_cadence.epoch_indx[epoch]
