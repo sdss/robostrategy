@@ -693,6 +693,38 @@ class Field(object):
         if(self.field_cadence.nexp[epoch] < nexp):
             return available, spare_calibrations
 
+        # Now optimize case where nexp=1
+        if(self.field_cadence.nexp[epoch] == 1):
+            iexp = self.field_cadence.epoch_indx[epoch]
+
+            # Check if this is an "extra" calibration target; i.e. not necessary
+            # so should not bump any other calibration targets
+            isspare = False
+            if(iscalib & (rsid is not None)):
+                cat = self.targets['category'][self.rsid2indx[rsid]]
+                if(self.calibrations[cat][iexp] >= self.required_calibrations[cat]):
+                    isspare = True
+
+            robot2indx = self._robot2indx[robotID, iexp]
+            unassigned = robot2indx < 0
+            spare = False
+
+            if((isspare is False) & (unassigned is False) & (self._is_calibration[robot2indx])):
+                category = self.targets['category'][robot2indx]
+                spare = self.calibrations[category][iexp] >= self.required_calibrations[category]
+                if(spare):
+                    spare_calibrations = np.array([self.targets['rsid'][robot2indx]])
+            else:
+                spare_calibrations = np.zeros(0, dtype=np.int64)
+
+            free = unassigned | spare
+
+            if(free):
+                free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
+                                                   iexp=iexp) is False
+
+            return free, 1, spare_calibrations
+
         # Consider exposures for this epoch
         iexpst = self.field_cadence.epoch_indx[epoch]
         iexpnd = self.field_cadence.epoch_indx[epoch + 1]
@@ -715,15 +747,16 @@ class Field(object):
         # These may be bumped if necessary (but won't be if the target under
         # consideration is, itself, a "spare" calibration targets. This logic
         # is not so straightforward but avoids expensive for loops.
-        iassigned = np.flatnonzero(assigned)
         spare = np.zeros(iexpnd - iexpst, dtype=np.bool)
-        icalib = iassigned[np.flatnonzero(self._is_calibration[robot2indx[iassigned]])]
-        category = self.targets['category'][robot2indx[icalib]]
-        calibspare = np.array([self.calibrations[category[i]][iexpst + icalib[i]] >
-                               self.required_calibrations[category[i]]
-                               for i in range(len(category))], dtype=np.bool)
-        spare[icalib] = calibspare
-        spare = spare & (isspare is False)
+        iassigned = np.where(assigned)[0]
+        icalib = iassigned[np.where(self._is_calibration[robot2indx[iassigned]])[0]]
+        if(len(icalib) > 0):
+            category = self.targets['category'][robot2indx[icalib]]
+            calibspare = np.array([self.calibrations[category[i]][iexpst + icalib[i]] >
+                                   self.required_calibrations[category[i]]
+                                   for i in range(len(category))], dtype=np.bool)
+            spare[icalib] = calibspare
+            spare = spare & (isspare is False)
 
         # Now classify exposures as "free" or not (free if unassigned OR assigned to
         # a calibration target that may be bumped).
@@ -731,14 +764,17 @@ class Field(object):
 
         # Now (if there is an actual target under consideration) check for collisions.
         if(rsid is not None):
-            for ifree in np.flatnonzero(free):
+            for ifree in np.where(free)[0]:
                 free[ifree] = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
                                                           iexp=iexpst + ifree) is False
 
         # Count this exposure as available if there are enough free exposures.
-        # Package list of which calibrations are considered spare. 
+        # Package list of which calibrations are considered spare.
         available = free.sum() >= nexp
-        spare_calibrations = np.unique(self.targets['rsid'][robot2indx[spare]])
+        if(spare.sum() > 0):
+            spare_calibrations = np.unique(self.targets['rsid'][robot2indx[spare]])
+        else:
+            spare_calibrations = np.zeros(0, dtype=np.int64)
 
         return available, free.sum(), spare_calibrations
 
@@ -844,7 +880,18 @@ class Field(object):
         if(self._is_calibration[itarget]):
             category = self.targets['category'][itarget]
             self.calibrations[category][iexp] = self.calibrations[category][iexp] + 1
+            self._update_spares(iexp=iexp)
         return
+
+    def _update_spares(self, iexp=None):
+        icalib = np.where(self._is_calibration)[0]
+        category = self.targets['category'][icalib]
+        calibspare = np.array([self.calibrations[category[i]] >
+                               self.required_calibrations[category[i]]
+                               for i in range(len(category))], dtype=np.bool)
+        if(0):
+            spare[icalib] = calibspare
+            spare = spare & (isspare is False)
 
     def _set_assigned(self, itarget=None):
         self.assignments['assigned'][itarget] = (self.assignments['robotID'][itarget, :] >= 0).sum() > 0
