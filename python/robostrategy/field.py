@@ -880,18 +880,7 @@ class Field(object):
         if(self._is_calibration[itarget]):
             category = self.targets['category'][itarget]
             self.calibrations[category][iexp] = self.calibrations[category][iexp] + 1
-            self._update_spares(iexp=iexp)
         return
-
-    def _update_spares(self, iexp=None):
-        icalib = np.where(self._is_calibration)[0]
-        category = self.targets['category'][icalib]
-        calibspare = np.array([self.calibrations[category[i]] >
-                               self.required_calibrations[category[i]]
-                               for i in range(len(category))], dtype=np.bool)
-        if(0):
-            spare[icalib] = calibspare
-            spare = spare & (isspare is False)
 
     def _set_assigned(self, itarget=None):
         self.assignments['assigned'][itarget] = (self.assignments['robotID'][itarget, :] >= 0).sum() > 0
