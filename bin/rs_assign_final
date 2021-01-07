@@ -43,7 +43,8 @@ def assign_field(indx):
         print(fieldid, flush=True)
 
     field_cadence = allocate.field_array['cadence'][indx].strip()
-
+    
+    print("Reading target file", flush=True)
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
@@ -51,14 +52,21 @@ def assign_field(indx):
     f = field.Field(filename=field_target_file)
     f.set_field_cadence(field_cadence)
 
+    icalib = np.where(f.targets['category'] != 'science')[0]
+    f.targets['cadence'] = field_cadence
+
     if(f.field_cadence is not None):
+        print("Assign targets", flush=True)
         f.assign(coordinated_targets=coordinated_dict)
 
     field_assigned_file = sdss_path.full('rsFieldAssignments',
                                          plan=plan,
                                          observatory=observatory,
                                          fieldid=fieldid)
+    print("Write assignments", flush=True)
     f.tofits(field_assigned_file)
+
+    print("Done fieldid={f}".format(f=fieldid), flush=True)
 
 
 def pick_one(racen, deccen, fieldidx, d):
@@ -134,9 +142,6 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
-    parser.add_argument('-n', '--no-kaiju', dest='kaiju',
-                        help='do not use kaiju',
-                        default=True, action='store_false')
     parser.add_argument('-s', '--start', dest='start',
                         type=np.int32, help='field to start', required=False,
                         default=0)
@@ -150,13 +155,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
-    kaiju = args.kaiju
     start = args.start
     end = args.end
     coordinate = args.coordinate
     print(time.ctime(time.time()))
-
-    print("kaiju = {kaiju}".format(kaiju=kaiju))
 
     rsParams = params.RobostrategyParams(plan=plan)
     if('Rotate' in rsParams.cfg['Fields']):
