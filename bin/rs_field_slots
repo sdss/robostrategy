@@ -92,17 +92,17 @@ if __name__ == '__main__':
     #   slot (assuming they use bright for bright, dark for dark)
     for i in range(len(field_cadences)):
         c = field_cadences[i]
-        field_slots['needed'][i] = cadencelist.cadences[c].nexposures
-        for iexp in range(cadencelist.cadences[c].nexposures):
+        field_slots['needed'][i] = cadencelist.cadences[c].nexp_total
+        for epoch in range(cadencelist.cadences[c].nepochs):
             isb = -1
             # well, that's a bit dangerous isn't it
             # relies on skybrightness in cadence always <= 1
-            while((cadencelist.cadences[c].skybrightness[iexp] >
+            while((cadencelist.cadences[c].skybrightness[epoch] >
                    slots.skybrightness[isb + 1]) &
-                  (cadencelist.cadences[c].skybrightness[iexp] <=
+                  (cadencelist.cadences[c].skybrightness[epoch] <=
                    slots.skybrightness[isb + 2])):
                 isb = isb + 1
-            field_slots['needed_sb'][i, isb] = field_slots['needed_sb'][i, isb] + 1
+            field_slots['needed_sb'][i, isb] = field_slots['needed_sb'][i, isb] + cadencelist.cadences[c].nexp[epoch]
 
     observer = roboscheduler.scheduler.Observer(observatory=observatory)
     for ilst in np.arange(slots.nlst):
