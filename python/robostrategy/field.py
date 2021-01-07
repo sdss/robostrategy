@@ -709,20 +709,20 @@ class Field(object):
                 isspare = False
                 if(iscalib & (rsid is not None)):
                     cat = self.targets['category'][self.rsid2indx[rsid]]
-                    if(self.calibrations[cat][iexp] >= self.required_calibrations[cat]):
+                    if(self.calibrations[cat][iexp] > self.required_calibrations[cat]):
                         isspare = True
 
                 spare = False
-                if((isspare is False) & (unassigned is False) & (self._is_calibration[robot2indx])):
+                if((isspare == False) & (self._is_calibration[robot2indx])):
                     category = self.targets['category'][robot2indx]
-                    spare = self.calibrations[category][iexp] >= self.required_calibrations[category]
+                    spare = self.calibrations[category][iexp] > self.required_calibrations[category]
                     if(spare):
                         spare_calibrations = np.array([self.targets['rsid'][robot2indx]])
                         free = True
 
             if(free):
                 free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
-                                                   iexp=iexp) is False
+                                                   iexp=iexp) == False
 
             if(free):
                 return True, 1, spare_calibrations
@@ -738,7 +738,7 @@ class Field(object):
         isspare = False
         if(iscalib & (rsid is not None)):
             cat = self.targets['category'][self.rsid2indx[rsid]]
-            if(self.calibrations[cat][iexpst:iexpnd].min() >= self.required_calibrations[cat]):
+            if(self.calibrations[cat][iexpst:iexpnd].min() > self.required_calibrations[cat]):
                 isspare = True
 
         # Get indices of assigned targets to this robot
@@ -760,7 +760,7 @@ class Field(object):
                                    self.required_calibrations[category[i]]
                                    for i in range(len(category))], dtype=np.bool)
             spare[icalib] = calibspare
-            spare = spare & (isspare is False)
+            spare = spare & (isspare == False)
 
         # Now classify exposures as "free" or not (free if unassigned OR assigned to
         # a calibration target that may be bumped).
@@ -770,7 +770,7 @@ class Field(object):
         if(rsid is not None):
             for ifree in np.where(free)[0]:
                 free[ifree] = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
-                                                          iexp=iexpst + ifree) is False
+                                                          iexp=iexpst + ifree) == False
 
         # Count this exposure as available if there are enough free exposures.
         # Package list of which calibrations are considered spare.
@@ -921,7 +921,7 @@ class Field(object):
                                                                                                 robotID=robotID))
                 print("But robot thinks its assignment is to {ati}.".format(ati=rg.robotDict[robotID].assignedTargetID))
 
-        if(reset_assigned is True):
+        if(reset_assigned == True):
             self._set_assigned(itarget=itarget)
         return
 
@@ -1112,7 +1112,7 @@ class Field(object):
                                                     return_solutions=True,
                                                     epoch_level=True)
 
-        if(ok is False):
+        if(ok == False):
             return False
 
         nexps = clist.cadences[target_cadence].nexp
