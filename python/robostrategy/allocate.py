@@ -275,7 +275,7 @@ class AllocateLST(object):
 
             if(fix_cadence):
                 ifield = np.where(self.field_array['fieldid'] == fieldid)[0]
-                fcadence = self.field_array['cadence'][ifield][0].decode()
+                fcadence = self.field_array['cadence'][ifield][0]
                 if(fcadence == 'none'):
                     self.allocinfo[fieldid] = collections.OrderedDict()
                     continue
@@ -503,7 +503,7 @@ class AllocateLST(object):
         field_array_dtype = [('fieldid', np.int32),
                              ('racen', np.float64),
                              ('deccen', np.float64),
-                             ('cadence', rcadence.fits_type),
+                             ('cadence', np.unicode_, 30),
                              ('nfilled', np.int32),
                              ('needed', np.int32),
                              ('xfactor', np.float32,
@@ -556,7 +556,7 @@ class AllocateLST(object):
                               for x in self.field_slots['cadence']])
         for findx in np.arange(len(field_array), dtype=np.int32):
             field = field_array[findx]
-            fcadence = field['cadence'].decode().strip()
+            fcadence = field['cadence'].strip()
             if(fcadence != 'none'):
                 islots = np.where((self.field_slots['fieldid'] ==
                                    field['fieldid']) &
