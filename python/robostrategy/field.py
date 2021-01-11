@@ -494,7 +494,10 @@ class Field(object):
             assignments['robotID'] = -1
         else:
             for n in self.assignments_dtype.names:
-                assignments[n] = assignment_array[n]
+                if((n == 'robotID') & (self.field_cadence.nexp_total == 1)):
+                    assignments[n][:, 0] = assignment_array[n]
+                else:
+                    assignments[n] = assignment_array[n]
         return(targets, assignments)
 
     def targets_fromarray(self, target_array=None, assignment_array=None):
