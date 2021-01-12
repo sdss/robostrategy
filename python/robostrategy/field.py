@@ -160,9 +160,13 @@ class Field(object):
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=2.,
-                 fieldid=1):
+                 fieldid=1, allgrids=True):
         self.fieldid = fieldid
-        self.robotgrids = []
+        self.allgrids = allgrids
+        if(self.allgrids):
+            self.robotgrids = []
+        else:
+            self.robotgrids = None
         self.assignments = None
         self.rsid2indx = dict()
         self.targets = np.zeros(0, dtype=targets_dtype)
@@ -240,9 +244,10 @@ class Field(object):
         if(self.assignments is not None):
             self.clear_assignments()
 
-        for i in range(self.field_cadence.nexp_total):
-            self.robotgrids[i] = None
-        self.robotgrids = []
+        if(self.allgrids):
+            for i in range(self.field_cadence.nexp_total):
+                self.robotgrids[i] = None
+            self.robotgrids = []
         self._robot2indx = None
         self.field_cadence = None
         self.assignments_dtype = None
@@ -299,13 +304,15 @@ class Field(object):
         assignments_dtype, assignments, calibrations, and
         field_cadence attributes.  be configured.
 """
-        if(len(self.robotgrids) > 0):
-            print("Cannot reset field_cadence")
-            return
+        if(self.allgrids):
+            if(len(self.robotgrids) > 0):
+                print("Cannot reset field_cadence")
+                return
         if(field_cadence != 'none'):
             self.field_cadence = clist.cadences[field_cadence]
-            for i in range(self.field_cadence.nexp_total):
-                self.robotgrids.append(self._robotGrid())
+            if(self.allgrids):
+                for i in range(self.field_cadence.nexp_total):
+                    self.robotgrids.append(self._robotGrid())
             self._robot2indx = np.zeros((len(self.mastergrid.robotDict),
                                          self.field_cadence.nexp_total),
                                         dtype=np.int32) - 1
@@ -322,7 +329,10 @@ class Field(object):
             self.targets, self.assignments = self._setup_for_cadence(self.targets)
         else:
             self.field_cadence = None
-            self.robotgrids = []
+            if(self.allgrids):
+                self.robotgrids = []
+            else:
+                self.robotgrids = None
             self.assignments_dtype = None
 
         return
@@ -484,9 +494,10 @@ class Field(object):
                                                return_solutions=False)
                 targets['incadence'][itarget] = ok
 
-        for rg in self.robotgrids:
-            self._targets_to_robotgrid(targets=targets,
-                                       robotgrid=rg)
+        if(self.allgrids):
+            for rg in self.robotgrids:
+                self._targets_to_robotgrid(targets=targets,
+                                           robotgrid=rg)
 
         # Set up outputs
         assignments = np.zeros(len(targets),
@@ -645,6 +656,8 @@ class Field(object):
         collide : bool
             True if it causes a collision, False if not
 """
+        if(not self.allgrids):
+            return False
         rg = self.robotgrids[iexp]
         return rg.wouldCollideWithAssigned(robotID, rsid)
 
@@ -828,8 +841,7 @@ class Field(object):
         iexpst = self.field_cadence.epoch_indx[epoch]
         iexpnd = self.field_cadence.epoch_indx[epoch + 1]
         for iexp in np.arange(iexpst, iexpnd):
-            rg = self.robotgrids[iexp]
-            if((rg.robotDict[robotID].isAssigned() != True) &
+            if((self._robot2indx[robotID, iexp] < 0) &
                (self.collide_robot_exposure(rsid=rsid, robotID=robotID, iexp=iexp) != True)):
                 available.append(iexp)
 
@@ -895,9 +907,7 @@ class Field(object):
         success : bool
             True if successful, False otherwise
 """
-        rg = self.robotgrids[iexp]
         itarget = self.rsid2indx[rsid]
-        rg.assignRobot2Target(robotID, rsid)
         self.assignments['robotID'][itarget, iexp] = robotID
         self._robot2indx[robotID, iexp] = itarget
         self.assignments['assigned'][itarget] = 1
@@ -906,6 +916,10 @@ class Field(object):
         if(self._is_calibration[itarget]):
             category = self.targets['category'][itarget]
             self.calibrations[category][iexp] = self.calibrations[category][iexp] + 1
+
+        if(self.allgrids):
+            rg = self.robotgrids[iexp]
+            rg.assignRobot2Target(robotID, rsid)
 
         if(reset_satisfied):
             indx = self.rsid2indx[rsid]
@@ -941,19 +955,15 @@ class Field(object):
 """
         itarget = self.rsid2indx[rsid]
         category = self.targets['category'][itarget]
-        rg = self.robotgrids[iexp]
         robotID = self.assignments['robotID'][itarget, iexp]
         if(robotID >= 0):
-            if(rg.robotDict[robotID].assignedTargetID == rsid):
+            if(self.allgrids):
+                rg = self.robotgrids[iexp]
                 rg.unassignTarget(rsid)
-                self.assignments['robotID'][itarget, iexp] = -1
-                self._robot2indx[robotID, iexp] = -1
-                if(self._is_calibration[itarget]):
-                    self.calibrations[category][iexp] = self.calibrations[category][iexp] - 1
-            else:
-                print("Inconsistency: assignments says rsid {rsid} on robotID {robotID}".format(rsid=rsid,
-                                                                                                robotID=robotID))
-                print("But robot thinks its assignment is to {ati}.".format(ati=rg.robotDict[robotID].assignedTargetID))
+            self.assignments['robotID'][itarget, iexp] = -1
+            self._robot2indx[robotID, iexp] = -1
+            if(self._is_calibration[itarget]):
+                self.calibrations[category][iexp] = self.calibrations[category][iexp] - 1
 
         if(reset_assigned == True):
             self._set_assigned(itarget=itarget)
@@ -1490,6 +1500,9 @@ class Field(object):
 
     def decollide_unassigned(self):
         """Decollide all unassigned robots"""
+        if(not self.allgrids):
+            return
+
         for iexp, rg in enumerate(self.robotgrids):
             for robotID in rg.robotDict:
                 if(rg.robotDict[robotID].isAssigned() == False):
@@ -1616,6 +1629,11 @@ class Field(object):
         Checks that there are no collisions.
 """
         nproblems = 0
+
+        if(not self.allgrids):
+            print("allgrids is False, so no collisions are accounted for")
+            nproblems = nproblems + 1
+
         test_calibrations = dict()
         for c in self.required_calibrations:
             test_calibrations[c] = np.zeros(self.field_cadence.nexp_total,
@@ -1640,43 +1658,62 @@ class Field(object):
                 if(test_calibrations[c][iexp] != self.calibrations[c][iexp]):
                     print("number of {c} calibrators tracked incorrectly ({nc} found instead of {nct})".format(c=c, nc=test_calibrations[c][iexp], nct=self.calibrations[c][iexp]))
 
-        # Check for collisions
-        for iexp, rg in enumerate(self.robotgrids):
-            for robotID in rg.robotDict:
-                c = rg.isCollided(robotID)
-                if(c):
+        # Check that assignments and _robot2indx agree with each other
+        for itarget, assignment in enumerate(self.assignments):
+            for iexp, robotID in enumerate(assignment['robotID']):
+                if(robotID >= 0):
+                    if(itarget != self._robot2indx[robotID, iexp]):
+                        rsid = self.targets['rsid'][itarget]
+                        print("assignments['robotID'] for rsid={rsid} and iexp={iexp} is robotID={robotID}, but _robot2indx[robotID, iexp] is {i}".format(rsid=rsid, iexp=iexp, robotID=robotID, i=self._robot2indx[itarget, iexp]))
+                        nproblems = nproblems + 1
+
+        for robotID in self.mastergrid.robotDict:
+            for iexp in np.arange(self.field_cadence.nexp_total,
+                                  dtype=np.int32):
+                itarget = self._robot2indx[robotID, iexp]
+                if(itarget >= 0):
+                    if(robotID != self.assignments['robotID'][itarget, iexp]):
+                        print("_robot2indx is {i} for robotID=robotID and iexp={iexp} but assignments['robotID'] for itarget={i} is robotID={robotID}".format(iexp=iexp, robotID=robotID, i=itarget))
+                        nproblems = nproblems + 1
+
+        if(self.allgrids):
+            # Check for collisions
+            for iexp, rg in enumerate(self.robotgrids):
+                for robotID in rg.robotDict:
+                    c = rg.isCollided(robotID)
+                    if(c):
+                        if(rg.robotDict[robotID].isAssigned()):
+                            print("robotID={robotID} iexp={iexp} : collision of assigned robot".format(robotID=robotID, iexp=iexp))
+                        else:
+                            print("robotID={robotID} iexp={iexp} : collision of unassigned robot".format(robotID=robotID, iexp=iexp))
+                        nproblems = nproblems + 1
+
+            # Check _robot2indx, assignments is tracking things correctly
+            for iexp, rg in enumerate(self.robotgrids):
+                for robotID in rg.robotDict:
                     if(rg.robotDict[robotID].isAssigned()):
-                        print("robotID={robotID} iexp={iexp} : collision of assigned robot".format(robotID=robotID, iexp=iexp))
+                        tid = rg.robotDict[robotID].assignedTargetID
+                        itarget = self.rsid2indx[tid]
                     else:
-                        print("robotID={robotID} iexp={iexp} : collision of unassigned robot".format(robotID=robotID, iexp=iexp))
-                    nproblems = nproblems + 1
-
-        # Check _robot2indx, assignments is tracking things correctly           
-        for iexp, rg in enumerate(self.robotgrids):
-            for robotID in rg.robotDict:
-                if(rg.robotDict[robotID].isAssigned()):
-                    tid = rg.robotDict[robotID].assignedTargetID
-                    itarget = self.rsid2indx[tid]
-                else:
-                    itarget = -1
-                if(self._robot2indx[robotID, iexp] != itarget):
-                    print("robotID={robotID} iexp={iexp} : expected {i1} in _robot2indx got {i2}".format(robotID=robotID, iexp=iexp, i1=itarget, i2=self._robot2indx[robotID, iexp]))
-                    nproblems = nproblems + 1
-
-                if(itarget != -1):
-                    if(self.assignments['robotID'][itarget, iexp] !=
-                       robotID):
-                        print("rsid={rsid} iexp={iexp} : expected {robotID} in assignments['robotID'], got {actual}".format(rsid=tid, iexp=iexp, robotID=robotID, actual=self.assignments['robotID'][itarget, iexp]))
+                        itarget = -1
+                    if(self._robot2indx[robotID, iexp] != itarget):
+                        print("robotID={robotID} iexp={iexp} : expected {i1} in _robot2indx got {i2}".format(robotID=robotID, iexp=iexp, i1=itarget, i2=self._robot2indx[robotID, iexp]))
                         nproblems = nproblems + 1
 
-        # Check assignments is tracking things correctly           
-        for iexp, rg in enumerate(self.robotgrids):
-            for itarget, assignment in enumerate(self.assignments):
-                if(assignment['robotID'][iexp] >= 0):
-                    if(rg.robotDict[assignment['robotID'][iexp]].assignedTargetID != 
-                       self.targets['rsid'][itarget]):
-                        print("robotID={robotID} iexp={iexp} : expected {rsid} in assignedTargetID, got {actual}".format(rsid=self.targets['rsid'][itarget], iexp=iexp, robotID=robotID, actual=rg.robotDict[assignment['robotID'][iexp]].assignedTargetID))
-                        nproblems = nproblems + 1
+                    if(itarget != -1):
+                        if(self.assignments['robotID'][itarget, iexp] !=
+                           robotID):
+                            print("rsid={rsid} iexp={iexp} : expected {robotID} in assignments['robotID'], got {actual}".format(rsid=tid, iexp=iexp, robotID=robotID, actual=self.assignments['robotID'][itarget, iexp]))
+                            nproblems = nproblems + 1
+
+            # Check assignments is tracking things correctly
+            for iexp, rg in enumerate(self.robotgrids):
+                for itarget, assignment in enumerate(self.assignments):
+                    if(assignment['robotID'][iexp] >= 0):
+                        if(rg.robotDict[assignment['robotID'][iexp]].assignedTargetID != 
+                           self.targets['rsid'][itarget]):
+                            print("robotID={robotID} iexp={iexp} : expected {rsid} in assignedTargetID, got {actual}".format(rsid=self.targets['rsid'][itarget], iexp=iexp, robotID=robotID, actual=rg.robotDict[assignment['robotID'][iexp]].assignedTargetID))
+                            nproblems = nproblems + 1
 
         return(nproblems)
 
@@ -1784,6 +1821,10 @@ class Field(object):
         catalogid : bool
             if True, plot to catalogid for each target (default False)
 """
+        if(not self.allgrids):
+            print("Cannot plot if allgrids is False")
+            return
+
         target_cadences = np.sort(np.unique(self.targets['cadence']))
 
         colors = ['black', 'green', 'blue', 'cyan', 'purple', 'red',
