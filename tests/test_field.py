@@ -470,6 +470,42 @@ def test_assign():
     assert f.assignments['assigned'].sum() > 0
 
 
+def test_assign_noallgrids():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      instrument='APOGEE')
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1', allgrids=False)
+
+    ntot = 600
+    targets(f, nt=ntot, seed=101)
+    ntot = 100
+    targets(f, nt=ntot, seed=102, category='boss_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=103, category='boss_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=104, category='apogee_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=105, category='apogee_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+
+    f.assign()
+
+    assert f.validate() == 1  # the 1 problem being allgrids=False
+    assert f.assignments['assigned'].sum() > 0
+
+
 def test_clear():
     clist = cadence.CadenceList()
     clist.reset()
@@ -524,6 +560,7 @@ def test_clear():
                                  assignments, f.assignments):
         for n in aorig.dtype.names:
             assert aorig[n] == anew[n]
+
 
 def test_assign_boss_in_apogee():
     clist = cadence.CadenceList()
