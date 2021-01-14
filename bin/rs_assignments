@@ -71,7 +71,7 @@ if __name__ == '__main__':
                                  ('cadence', np.unicode_, 30),
                                  ('fieldid', np.int32),
                                  ('exposure', np.int32),
-                                 ('field_cadence', cadence.fits_type)])
+                                 ('field_cadence', np.unicode_, 30)])
 
     nassignment = 1000000
     assignment = np.zeros(nassignment, dtype=assignment_dtype)
@@ -94,8 +94,7 @@ if __name__ == '__main__':
             for iexp in np.arange(nexposures):
                 iassigned = np.where(robot2indx[:, iexp] >= 0)[0]
                 if(len(iassigned) > 0):
-                    tassigned = [f.rsid2indx[x]
-                                 for x in robot2indx[iassigned, iexp]]
+                    tassigned = [x for x in robot2indx[iassigned, iexp]]
                     tmp_assignment = np.zeros(len(tassigned),
                                               dtype=assignment_dtype)
                     tmp_assignment['pk'] = f.targets['target_pk'][tassigned]
