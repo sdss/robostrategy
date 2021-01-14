@@ -223,9 +223,9 @@ class Field(object):
             assignments = fitsio.read(filename, ext=2)
         except OSError:
             assignments = None
-        self.targets_fromarray(target_array=targets, assignment_array=assignments)
+        self.targets_fromarray(target_array=targets)
         if(self.assignments is not None):
-            for assignment, target in zip(self.assignments, self.targets):
+            for assignment, target in zip(assignments, self.targets):
                 for iexp in range(self.field_cadence.nexp_total):
                     if(assignment['robotID'][iexp] >= 0):
                         self.assign_robot_exposure(robotID=assignment['robotID'][iexp],
@@ -326,7 +326,8 @@ class Field(object):
             for c in self.calibrations:
                 self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                 dtype=np.int32)
-            self.targets, self.assignments = self._setup_for_cadence(self.targets)
+            self.targets = self._setup_targets_for_cadence(self.targets)
+            self.assignments = self._setup_assignments_for_cadence(self.targets)
         else:
             self.field_cadence = None
             if(self.allgrids):
@@ -482,9 +483,9 @@ class Field(object):
                                 fiberType=fiberType)
         return
 
-    def _setup_for_cadence(self, targets=None, assignment_array=None):
+    def _setup_targets_for_cadence(self, targets=None):
         if(targets is None):
-            return(None, None)
+            return(None)
 
         # Determine if it is within the field cadence
         for itarget, target_cadence in enumerate(targets['cadence']):
@@ -499,6 +500,13 @@ class Field(object):
                 self._targets_to_robotgrid(targets=targets,
                                            robotgrid=rg)
 
+        return(targets)
+
+    def _setup_assignments_for_cadence(self, targets=None,
+                                       assignment_array=None):
+        if(targets is None):
+            return(None)
+
         # Set up outputs
         assignments = np.zeros(len(targets),
                                dtype=self.assignments_dtype)
@@ -511,7 +519,7 @@ class Field(object):
                     assignments[n][:, 0] = assignment_array[n]
                 else:
                     assignments[n] = assignment_array[n]
-        return(targets, assignments)
+        return(assignments)
 
     def targets_fromarray(self, target_array=None, assignment_array=None):
         """Read in targets from ndarray
@@ -572,8 +580,9 @@ class Field(object):
 
         # If field_cadence is set, set up potential outputs
         if(self.field_cadence is not None):
-            targets, assignments = self._setup_for_cadence(targets,
-                                                           assignment_array)
+            targets = self._setup_targets_for_cadence(targets)
+            assignments = self._setup_assignments_for_cadence(targets,
+                                                              assignment_array)
         else:
             assignments = None
 
@@ -908,6 +917,17 @@ class Field(object):
             True if successful, False otherwise
 """
         itarget = self.rsid2indx[rsid]
+
+        if(self.assignments['robotID'][itarget, iexp] >= 0):
+            self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
+                                   reset_satisfied=True)
+
+        if(self._robot2indx[robotID, iexp] >= 0):
+            rsid_unassign = self.targets['rsid'][self._robot2indx[robotID,
+                                                                  iexp]]
+            self.unassign_exposure(rsid=rsid_unassign, iexp=iexp,
+                                   reset_assigned=True, reset_satisfied=True)
+
         self.assignments['robotID'][itarget, iexp] = robotID
         self._robot2indx[robotID, iexp] = itarget
         self.assignments['assigned'][itarget] = 1
@@ -1664,7 +1684,7 @@ class Field(object):
                 if(robotID >= 0):
                     if(itarget != self._robot2indx[robotID, iexp]):
                         rsid = self.targets['rsid'][itarget]
-                        print("assignments['robotID'] for rsid={rsid} and iexp={iexp} is robotID={robotID}, but _robot2indx[robotID, iexp] is {i}".format(rsid=rsid, iexp=iexp, robotID=robotID, i=self._robot2indx[itarget, iexp]))
+                        print("assignments['robotID'] for rsid={rsid} and iexp={iexp} is robotID={robotID}, but _robot2indx[robotID, iexp] is {i}, meaning rsid={rsidtwo}".format(rsid=rsid, iexp=iexp, robotID=robotID, i=self._robot2indx[robotID, iexp], rsidtwo=self.targets['rsid'][self._robot2indx[robotID, iexp]]))
                         nproblems = nproblems + 1
 
         for robotID in self.mastergrid.robotDict:
