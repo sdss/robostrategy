@@ -237,7 +237,10 @@ class Field(object):
         if(self.assignments is not None):
             iassigned = np.where(self.assignments['assigned'])[0]
             for i in iassigned:
-                self.unassign(self.targets['rsid'][i])
+                self.unassign(self.targets['rsid'][i], reset_assigned=False,
+                              reset_satisfied=False)
+            self.assignments['assigned'] = 0
+            self.assignments['satisfied'] = 0
         return
 
     def clear_field_cadence(self):
@@ -255,7 +258,7 @@ class Field(object):
         for c in self.calibrations:
             for n in self.required_calibrations:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
-            
+
         return
 
     def _arrayify(self, quantity=None, dtype=np.float64):
@@ -1037,7 +1040,7 @@ class Field(object):
 
         return 0
 
-    def unassign(self, rsid=None):
+    def unassign(self, rsid=None, reset_assigned=True, reset_satisfied=True):
         """Unassign an rsid entirely
 
         Parameters:
@@ -1045,16 +1048,24 @@ class Field(object):
 
         rsid : np.int64
             rsid of target to assign
+
+        reset_assigned : bool
+            if True, resets assigned flag for this rsid (default True)
+
+        reset_satisfied : bool
+            if True, resets satified flag for this rsid (default True)
 """
         for epoch in range(self.field_cadence.nepochs):
             self.unassign_epoch(rsid=rsid, epoch=epoch, reset_assigned=False,
                                 reset_satisfied=False)
 
-        self._set_assigned(itarget=self.rsid2indx[rsid])
+        if(reset_assigned):
+            self._set_assigned(itarget=self.rsid2indx[rsid])
 
-        itarget = self.rsid2indx[rsid]
-        catalogid = self.targets['catalogid'][itarget]
-        self._set_satisfied(catalogids=[catalogid])
+        if(reset_satisfied):
+            itarget = self.rsid2indx[rsid]
+            catalogid = self.targets['catalogid'][itarget]
+            self._set_satisfied(catalogids=[catalogid])
 
         return
 
