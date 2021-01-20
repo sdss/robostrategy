@@ -86,7 +86,7 @@ if __name__ == '__main__':
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
-        f = field.Field(field_assigned_file)
+        f = field.Field(filename=field_assigned_file, allgrids=False)
 
         if(f._robot2indx is not None):
             robot2indx = f._robot2indx
