@@ -13,6 +13,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
+import time
 import argparse
 import os
 import sys
@@ -131,8 +132,10 @@ def field_options(ifield):
 
         last = field_cadence.split('-')[-1]
         if(n_field_cadence):
+            print("n_field_cadence", flush=True)
             assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
             for indx in np.arange(minn, ncadence + 1, dtype=np.int32):
+                print("indx={indx}".format(indx=indx), flush=True)
                 fcadence = '{base}-{n}'.format(base=field_cadence_base,
                                                n=indx)
                 assign_entry = make_assign_entry(f, fields_entry,

@@ -219,16 +219,18 @@ class Field(object):
             self.calibrations[n] = np.zeros(0, dtype=np.int32)
         self.set_field_cadence(field_cadence)
         targets = fitsio.read(filename, ext=1)
+        self.targets_fromarray(target_array=targets)
         try:
             assignments = fitsio.read(filename, ext=2)
         except OSError:
             assignments = None
-        self.targets_fromarray(target_array=targets)
-        if(self.assignments is not None):
-            for assignment, target in zip(assignments, self.targets):
+        if(assignments is not None):
+            for itarget, target in enumerate(self.targets):
+                robotIDs = assignments['robotID'].reshape(len(assignments),
+                                                          self.field_cadence.nexp_total)
                 for iexp in range(self.field_cadence.nexp_total):
-                    if(assignment['robotID'][iexp] >= 0):
-                        self.assign_robot_exposure(robotID=assignment['robotID'][iexp],
+                    if(robotIDs[itarget, iexp] >= 0):
+                        self.assign_robot_exposure(robotID=robotIDs[itarget, iexp],
                                                    rsid=target['rsid'], iexp=iexp)
             self.decollide_unassigned()
         return
