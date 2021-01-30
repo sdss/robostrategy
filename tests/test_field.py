@@ -228,10 +228,15 @@ def test_available_epochs():
 
             av = f.available_epochs(rsid=tid1, epochs=[0, 1], nexps=[2, 2])
             ar = av['availableRobotIDs']
-            nf = av['nFrees']
-            sc = av['spareCalibrations']
+            fe = av['freeExposures']
             assert rid not in ar[0]
             assert rid in ar[1]
+            for i, car in enumerate(ar[0]):
+                assert fe[1][i][0] == True
+                assert fe[1][i][1] == True
+            for i, car in enumerate(ar[1]):
+                assert fe[1][i][0] == True
+                assert fe[1][i][1] == True
 
             assert f._robot2indx[rid, 0] == f.rsid2indx[tid0]
 
