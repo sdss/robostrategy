@@ -8,6 +8,7 @@
 import re
 import numpy as np
 import fitsio
+import collections
 import scipy.optimize as optimize
 import matplotlib.pyplot as plt
 import ortools.sat.python.cp_model as cp_model
@@ -19,6 +20,8 @@ import kaiju.robotGrid
 _alphaLen = 7.4
 _betaLen = 15
 
+onetrue = np.ones(1, dtype=np.bool)
+onefalse = np.zeros(1, dtype=np.bool)
 
 # intersection of lists
 def interlist(list1, list2):
@@ -138,11 +141,11 @@ class Field(object):
           'robotID', 'rsflags', 'fiberType'
         for each target; set to None prior to definition of field_cadence
 
-    required_calibrations : Dict
+    required_calibrations : OrderedDict
         dictionary with numbers of required calibration sources specified
         for 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee'
 
-    calibrations : Dict
+    calibrations : OrderedDict
         dictionary of lists with numbers of calibration sources assigned
         for each epoch for 'sky_boss', 'standard_boss', 'sky_apogee',
         'standard_apogee'
@@ -172,6 +175,7 @@ class Field(object):
         self.targets = np.zeros(0, dtype=targets_dtype)
         self.target_duplicated = np.zeros(0, dtype=np.int32)
         self._is_calibration = np.zeros(0, dtype=np.bool)
+        self._calibration_index = np.zeros(0, dtype=np.bool)
         if(filename is not None):
             self.fromfits(filename=filename)
         else:
@@ -181,18 +185,19 @@ class Field(object):
             self.observatory = observatory
             self.collisionBuffer = collisionBuffer
             self.mastergrid = self._robotGrid()
-            self.required_calibrations = dict()
+            self.required_calibrations = collections.OrderedDict()
             self.required_calibrations['sky_boss'] = 80
             self.required_calibrations['standard_boss'] = 80
             self.required_calibrations['sky_apogee'] = 30
             self.required_calibrations['standard_apogee'] = 20
-            self.calibrations = dict()
+            self.calibrations = collections.OrderedDict()
             for n in self.required_calibrations:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
             self.set_field_cadence(field_cadence)
         self._set_radius()
         self.flagdict = _flagdict
         self._competing_targets = None
+        self._unique_catalogids = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
         self.methods['assign_cadence'] = 'first'
@@ -207,14 +212,14 @@ class Field(object):
         self.collisionBuffer = hdr['CBUFFER']
         self.mastergrid = self._robotGrid()
         field_cadence = hdr['FCADENCE']
-        self.required_calibrations = dict()
+        self.required_calibrations = collections.OrderedDict()
         for name in hdr:
             m = re.match('^RCNAME([0-9]*)$', name)
             if(m is not None):
                 num = 'RCNUM{d}'.format(d=m.group(1))
                 if(num in hdr):
                     self.required_calibrations[hdr[name]] = np.int32(hdr[num])
-        self.calibrations = dict()
+        self.calibrations = collections.OrderedDict()
         for n in self.required_calibrations:
             self.calibrations[n] = np.zeros(0, dtype=np.int32)
         self.set_field_cadence(field_cadence)
@@ -331,6 +336,7 @@ class Field(object):
                                                 dtype=np.int32)
             self.targets = self._setup_targets_for_cadence(self.targets)
             self.assignments = self._setup_assignments_for_cadence(self.targets)
+            self._set_has_spare()
         else:
             self.field_cadence = None
             if(self.allgrids):
@@ -338,6 +344,7 @@ class Field(object):
             else:
                 self.robotgrids = None
             self.assignments_dtype = None
+            self._has_spare = None
 
         return
 
@@ -570,8 +577,11 @@ class Field(object):
 
         # Create internal look-up of whether it is a calibration target
         _is_calibration = np.zeros(len(targets), dtype=np.bool)
-        for i, t in enumerate(targets):
-            _is_calibration[i] = t['category'] in self.required_calibrations
+        _calibration_index = np.zeros(len(targets), dtype=np.int32)
+        for icategory, category in enumerate(self.required_calibrations):
+            icat = np.where(targets['category'] == category)[0]
+            _is_calibration[icat] = True
+            _calibration_index[icat] = icategory + 1
 
         # Connect rsid with index of list
         for itarget, t in enumerate(targets):
@@ -596,8 +606,12 @@ class Field(object):
                                            target_duplicated)
         self._is_calibration = np.append(self._is_calibration,
                                          _is_calibration)
+        self._calibration_index = np.append(self._calibration_index,
+                                            _calibration_index)
         if(assignments is not None):
             self.assignments = np.append(self.assignments, assignments, axis=0)
+
+        self._unique_catalogids = np.unique(self.targets['catalogid'])
 
         return
 
@@ -673,8 +687,19 @@ class Field(object):
         rg = self.robotgrids[iexp]
         return rg.wouldCollideWithAssigned(robotID, rsid)
 
+    def _set_has_spare(self):
+        """Set _has_spare for each exposure"""
+        self._has_spare = np.zeros((len(self.required_calibrations) + 1,
+                                    self.field_cadence.nexp_total),
+                                   dtype=np.bool)
+        for icategory, category in enumerate(self.required_calibrations):
+            self._has_spare[icategory + 1, :] = (self.calibrations[category] >
+                                                 self.required_calibrations[category])
+        return
+
     def available_robot_epoch(self, rsid=None,
-                              robotID=None, epoch=None, nexp=None, iscalib=False):
+                              robotID=None, epoch=None, nexp=None,
+                              isspare=None):
         """Check if a robot-epoch has enough exposures
 
         Parameters:
@@ -692,8 +717,8 @@ class Field(object):
         nexp : int or np.int32
             number of exposures needed
 
-        iscalib : bool
-            True if this is a calibration target
+        isspare : bool
+            True if this is a spare calibration target
 
         Returns:
         -------
@@ -701,8 +726,8 @@ class Field(object):
         available : bool
             is it available or not?
 
-        spare_calibration : np.int64
-            spare calibration targetID if that is what is assigned
+        free : ndarray of bool
+            which exposures in the epoch are free?
 
         Comments:
         --------
@@ -719,84 +744,47 @@ class Field(object):
 
         # Checks obvious case that this epoch doesn't have enough exposures
         available = False
-        spare_calibrations = np.zeros(0, dtype=np.int64)
         if(self.field_cadence.nexp[epoch] < nexp):
-            return available, spare_calibrations
+            return available, np.zeros(self.field_cadence.nexp[epoch],
+                                       dtype=np.bool)
+
+        if(isspare is None):
+            isspare = np.zeros(self.field_cadence.nexp_total, dtype=np.bool)
 
         # Now optimize case where nexp=1
         if(self.field_cadence.nexp[epoch] == 1):
             iexp = self.field_cadence.epoch_indx[epoch]
 
             robot2indx = self._robot2indx[robotID, iexp]
-            unassigned = robot2indx < 0
-            spare_calibrations = np.zeros(0, dtype=np.int64)
-            free = False
-            if(unassigned):
-                free = True
-            else:
-                # Check if this is an "extra" calibration target; i.e. not necessary
-                # so should not bump any other calibration targets
-                isspare = False
-                if(iscalib & (rsid is not None)):
-                    cat = self.targets['category'][self.rsid2indx[rsid]]
-                    if(self.calibrations[cat][iexp] > self.required_calibrations[cat]):
-                        isspare = True
+            free = robot2indx < 0
 
-                spare = False
-                if((isspare == False) & (self._is_calibration[robot2indx])):
-                    category = self.targets['category'][robot2indx]
-                    spare = self.calibrations[category][iexp] > self.required_calibrations[category]
-                    if(spare):
-                        spare_calibrations = np.array([self.targets['rsid'][robot2indx]])
-                        free = True
+            if((free == False) & (isspare[iexp] == False)):
+                free = self._has_spare[self._calibration_index[robot2indx], iexp]
 
-            if(free):
+            if(free & (rsid is not None)):
                 free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
                                                    iexp=iexp) == False
 
             if(free):
-                return True, 1, spare_calibrations
+                return True, onetrue
             else:
-                return False, 0, spare_calibrations
+                return False, onefalse
 
         # Consider exposures for this epoch
         iexpst = self.field_cadence.epoch_indx[epoch]
         iexpnd = self.field_cadence.epoch_indx[epoch + 1]
 
-        # Check if this is an "extra" calibration target; i.e. not necessary
-        # so should not bump any other calibration targets
-        isspare = False
-        if(iscalib & (rsid is not None)):
-            cat = self.targets['category'][self.rsid2indx[rsid]]
-            if(self.calibrations[cat][iexpst:iexpnd].min() > self.required_calibrations[cat]):
-                isspare = True
-
         # Get indices of assigned targets to this robot
         # and make Boolean arrays of which are assigned and not
-        robot2indx = self._robot2indx[robotID, iexpst:iexpnd]
-        unassigned = robot2indx < 0
-        assigned = robot2indx >= 0
+        iexps = np.arange(iexpst, iexpnd, dtype=np.int32)
+        robot2indx = self._robot2indx[robotID, iexps]
+        free = robot2indx < 0
+        hasspare = np.select([free],
+                             [self._has_spare[self._calibration_index[robot2indx], iexps]],
+                             False)
 
-        # Check if the assigned robots are to "spare" calibration target.
-        # These may be bumped if necessary (but won't be if the target under
-        # consideration is, itself, a "spare" calibration targets. This logic
-        # is not so straightforward but avoids expensive for loops.
-        spare = np.zeros(iexpnd - iexpst, dtype=np.bool)
-        iassigned = np.where(assigned)[0]
-        icalib = iassigned[np.where(self._is_calibration[robot2indx[iassigned]])[0]]
-        if(len(icalib) > 0):
-            category = self.targets['category'][robot2indx[icalib]]
-            calibspare = np.array([self.calibrations[category[i]][iexpst + icalib[i]] >
-                                   self.required_calibrations[category[i]]
-                                   for i in range(len(category))], dtype=np.bool)
-            spare[icalib] = calibspare
-            spare = spare & (isspare == False)
+        free = free | (hasspare & (isspare[iexpst:iexpnd] == False))
 
-        # Now classify exposures as "free" or not (free if unassigned OR assigned to
-        # a calibration target that may be bumped).
-        free = unassigned | spare
-
-        # Now (if there is an actual target under consideration) check for collisions.
         if(rsid is not None):
             for ifree in np.where(free)[0]:
                 free[ifree] = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
@@ -804,16 +792,86 @@ class Field(object):
 
         # Count this exposure as available if there are enough free exposures.
         # Package list of which calibrations are considered spare.
-        available = free.sum() >= nexp
-        if(spare.sum() > 0):
-            spare_calibrations = np.unique(self.targets['rsid'][robot2indx[spare]])
-        else:
-            spare_calibrations = np.zeros(0, dtype=np.int64)
+        nfree = free.sum()
+        available = nfree >= nexp
 
-        return available, free.sum(), spare_calibrations
+        return available, free
+
+    def available_robot_exposures(self, rsid=None, robotID=None, iscalib=False):
+        """Return available robot exposures for an rsid
+
+        Parameters:
+        ----------
+
+        rsid : np.int64
+            rsid (optional; will check for collisions)
+
+        robotID : np.int64
+            robotID to check
+
+        iscalib : bool
+            True if this is a calibration target
+
+        Returns:
+        -------
+
+        available : ndarray of bool
+            for each exposure, is it available or not?
+
+        Comments:
+        --------
+
+        Checks if a robot is available at each exposure AND if
+        assigning the robot to the given target would cause a
+        collision.
+
+        The robot is available if it is not assigned to any science
+        target AND it is not assigned to a "spare" calibration
+        target. A spare calibration target is one for which there are
+        more than enough calibration targets of that type already.
+"""
+        # Check if this is an "extra" calibration target in any exposures;
+        # i.e. not necessary so should not bump any other calibration targets
+        if(iscalib):
+            cat = self.targets['category'][self.rsid2indx[rsid]]
+            isspare = self.calibrations[cat] > self.required_calibrations[cat]
+        else:
+            isspare = False
+
+        # Get indices of assigned targets to this robot
+        # and make Boolean arrays of which are assigned and not
+        robot2indx = self._robot2indx[robotID, :]
+        free = robot2indx < 0
+
+        # Check if the assigned robots are to "spare" calibration targets.
+        # These may be bumped if necessary (but won't be if the target under
+        # consideration is, itself, a "spare" calibration targets. This logic
+        # is not so straightforward but avoids expensive for loops.
+        iassigned = np.where(free == False)[0]
+        icalib = iassigned[np.where(self._is_calibration[robot2indx[iassigned]])[0]]
+        if(len(icalib) > 0):
+            spare = np.zeros(self.field_cadence.nexp_total, dtype=np.bool)
+            category = self.targets['category'][robot2indx[icalib]]
+            calibspare = np.array([self.calibrations[category[i]][icalib[i]] >
+                                   self.required_calibrations[category[i]]
+                                   for i in range(len(category))], dtype=np.bool)
+            spare[icalib] = calibspare
+            spare = spare & (isspare == False)
+
+            # Now classify exposures as "free" or not (free if unassigned OR assigned to
+            # a calibration target that may be bumped).
+            free = free | spare
+
+        # Now (if there is an actual target under consideration) check for collisions.
+        for ifree in np.where(free)[0]:
+            free[ifree] = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
+                                                      iexp=ifree) == False
+
+        return(free)
 
     def assign_robot_epoch(self, rsid=None, robotID=None, epoch=None, nexp=None,
-                           reset_satisfied=True):
+                           reset_satisfied=True, reset_has_spare=True,
+                           free=None):
         """Assign an rsid to a particular robot-epoch
 
         Parameters:
@@ -831,8 +889,15 @@ class Field(object):
         nexp : int or np.int32
             number of exposures needed
 
+        free : ndarray of bool
+            True for each exposure in epoch which should be treated as free
+
         reset_satisfied : bool
             if True, reset the 'satisfied' column based on this assignment
+            (default True)
+
+        reset_has_spare : bool
+            if True, reset the '_has_spare' matrix based on this assignment
             (default True)
 
         Returns:
@@ -849,13 +914,28 @@ class Field(object):
             return False
 
         # Get list of available exposures in the epoch
-        available = []
         iexpst = self.field_cadence.epoch_indx[epoch]
         iexpnd = self.field_cadence.epoch_indx[epoch + 1]
-        for iexp in np.arange(iexpst, iexpnd):
-            if((self._robot2indx[robotID, iexp] < 0) &
-               (self.collide_robot_exposure(rsid=rsid, robotID=robotID, iexp=iexp) != True)):
-                available.append(iexp)
+        indxs = self._robot2indx[robotID, iexpst:iexpnd]
+        assigned = indxs >= 0
+        if(free is None):
+            available = np.zeros(0, dtype=np.int32)
+            for iexp in np.arange(iexpst, iexpnd):
+                isspare = self._has_spare[self._calibration_index[self.rsid2indx[rsid]], iexp]
+                ok = False
+                currindx = indxs[iexp - iexpst]
+                if((currindx >= 0) & (isspare == False)):
+                    if(self._has_spare[self._calibration_index[currindx],
+                                       iexp]):
+                        ok = True
+                if(currindx < 0):
+                    ok = True
+                if(ok & (self.collide_robot_exposure(rsid=rsid,
+                                                     robotID=robotID,
+                                                     iexp=iexp) != True)):
+                    available = np.append(available, iexp)
+        else:
+            available = iexpst + np.where(free)[0]
 
         # Bomb if there aren't enough available
         if(len(available) < nexp):
@@ -863,13 +943,24 @@ class Field(object):
 
         # Now actually assign (to first available exposures)
         for iexp in available[0:nexp]:
+            if(assigned[iexp - iexpst]):
+                currindx = self._robot2indx[robotID, iexp]
+                currrsid = self.targets['rsid'][currindx]
+                self.unassign_exposure(rsid=currrsid,
+                                       iexp=iexp,
+                                       reset_satisfied=False,
+                                       reset_has_spare=False)
             self.assign_robot_exposure(robotID=robotID, rsid=rsid, iexp=iexp,
-                                       reset_satisfied=False)
+                                       reset_satisfied=False,
+                                       reset_has_spare=False)
 
         if(reset_satisfied):
             indx = self.rsid2indx[rsid]
             catalogid = self.targets['catalogid'][indx]
             self._set_satisfied(catalogids=[catalogid])
+
+        if(reset_has_spare):
+            self._set_has_spare()
 
         return True
 
@@ -894,7 +985,7 @@ class Field(object):
         return
 
     def assign_robot_exposure(self, robotID=None, rsid=None, iexp=None,
-                              reset_satisfied=True):
+                              reset_satisfied=True, reset_has_spare=True):
         """Assign an rsid to a particular robot-exposure
 
         Parameters:
@@ -913,6 +1004,10 @@ class Field(object):
             if True, reset the 'satisfied' column based on this assignment
             (default True)
 
+        reset_has_spare : bool
+            if True, reset the '_has_spare' matrix
+            (default True)
+
         Returns:
         --------
 
@@ -923,13 +1018,14 @@ class Field(object):
 
         if(self.assignments['robotID'][itarget, iexp] >= 0):
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
-                                   reset_satisfied=True)
+                                   reset_satisfied=True, reset_has_spare=True)
 
         if(self._robot2indx[robotID, iexp] >= 0):
             rsid_unassign = self.targets['rsid'][self._robot2indx[robotID,
                                                                   iexp]]
             self.unassign_exposure(rsid=rsid_unassign, iexp=iexp,
-                                   reset_assigned=True, reset_satisfied=True)
+                                   reset_assigned=True, reset_satisfied=True,
+                                   reset_has_spare=True)
 
         self.assignments['robotID'][itarget, iexp] = robotID
         self._robot2indx[robotID, iexp] = itarget
@@ -949,6 +1045,9 @@ class Field(object):
             catalogid = self.targets['catalogid'][indx]
             self._set_satisfied(catalogids=[catalogid])
 
+        if(reset_has_spare):
+            self._set_has_spare()
+
         return
 
     def _set_assigned(self, itarget=None):
@@ -956,7 +1055,7 @@ class Field(object):
         return
 
     def unassign_exposure(self, rsid=None, iexp=None, reset_assigned=True,
-                          reset_satisfied=True):
+                          reset_satisfied=True, reset_has_spare=True):
         """Unassign an rsid from a particular exposure
 
         Parameters:
@@ -974,6 +1073,10 @@ class Field(object):
 
         reset_satisfied : bool
             if True, reset the 'satisfied' flag after unassignment
+            (default True)
+
+        reset_has_spare : bool
+            if True, reset the '_has_spare' matrix after unassignment
             (default True)
 """
         itarget = self.rsid2indx[rsid]
@@ -995,10 +1098,13 @@ class Field(object):
             catalogid = self.targets['catalogid'][itarget]
             self._set_satisfied(catalogids=[catalogid])
 
+        if(reset_has_spare):
+            self._set_has_spare()
+
         return
 
     def unassign_epoch(self, rsid=None, epoch=None, reset_assigned=True,
-                       reset_satisfied=True):
+                       reset_satisfied=True, reset_has_spare=True):
         """Unassign an rsid from a particular epoch
 
         Parameters:
@@ -1018,6 +1124,10 @@ class Field(object):
             if True, reset the 'satisfied' flag after unassignment
             (default True)
 
+        reset_has_spare : bool
+            if True, reset the '_has_spare' matrix after unassignment
+            (default True)
+
         Returns:
         -------
 
@@ -1028,7 +1138,7 @@ class Field(object):
         iexpnd = self.field_cadence.epoch_indx[epoch + 1]
         for iexp in np.arange(iexpst, iexpnd):
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=False,
-                                   reset_satisfied=False)
+                                   reset_satisfied=False, reset_has_spare=False)
 
         if(reset_assigned):
             self._set_assigned(itarget=self.rsid2indx[rsid])
@@ -1038,9 +1148,13 @@ class Field(object):
             catalogid = self.targets['catalogid'][itarget]
             self._set_satisfied(catalogids=[catalogid])
 
+        if(reset_has_spare):
+            self._set_has_spare()
+
         return 0
 
-    def unassign(self, rsid=None, reset_assigned=True, reset_satisfied=True):
+    def unassign(self, rsid=None, reset_assigned=True, reset_satisfied=True,
+                 reset_has_spare=True):
         """Unassign an rsid entirely
 
         Parameters:
@@ -1054,10 +1168,14 @@ class Field(object):
 
         reset_satisfied : bool
             if True, resets satified flag for this rsid (default True)
+
+        reset_has_spare : bool
+            if True, reset the '_has_spare' matrix after unassignment
+            (default True)
 """
         for epoch in range(self.field_cadence.nepochs):
             self.unassign_epoch(rsid=rsid, epoch=epoch, reset_assigned=False,
-                                reset_satisfied=False)
+                                reset_satisfied=False, reset_has_spare=False)
 
         if(reset_assigned):
             self._set_assigned(itarget=self.rsid2indx[rsid])
@@ -1066,6 +1184,9 @@ class Field(object):
             itarget = self.rsid2indx[rsid]
             catalogid = self.targets['catalogid'][itarget]
             self._set_satisfied(catalogids=[catalogid])
+
+        if(reset_has_spare):
+            self._set_has_spare()
 
         return
 
@@ -1112,9 +1233,6 @@ class Field(object):
         nexps : ndarray of np.int32
             number of exposures needed (default 1 per epoch)
 
-        calib : bool
-            True if this is a calibration target; will not bump other calibs
-
         Returns:
         --------
 
@@ -1122,12 +1240,9 @@ class Field(object):
             'availableRobotIDs' : list of lists
                 for each epoch, list of available robotIDs sorted by robotID
 
-            'nFrees' : list of lists
-                for each epoch, list of number of free exposures for each available robot
-
-            'spareCalibrations' : list of list of lists
-                for each epoch and each robotID, list of spare calibrations
-                availability relies upon removing
+            'freeExposures' : list of lists of ndarrays
+                for each epoch, and each available robotID, ndarray of bool
+                regarding whether each exposure is "free"
 """
         if(epochs is None):
             epochs = np.arange(self.field_cadence.nepochs, dtype=np.int32)
@@ -1137,31 +1252,28 @@ class Field(object):
         validRobotIDs = np.array(validRobotIDs)
         validRobotIDs.sort()
         availableRobotIDs = [[]] * len(epochs)
-        spareCalibrations = [[[]]] * len(epochs)
-        nFrees = [[]] * len(epochs)
+        frees = [[]] * len(epochs)
+        isspare = self._has_spare[self._calibration_index[self.rsid2indx[rsid]], :]
+
         for iepoch, epoch in enumerate(epochs):
             nexp = nexps[iepoch]
             arlist = []
-            sclist = []
-            nflist = []
+            flist = []
             for robotID in validRobotIDs:
-                ok, nfree, sc = self.available_robot_epoch(rsid=rsid,
-                                                           robotID=robotID,
-                                                           epoch=epoch,
-                                                           nexp=nexp,
-                                                           iscalib=iscalib)
+                ok, free = self.available_robot_epoch(rsid=rsid,
+                                                      robotID=robotID,
+                                                      epoch=epoch,
+                                                      nexp=nexp,
+                                                      isspare=isspare)
                 if(ok):
                     arlist.append(robotID)
-                    nflist.append(nfree)
-                    sclist.append(sc)
+                    flist.append(free)
             availableRobotIDs[iepoch] = arlist
-            spareCalibrations[iepoch] = sclist
-            nFrees[iepoch] = nflist
+            frees[iepoch] = flist
 
         available = dict()
         available['availableRobotIDs'] = availableRobotIDs
-        available['nFrees'] = nFrees
-        available['spareCalibrations'] = spareCalibrations
+        available['freeExposures'] = frees
         return(available)
 
     def assign_epochs(self, rsid=None, epochs=None, nexps=None):
@@ -1193,13 +1305,13 @@ class Field(object):
         else:
             iscalib = False
 
-        epochs_merged, nexps_merged = self._merge_epochs(epochs=epochs,
-                                                         nexps=nexps)
-
-        available = self.available_epochs(rsid=rsid, epochs=epochs_merged,
-                                          nexps=nexps_merged, iscalib=iscalib)
+        # epochs_merged, nexps_merged = self._merge_epochs(epochs=epochs,
+        #                                                 nexps=nexps)
+        #
+        available = self.available_epochs(rsid=rsid, epochs=epochs,
+                                          nexps=nexps, iscalib=iscalib)
         availableRobotIDs = available['availableRobotIDs']
-        spareCalibrations = available['spareCalibrations']
+        freeExposures = available['freeExposures']
 
         # Check if there are robots available
         nRobotIDs = np.array([len(x) for x in availableRobotIDs])
@@ -1207,26 +1319,28 @@ class Field(object):
             return False
 
         # Assign to each epoch
-        for iepoch, epoch in enumerate(epochs_merged):
+        for iepoch, epoch in enumerate(epochs):
             currRobotIDs = np.array(availableRobotIDs[iepoch], dtype=np.int32)
             if(self.methods['assign_epochs'] == 'first'):
                 irobot = 0
             if(self.methods['assign_epochs'] == 'fewestcompeting'):
                 irobot = np.argmin(self._competing_targets[currRobotIDs])
             robotID = currRobotIDs[irobot]
-            nexp = nexps_merged[iepoch]
-
-            # If there are spare calibrations associated with this
-            # epoch, they need to be removed.
-            for sc in spareCalibrations[iepoch][irobot]:
-                self.unassign_epoch(rsid=sc, epoch=epoch)
+            free = freeExposures[iepoch][irobot]
+            nexp = nexps[iepoch]
 
             self.assign_robot_epoch(rsid=rsid, robotID=robotID, epoch=epoch,
-                                    nexp=nexp, reset_satisfied=False)
+                                    nexp=nexp, free=free,
+                                    reset_satisfied=False,
+                                    reset_has_spare=False)
+
+            iexpst = self.field_cadence.epoch_indx[epoch]
+            iexpnd = self.field_cadence.epoch_indx[epoch + 1]
 
         indx = self.rsid2indx[rsid]
         catalogid = self.targets['catalogid'][indx]
         self._set_satisfied(catalogids=[catalogid])
+        self._set_has_spare()
 
         return True
 
@@ -1250,20 +1364,20 @@ class Field(object):
         indx = self.rsid2indx[rsid]
         target_cadence = self.targets['cadence'][indx]
 
-        ok, epochs_list = clist.cadence_consistency(target_cadence,
-                                                    self.field_cadence.name,
-                                                    return_solutions=True,
-                                                    epoch_level=True)
+        ok, epochs_list, nexps_list = clist.cadence_consistency(target_cadence,
+                                                                self.field_cadence.name,
+                                                                return_solutions=True,
+                                                                epoch_level=True,
+                                                                merge_epochs=True)
 
         if(ok == False):
             return False
-
-        nexps = clist.cadences[target_cadence].nexp
 
         # Find set of epochs which is "most available"
         if(self.methods['assign_cadence'] == 'mostavailable'):
             navailable = np.zeros(len(epochs_list), dtype=np.int32)
             for indx, epochs in enumerate(epochs_list):
+                nexps = nexps_list[indx]
                 if(self.targets['category'][self.rsid2indx[rsid]] in self.required_calibrations):
                     iscalib = True
                 else:
@@ -1278,12 +1392,14 @@ class Field(object):
 
             imost = np.argmax(navailable)
             epochs = epochs_list[imost]
+            nexps = nexps_list[imost]
             if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
                 return True
 
         # Or just use first available
         if(self.methods['assign_cadence'] == 'first'):
             for indx, epochs in enumerate(epochs_list):
+                nexps = nexps_list[indx]
                 if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
                     return True
 
@@ -1305,7 +1421,7 @@ class Field(object):
         the cadence for an rsid.
 """
         if(catalogids is None):
-            catalogids = np.unique(self.targets['catalogid'])
+            catalogids = self._unique_catalogids
 
         for catalogid in catalogids:
             # Check for other instances of this catalogid, and whether
@@ -1316,6 +1432,8 @@ class Field(object):
             self.assignments['satisfied'][icats] = 0
             for icat in icats:
                 other_cadence_name = self.targets['cadence'][icat]
+
+                # TODO: CHECK OUT EFFICIENCY HERE
                 fits = clist.exposure_consistency(other_cadence_name,
                                                   self.field_cadence.name,
                                                   iexp)
@@ -1358,13 +1476,16 @@ class Field(object):
 
             iassign = np.where(self.targets['priority'][indxs] == priority)[0]
 
+            tried = 0
+            got = 0
             for i, rsid in enumerate(rsids[iassign]):
                 # Perform the assignment
                 if((check_satisfied == False) |
                    (self.assignments['satisfied'][self.rsid2indx[rsid]] == 0)):
+                    tried = tried + 1
                     success[iassign[i]] = self.assign_cadence(rsid=rsid)
-                    if(rsid == 0):
-                        ii = np.where(self.targets['catalogid'] == 0)[0]
+                    if(success[iassign[i]]):
+                        got = got + 1
 
             self._competing_targets = None
 
@@ -1544,6 +1665,7 @@ class Field(object):
         """Assign all calibration targets"""
         icalib = np.where(self._is_calibration)[0]
         self.assign_cadences(rsids=self.targets['rsid'][icalib])
+        self._set_has_spare()
         return
 
     def assign_science(self):
@@ -1680,7 +1802,7 @@ class Field(object):
             assignment = self.assignments[indx]
             isassigned = assignment['robotID'].max() >= 0
             if((isassigned) != (assignment['assigned'])):
-                print("rsid={rsid} : assigned misclassification".format(rsid=target['rsid']))
+                print("rsid={rsid} : assigned misclassification (assigned is set to {assigned}, category is {cat})".format(rsid=target['rsid'], assigned=assignment['assigned'], cat=target['category']))
                 nproblems += 1
 
         # Check that the number of calibrators has been tracked right
