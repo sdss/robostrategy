@@ -96,7 +96,7 @@ def assign_field(indx):
     f.set_field_cadence(field_cadence)
 
     icalib = np.where(f.targets['category'] != 'science')[0]
-    f.targets['cadence'] = field_cadence
+    f.targets['cadence'][icalib] = field_cadence
 
     if(f.field_cadence is not None):
         print("Assign targets", flush=True)

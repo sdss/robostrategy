@@ -7,12 +7,6 @@
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
-
-from __future__ import division
-from __future__ import print_function
-from __future__ import absolute_import
-from __future__ import unicode_literals
-
 import argparse
 import os
 import sys
@@ -63,19 +57,27 @@ if __name__ == '__main__':
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
-    assignment_dtype = np.dtype([('pk', np.int64),
-                                 ('rsid', np.int64),
-                                 ('catalogid', np.int64),
-                                 ('ra', np.float64),
-                                 ('dec', np.float64),
-                                 ('cadence', np.unicode_, 30),
-                                 ('fieldid', np.int32),
-                                 ('exposure', np.int32),
-                                 ('robotID', np.int32),
-                                 ('field_cadence', np.unicode_, 30)])
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                   observatory=observatory)
+    full_targets = fitsio.read(targets_file)
 
-    nassignment = 1000000
-    assignment = np.zeros(nassignment, dtype=assignment_dtype)
+    rsid2indx = dict()
+    for indx, full_target in enumerate(full_targets):
+        rsid2indx[full_target['rsid']] = indx
+
+    satisfied_dtype = np.dtype([('pk', np.int64),
+                                ('rsid', np.int64),
+                                ('catalogid', np.int64),
+                                ('ra', np.float64),
+                                ('dec', np.float64),
+                                ('cadence', np.unicode_, 30),
+                                ('satisfied', np.int32),
+                                ('assigned', np.int32)])
+    satisfied = np.zeros(len(full_targets), dtype=satisfied_dtype)
+
+    xferlist = ['pk', 'rsid', 'catalogid', 'ra', 'dec', 'cadence']
+    for xfer in xferlist:
+        satisfied[xfer] = full_targets[xfer]
 
     count = 0
     for indx in np.arange(len(allocate.field_array)):
@@ -97,38 +99,14 @@ if __name__ == '__main__':
             assignments = None
 
         if(assignments is not None):
-            field_cadence = header['FCADENCE']
-            nexposures = cadencelist.cadences[field_cadence].nexp_total
-            for iexp in np.arange(nexposures):
-                if(nexposures == 1):
-                    robotIDs = assignments['robotID'][:]
-                else:
-                    robotIDs = assignments['robotID'][:, iexp]
-                iassigned = np.where(robotIDs >= 0)[0]
-                if(len(iassigned) > 0):
-                    tmp_assignment = np.zeros(len(iassigned),
-                                              dtype=assignment_dtype)
-                    tmp_assignment['pk'] = targets['target_pk'][iassigned]
-                    tmp_assignment['rsid'] = targets['rsid'][iassigned]
-                    tmp_assignment['catalogid'] = targets['catalogid'][iassigned]
-                    tmp_assignment['ra'] = targets['ra'][iassigned]
-                    tmp_assignment['dec'] = targets['dec'][iassigned]
-                    tmp_assignment['cadence'] = targets['cadence'][iassigned]
-                    tmp_assignment['fieldid'] = fieldid
-                    tmp_assignment['exposure'] = iexp
-                    tmp_assignment['robotID'] = robotIDs[iassigned]
-                    tmp_assignment['field_cadence'] = field_cadence
-                    if(count + len(tmp_assignment) > nassignment):
-                        assignment = np.append(assignment,
-                                               np.zeros(nassignment,
-                                                        dtype=assignment_dtype))
-                        nassignment = nassignment * 2
-                    assignment[count:
-                               count + len(tmp_assignment)] = tmp_assignment
-                    count = count + len(tmp_assignment)
+            isat = np.array([rsid2indx[rsid] for rsid in targets['rsid']],
+                            dtype=np.int32)
+            satisfied['satisfied'][isat] = (satisfied['satisfied'] +
+                                            assignments['satisfied'])
+            satisfied['assigned'][isat] = (satisfied['assigned'][isat] +
+                                           assignments['assigned'])
 
-    assignment = assignment[0:count]
-    print(count)
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
-    fitsio.write(assigned_file, assignment, clobber=True)
+    satisfied_file = assigned_file.replace('rsAssignments', 'rsSatisfied')
+    fitsio.write(satisfied_file, satisfied, clobber=True)
