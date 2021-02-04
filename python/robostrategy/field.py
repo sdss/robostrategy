@@ -175,7 +175,7 @@ class Field(object):
         self.targets = np.zeros(0, dtype=targets_dtype)
         self.target_duplicated = np.zeros(0, dtype=np.int32)
         self._is_calibration = np.zeros(0, dtype=np.bool)
-        self._calibration_index = np.zeros(0, dtype=np.bool)
+        self._calibration_index = np.zeros(1, dtype=np.bool)
         if(filename is not None):
             self.fromfits(filename=filename)
         else:
@@ -225,7 +225,11 @@ class Field(object):
         self.set_field_cadence(field_cadence)
         targets = fitsio.read(filename, ext=1)
         self.targets_fromarray(target_array=targets)
-        if(self.assignments is not None):
+        try:
+            assignments = fitsio.read(filename, ext=2)
+        except:    
+            assignments = None
+        if(assignments is not None):
             if(self.field_cadence.nexp_total == 1):
                 iassigned = np.where(assignments['robotID'])
                 for itarget in iassigned[0]:
@@ -767,7 +771,8 @@ class Field(object):
             free = robot2indx < 0
 
             if((free == False) & (isspare[iexp] == False)):
-                free = self._has_spare[self._calibration_index[robot2indx], iexp]
+                free = self._has_spare[self._calibration_index[robot2indx + 1],
+                                       iexp]
 
             if(free & (rsid is not None)):
                 free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
@@ -787,9 +792,7 @@ class Field(object):
         iexps = np.arange(iexpst, iexpnd, dtype=np.int32)
         robot2indx = self._robot2indx[robotID, iexps]
         free = robot2indx < 0
-        hasspare = np.select([free],
-                             [self._has_spare[self._calibration_index[robot2indx], iexps]],
-                             False)
+        hasspare = self._has_spare[self._calibration_index[robot2indx + 1], iexps]
 
         free = free | (hasspare & (isspare[iexpst:iexpnd] == False))
 
@@ -929,11 +932,11 @@ class Field(object):
         if(free is None):
             available = np.zeros(0, dtype=np.int32)
             for iexp in np.arange(iexpst, iexpnd):
-                isspare = self._has_spare[self._calibration_index[self.rsid2indx[rsid]], iexp]
+                isspare = self._has_spare[self._calibration_index[self.rsid2indx[rsid] + 1], iexp]
                 ok = False
                 currindx = indxs[iexp - iexpst]
                 if((currindx >= 0) & (isspare == False)):
-                    if(self._has_spare[self._calibration_index[currindx],
+                    if(self._has_spare[self._calibration_index[currindx] + 1,
                                        iexp]):
                         ok = True
                 if(currindx < 0):
@@ -1261,7 +1264,7 @@ class Field(object):
         validRobotIDs.sort()
         availableRobotIDs = [[]] * len(epochs)
         frees = [[]] * len(epochs)
-        isspare = self._has_spare[self._calibration_index[self.rsid2indx[rsid]], :]
+        isspare = self._has_spare[self._calibration_index[self.rsid2indx[rsid] + 1], :]
 
         for iepoch, epoch in enumerate(epochs):
             nexp = nexps[iepoch]
@@ -1732,7 +1735,7 @@ class Field(object):
         out = out + "Field cadence: {fc}\n".format(fc=self.field_cadence.name)
 
         out = out + "\n"
-        out = out + "Calibration targets:"
+        out = out + "Calibration targets:\n"
         for c in self.required_calibrations:
             tmp = " {c} (want {rc}):"
             out = out + tmp.format(c=c, rc=self.required_calibrations[c])
@@ -1760,6 +1763,21 @@ class Field(object):
                             (self._is_calibration == False))[0]
             perepoch[epoch] = len(rids)
             out = out + " {p}".format(p=perepoch[epoch])
+        out = out + "\n"
+
+        out = out + "\nCarton completion:\n"
+        cartons = np.unique(self.targets['carton'])
+        for carton in cartons:
+            isscience= (self.targets['category'] == 'science')
+            incarton = (self.targets['carton'] == carton)
+            issatisfied = (self.assignments['satisfied'] > 0)
+            icarton = np.where(incarton & isscience)[0]
+            igot = np.where(incarton & issatisfied & isscience)[0]
+            if(len(icarton) > 0):
+                tmp = " {carton}: {ngot} of {ncarton}\n".format(carton=carton,
+                                                                ngot=len(igot),
+                                                                ncarton=len(icarton))
+                out = out + tmp 
         out = out + "\n"
 
         return(out)
