@@ -101,7 +101,7 @@ if __name__ == '__main__':
         if(assignments is not None):
             isat = np.array([rsid2indx[rsid] for rsid in targets['rsid']],
                             dtype=np.int32)
-            satisfied['satisfied'][isat] = (satisfied['satisfied'] +
+            satisfied['satisfied'][isat] = (satisfied['satisfied'][isat] +
                                             assignments['satisfied'])
             satisfied['assigned'][isat] = (satisfied['assigned'][isat] +
                                            assignments['assigned'])

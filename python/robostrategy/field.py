@@ -225,18 +225,24 @@ class Field(object):
         self.set_field_cadence(field_cadence)
         targets = fitsio.read(filename, ext=1)
         self.targets_fromarray(target_array=targets)
-        try:
-            assignments = fitsio.read(filename, ext=2)
-        except OSError:
-            assignments = None
-        if(assignments is not None):
-            for itarget, target in enumerate(self.targets):
-                robotIDs = assignments['robotID'].reshape(len(assignments),
-                                                          self.field_cadence.nexp_total)
-                for iexp in range(self.field_cadence.nexp_total):
-                    if(robotIDs[itarget, iexp] >= 0):
-                        self.assign_robot_exposure(robotID=robotIDs[itarget, iexp],
-                                                   rsid=target['rsid'], iexp=iexp)
+        if(self.assignments is not None):
+            if(self.field_cadence.nexp_total == 1):
+                iassigned = np.where(assignments['robotID'])
+                for itarget in iassigned[0]:
+                    self.assign_robot_exposure(robotID=assignments['robotID'][itarget],
+                                               rsid=targets['rsid'][itarget],
+                                               iexp=0, reset_satisfied=False,
+                                               reset_has_spare=False)
+            else:
+                iassigned = np.where(assignments['robotID'] >= 0)
+                for itarget, iexp in zip(iassigned[0], iassigned[1]):
+                    self.assign_robot_exposure(robotID=assignments['robotID'][itarget, iexp],
+                                               rsid=targets['rsid'][itarget],
+                                               iexp=iexp,
+                                               reset_satisfied=False,
+                                               reset_has_spare=False)
+            self._set_has_spare()
+            self._set_satisfied()
             self.decollide_unassigned()
         return
 
