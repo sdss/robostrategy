@@ -230,11 +230,23 @@ class Field(object):
             assignments = None
         self.targets_fromarray(target_array=targets)
         if(self.assignments is not None):
-            for assignment, target in zip(assignments, self.targets):
-                for iexp in range(self.field_cadence.nexp_total):
-                    if(assignment['robotID'][iexp] >= 0):
-                        self.assign_robot_exposure(robotID=assignment['robotID'][iexp],
-                                                   rsid=target['rsid'], iexp=iexp)
+            if(self.field_cadence.nexp_total == 1):
+                iassigned = np.where(assignments['robotID'])
+                for itarget in iassigned[0]:
+                    self.assign_robot_exposure(robotID=assignments['robotID'][itarget],
+                                               rsid=targets['rsid'][itarget],
+                                               iexp=0, reset_satisfied=False,
+                                               reset_has_spare=False)
+            else:
+                iassigned = np.where(assignments['robotID'] >= 0)
+                for itarget, iexp in zip(iassigned[0], iassigned[1]):
+                    self.assign_robot_exposure(robotID=assignments['robotID'][itarget, iexp],
+                                               rsid=targets['rsid'][itarget],
+                                               iexp=iexp,
+                                               reset_satisfied=False,
+                                               reset_has_spare=False)
+            self._set_has_spare()
+            self._set_satisfied()
             self.decollide_unassigned()
         return
 
