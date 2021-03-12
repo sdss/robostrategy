@@ -775,33 +775,34 @@ class Field(object):
         more than enough calibration targets of that type already.
 """
 
-        # Checks obvious case that this epoch doesn't have enough exposures
-        available = False
-        cnexp = self.field_cadence.nexp[epoch]
-        if(cnexp < nexp):
-            return available, np.zeros(cnexp, dtype=np.bool)
+        if(self.nocalib is True):
+            # Checks obvious case that this epoch doesn't have enough exposures
+            available = False
+            cnexp = self.field_cadence.nexp[epoch]
+            if(cnexp < nexp):
+                return available, np.zeros(cnexp, dtype=np.bool)
 
-        # Now optimize case where nexp=1
-        if(cnexp == 1):
-            iexp = self.field_cadence.epoch_indx[epoch]
-            robot2indx = self._robot2indx[robotID, iexp]
-            free = robot2indx < 0
+            # Now optimize case where nexp=1
+            if(cnexp == 1):
+                iexp = self.field_cadence.epoch_indx[epoch]
+                robot2indx = self._robot2indx[robotID, iexp]
+                free = robot2indx < 0
 
-            if(free is False):
-                return False, onefalse
+                if(free is False):
+                    return False, onefalse
             
-            if(self.nocalib is False):
-                if((free == False) & (isspare[iexp] == False)):
-                    free = self._has_spare_calib[self._calibration_index[robot2indx + 1], iexp]
+                if(self.nocalib is False):
+                    if((free == False) & (isspare[iexp] == False)):
+                        free = self._has_spare_calib[self._calibration_index[robot2indx + 1], iexp]
 
-            if(free & (rsid is not None)):
-                free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
-                                                   iexp=iexp) == False
+                if(free & (rsid is not None)):
+                    free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
+                                                       iexp=iexp) == False
 
-            if(free):
-                return True, onetrue
-            else:
-                return False, onefalse
+                if(free):
+                    return True, onetrue
+                else:
+                    return False, onefalse
 
         if(self.nocalib is False):
 
@@ -1348,7 +1349,10 @@ class Field(object):
             nexp = nexps[iepoch]
             arlist = []
             flist = []
-            ican = np.where(self._robotnexp[validRobotIDs, epoch] >= nexp)[0]
+            if(strict):
+                ican = np.where(self._robotnexp[validRobotIDs, epoch] >= nexp)[0]
+            else:
+                ican = np.arange(len(validRobotIDs))
             for robotID in validRobotIDs[ican]:
                 ok, free = self.available_robot_epoch(rsid=rsid,
                                                       robotID=robotID,
@@ -1406,7 +1410,7 @@ class Field(object):
 
         available = self.available_epochs(rsid=rsid, epochs=epochs,
                                           nexps=nexps, iscalib=iscalib,
-                                          strict=True, first=first)
+                                          strict=self.nocalib, first=first)
         availableRobotIDs = available['availableRobotIDs']
         freeExposures = available['freeExposures']
 
@@ -1478,7 +1482,7 @@ class Field(object):
                     if(self.targets['category'][self.rsid2indx[rsid]] in self.required_calibrations):
                         iscalib = True
                 available = self.available_epochs(rsid=rsid, epochs=epochs, nexps=nexps,
-                                                  iscalib=iscalib, strict=True)
+                                                  iscalib=iscalib, strict=self.nocalib)
                 availableRobotIDs = available['availableRobotIDs']
 
                 navailable[indx] = 1
@@ -1909,11 +1913,11 @@ class Field(object):
                 test_calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                 dtype=np.int32)
 
-                for target, assignment in zip(self.targets, self.assignments):
-                    if(target['category'] in self.required_calibrations):
-                        for iexp, robotID in enumerate(assignment['robotID']):
-                            if(robotID >= 0):
-                                test_calibrations[target['category']][iexp] += 1
+            for target, assignment in zip(self.targets, self.assignments):
+                if(target['category'] in self.required_calibrations):
+                    for iexp, robotID in enumerate(assignment['robotID']):
+                        if(robotID >= 0):
+                            test_calibrations[target['category']][iexp] += 1
 
         for indx, target in enumerate(self.targets):
             assignment = self.assignments[indx]
