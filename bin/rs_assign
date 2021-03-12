@@ -34,6 +34,7 @@ os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites us
 
 cadencelist = cadence.CadenceList()
 
+noclobber = False
 
 def make_assign_entry(f, fields_entry, field_cadence, utcadences,
                       utcartons, assign_dtype):
@@ -90,6 +91,18 @@ def field_options(ifield):
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
 
+    tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
+                              observatory=observatory,
+                              fieldid=fieldid)
+    if(test is False):
+        options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptions')
+    else:
+        options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptionsTest')
+
+    if((noclobber is True) & os.path.isfile(options_file)):
+        print("Fieldid {f} exists already".format(f=fieldid))
+        return
+
     field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                        observatory=observatory,
                                        fieldid=fieldid)
@@ -123,7 +136,7 @@ def field_options(ifield):
 
         print("{fc} {fi}".format(fc=field_cadence, fi=fieldid), flush=True)
 
-        f.set_field_cadence(full_field_cadence)
+        f.set_field_cadence(field_cadence)
 
         f.assign_science()
         f.decollide_unassigned()
@@ -175,13 +188,6 @@ def field_options(ifield):
 
     # Write out at each field to allow resumption
     hd = {'RSTVER': robostrategy.__version__}
-    tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
-                              observatory=observatory,
-                              fieldid=fieldid)
-    if(test is False):
-        options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptions')
-    else:
-        options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptionsTest')
     fitsio.write(options_file, assign_array, header=hd, clobber=True)
 
     cadence_dtype = [('cadence', np.unicode_, 30)]
@@ -211,6 +217,9 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--start', dest='start',
                         type=np.int32, help='field to start', required=False,
                         default=0)
+    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+                        help='do not clobber', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
@@ -228,6 +237,7 @@ if __name__ == '__main__':
     observatory = args.observatory
     ncadence = args.ncadence
     test = args.test
+    noclobber = args.noclobber
 
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
