@@ -186,18 +186,23 @@ class Field(object):
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=2.,
-                 fieldid=1, allgrids=True, nocalib=False, speedy=False):
+                 fieldid=1, allgrids=True, nocalib=False, speedy=False,
+                 nocollide=False):
         self.fieldid = fieldid
+        self.nocalib = nocalib
+        self.speedy = speedy
+        self.nocollide = nocollide
+        if(self.speedy):
+            self.nocalib = True
+            self.nocollide = True
+        if(self.nocollide):
+            self.allgrids = True
         self.allgrids = allgrids
         if(self.allgrids):
             self.robotgrids = []
         else:
             self.robotgrids = None
         self.assignments = None
-        self.nocalib = nocalib
-        self.speedy = speedy
-        if(self.speedy):
-            self.nocalib = True
         self.rsid2indx = dict()
         self.targets = np.zeros(0, dtype=targets_dtype)
         self.target_duplicated = np.zeros(0, dtype=np.int32)
@@ -746,7 +751,8 @@ class Field(object):
         collide : bool
             True if it causes a collision, False if not
 """
-        if(not self.allgrids):
+        if((not self.allgrids) |
+           (not self.nocollide)):
             return False
         rg = self.robotgrids[iexp]
         return rg.wouldCollideWithAssigned(robotID, rsid)
