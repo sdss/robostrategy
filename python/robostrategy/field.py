@@ -192,12 +192,12 @@ class Field(object):
         self.nocalib = nocalib
         self.speedy = speedy
         self.nocollide = nocollide
+        self.allgrids = allgrids
         if(self.speedy):
             self.nocalib = True
             self.nocollide = True
         if(self.nocollide):
-            self.allgrids = True
-        self.allgrids = allgrids
+            self.allgrids = False
         if(self.allgrids):
             self.robotgrids = []
         else:
