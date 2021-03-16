@@ -12,7 +12,7 @@ import collections
 import scipy.optimize as optimize
 import matplotlib.pyplot as plt
 import ortools.sat.python.cp_model as cp_model
-import roboscheduler.cadence as cadence
+import roboscheduler.cadence
 import kaiju
 import kaiju.robotGrid
 
@@ -22,6 +22,7 @@ _betaLen = 15
 
 onetrue = np.ones(1, dtype=np.bool)
 onefalse = np.zeros(1, dtype=np.bool)
+
 
 # intersection of lists
 def interlist(list1, list2):
@@ -67,7 +68,7 @@ Dependencies:
 """
 
 # Establish access to the CadenceList singleton
-clist = cadence.CadenceList()
+clist = roboscheduler.cadence.CadenceList()
 
 
 class Field(object):
@@ -96,6 +97,12 @@ class Field(object):
 
     field_cadence : str
         field cadence (default 'none')
+
+    nocalib : bool
+        if True, do not account for calibrations (default False)
+
+    speedy : bool
+        if True, perform approximations for speed up (default False)
 
     Attributes:
     ----------
@@ -159,14 +166,27 @@ class Field(object):
     _is_calibration : ndarray of np.bool
         [len(targets)] list of whether the target is a calibration target
 
+    nocalib : bool
+        if True, do not account for calibrations
+
+    speedy : bool
+        if True, perform approximations for speed up
+
     Notes:
     -----
 
     This class internally assumes that robotIDs are sequential integers starting at 0.
+
+    If speedy is set, then the following approximations are performed.
+     * nocalib is set True, so calibrations are skipped, which allows a
+       a substantial simplification.
+     * Any 1x1 bright cadences are performed en masse
+    Note this option assumes the CadenceList has bright_single-1 as a 
+    cadence, and that it is a 1x1 cadence in bright time.
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=2.,
-                 fieldid=1, allgrids=True, nocalib=False):
+                 fieldid=1, allgrids=True, nocalib=False, speedy=False):
         self.fieldid = fieldid
         self.allgrids = allgrids
         if(self.allgrids):
@@ -175,6 +195,9 @@ class Field(object):
             self.robotgrids = None
         self.assignments = None
         self.nocalib = nocalib
+        self.speedy = speedy
+        if(self.speedy):
+            self.nocalib = True
         self.rsid2indx = dict()
         self.targets = np.zeros(0, dtype=targets_dtype)
         self.target_duplicated = np.zeros(0, dtype=np.int32)
@@ -215,6 +238,12 @@ class Field(object):
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
         self.collisionBuffer = hdr['CBUFFER']
+        if('SPEEDY' in hdr):
+            self.speedy = np.bool(hdr['SPEEDY'])
+            if(self.speedy):
+                self.nocalib = True
+        if('NOCALIB' in hdr):
+            self.nocalib = np.bool(hdr['NOCALIB'])
         self.mastergrid = self._robotGrid()
         field_cadence = hdr['FCADENCE']
         if(self.nocalib is False):
@@ -584,7 +613,7 @@ class Field(object):
 
         # Set fiber type
         if('fiberType' not in target_array.dtype.names):
-            targets['fiberType'] = np.array(['APOGEE' if clist.cadences[c].instrument == cadence.Instrument.ApogeeInstrument
+            targets['fiberType'] = np.array(['APOGEE' if clist.cadences[c].instrument == roboscheduler.cadence.Instrument.ApogeeInstrument
                                              else 'BOSS'
                                              for c in targets['cadence']])
 
@@ -682,6 +711,8 @@ class Field(object):
         else:
             hdr['FCADENCE'] = 'none'
         hdr['CBUFFER'] = self.collisionBuffer
+        hdr['NOCALIB'] = self.nocalib
+        hdr['SPEEDY'] = self.speedy
         if(self.nocalib is False):
             for indx, rc in enumerate(self.required_calibrations):
                 name = 'RCNAME{indx}'.format(indx=indx)
@@ -1575,6 +1606,20 @@ class Field(object):
 
             iassign = np.where(self.targets['priority'][indxs] == priority)[0]
 
+            # If we are in speedy mode, grab the single-bright cases at
+            # this priority for en masse assignment
+            dospeedy = self.speedy
+            if(dospeedy):
+                cadences = np.unique(self.targets['cadence'][indxs[iassign]])
+                singlebright = np.zeros(len(self.targets), dtype=np.bool)
+                for cadence in cadences:
+                    if(clist.cadence_consistency(cadence, 'bright_single-1',
+                                                 return_solutions=False)):
+                        icad = np.where(self.targets['cadence'][indxs[iassign]] == cadence)[0]
+                        singlebright[indxs[iassign[icad]]] = True
+                iassign = np.where((singlebright[indxs] == False) &
+                                   (self.targets['priority'][indxs] == priority))[0]
+
             tried = 0
             got = 0
             for i, rsid in enumerate(rsids[iassign]):
@@ -1586,9 +1631,66 @@ class Field(object):
                     if(success[iassign[i]]):
                         got = got + 1
 
+            if(dospeedy):
+                if(check_satisfied):
+                    singlebright = singlebright & (self.assignments['satisfied'] == 0)
+                isinglebright = np.where(singlebright)[0]
+                if(len(isinglebright) > 0):
+                    self._assign_singlebright(indxs=isinglebright)
+
             self._competing_targets = None
 
         return(success)
+
+    def _assign_singlebright(self, indxs=None):
+        """Assigns 1x1 bright targets en masse
+
+        Parameters
+        ----------
+
+        indxs : ndarray of np.int32
+            indices into self.targets of targets to assign
+        
+
+        Notes
+        -----
+
+        First, uniquifies on catalogid so as not to repeat itself.
+
+        Second, loops through robots, and assigns its unused exposures to
+        singlebrights.
+
+        Ignores collisions!
+"""
+        # Find unique set of catalogid and create index into 
+        catalogids, iunique = np.unique(self.targets['catalogid'][indxs],
+                                        return_index=True)
+        indxs = indxs[iunique]
+        rsids = set(self.targets['rsid'][indxs])
+
+        for robotID in self.mastergrid.robotDict:
+            r = self.mastergrid.robotDict[robotID]
+            robot_rsids = set(r.validTargetIDs)
+            curr_rsids = np.array(list(robot_rsids.intersection(rsids)),
+                                  dtype=np.int64)
+            if(len(curr_rsids) > 0):
+                np.random.shuffle(curr_rsids)
+                ifree = np.where(self._robot2indx[robotID, :] < 0)[0]
+                if(len(ifree) >= len(curr_rsids)):
+                    ifree = ifree[0:len(curr_rsids)]
+                for icurr, iexp in enumerate(ifree):
+                    self.assign_robot_exposure(robotID=robotID,
+                                               rsid=curr_rsids[icurr],
+                                               iexp=iexp,
+                                               reset_satisfied=False,
+                                               reset_has_spare=False)
+                    indx = self.rsid2indx[curr_rsids[icurr]]
+                    icat = np.where(self.targets['catalogid'] == 
+                                    self.targets['catalogid'][indx])[0]
+                    self.assignments['satisfied'][icat] = 1
+                    rsids.remove(curr_rsids[icurr])
+
+        self.decollide_unassigned()
 
     def _assign_cp_model(self, rsids=None, robotIDs=None, check_collisions=True):
         """Assigns using CP-SAT to optimize number of targets
