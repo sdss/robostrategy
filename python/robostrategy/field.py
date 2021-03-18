@@ -752,7 +752,7 @@ class Field(object):
             True if it causes a collision, False if not
 """
         if((not self.allgrids) |
-           (not self.nocollide)):
+           (self.nocollide)):
             return False
         rg = self.robotgrids[iexp]
         return rg.wouldCollideWithAssigned(robotID, rsid)
@@ -1562,19 +1562,21 @@ class Field(object):
         for catalogid in catalogids:
             # Check for other instances of this catalogid, and whether
             # assignments have satisfied their cadence
-            icats = np.where(self.targets['catalogid'] == catalogid)[0]
-            gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
-            iexp = np.where(gotexp > 0)[0]
-            self.assignments['satisfied'][icats] = 0
-            for icat in icats:
-                other_cadence_name = self.targets['cadence'][icat]
+            icats = np.where((self.targets['catalogid'] == catalogid) &
+                             (self.targets['incadence']))[0]
+            if(len(icats) > 0):
+                gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
+                iexp = np.where(gotexp > 0)[0]
+                self.assignments['satisfied'][icats] = 0
+                for icat in icats:
+                    other_cadence_name = self.targets['cadence'][icat]
 
-                # TODO: CHECK OUT EFFICIENCY HERE
-                fits = clist.exposure_consistency(other_cadence_name,
-                                                  self.field_cadence.name,
-                                                  iexp)
-                if(fits):
-                    self.assignments['satisfied'][icat] = 1
+                    # TODO: CHECK OUT EFFICIENCY HERE
+                    fits = clist.exposure_consistency(other_cadence_name,
+                                                      self.field_cadence.name,
+                                                      iexp)
+                    if(fits):
+                        self.assignments['satisfied'][icat] = 1
 
         return
 
@@ -1602,8 +1604,26 @@ class Field(object):
         Sorts cadences by priority for assignment.
 """
         success = np.zeros(len(rsids), dtype=np.bool)
-
         indxs = np.array([self.rsid2indx[r] for r in rsids], dtype=np.int32)
+
+        dospeedy = self.speedy
+        if(dospeedy):
+            cadences = np.unique(self.targets['cadence'][indxs])
+            singlebright = np.zeros(len(self.targets), dtype=np.bool)
+            for cadence in cadences:
+                if(clist.cadence_consistency(cadence, 'bright_single-1',
+                                             return_solutions=False)):
+                    icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
+                    singlebright[indxs[icad]] = True
+
+            multibright = np.zeros(len(self.targets), dtype=np.bool)
+            for cadence in cadences:
+                if(clist.cadence_consistency(cadence, 'bright_single-12',
+                                             return_solutions=False)):
+                    icad = np.where((self.targets['cadence'][indxs] == cadence) &
+                                    (singlebright[indxs] == False))[0]
+                    multibright[indxs[icad]] = True
+
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
             iormore = np.where((self.targets['priority'][indxs] >= priority) &
@@ -1611,20 +1631,17 @@ class Field(object):
             self._set_competing_targets(rsids[iormore])
 
             iassign = np.where(self.targets['priority'][indxs] == priority)[0]
+            print(priority)
+            print(np.unique(self.targets['cadence'][indxs[iassign]]))
+            print(len(iassign))
 
             # If we are in speedy mode, grab the single-bright cases at
             # this priority for en masse assignment
-            dospeedy = self.speedy
             if(dospeedy):
-                cadences = np.unique(self.targets['cadence'][indxs[iassign]])
-                singlebright = np.zeros(len(self.targets), dtype=np.bool)
-                for cadence in cadences:
-                    if(clist.cadence_consistency(cadence, 'bright_single-1',
-                                                 return_solutions=False)):
-                        icad = np.where(self.targets['cadence'][indxs[iassign]] == cadence)[0]
-                        singlebright[indxs[iassign[icad]]] = True
                 iassign = np.where((singlebright[indxs] == False) &
+                                   (multibright[indxs] == False) &
                                    (self.targets['priority'][indxs] == priority))[0]
+                print(len(iassign))
 
             tried = 0
             got = 0
@@ -1638,11 +1655,17 @@ class Field(object):
                         got = got + 1
 
             if(dospeedy):
-                if(check_satisfied):
-                    singlebright = singlebright & (self.assignments['satisfied'] == 0)
-                isinglebright = np.where(singlebright)[0]
+                imultibright = np.where(multibright[indxs] &
+                                         (self.assignments['satisfied'][indxs] == 0) &
+                                         (self.targets['priority'][indxs] == priority))[0]
+                if(len(imultibright) > 0):
+                    self._assign_multibright(indxs=indxs[imultibright])
+
+                isinglebright = np.where(singlebright[indxs] &
+                                         (self.assignments['satisfied'][indxs] == 0) &
+                                         (self.targets['priority'][indxs] == priority))[0]
                 if(len(isinglebright) > 0):
-                    self._assign_singlebright(indxs=isinglebright)
+                    self._assign_singlebright(indxs=indxs[isinglebright])
 
             self._competing_targets = None
 
@@ -1668,7 +1691,10 @@ class Field(object):
 
         Ignores collisions!
 """
-        # Find unique set of catalogid and create index into 
+        inindx = np.zeros(len(self.targets), dtype=np.bool)
+        inindx[indxs] = 1
+
+        # Find unique set of catalogid and create index into
         catalogids, iunique = np.unique(self.targets['catalogid'][indxs],
                                         return_index=True)
         indxs = indxs[iunique]
@@ -1691,10 +1717,59 @@ class Field(object):
                                                reset_satisfied=False,
                                                reset_has_spare=False)
                     indx = self.rsid2indx[curr_rsids[icurr]]
-                    icat = np.where(self.targets['catalogid'] == 
-                                    self.targets['catalogid'][indx])[0]
+                    icat = np.where((self.targets['catalogid'] == 
+                                     self.targets['catalogid'][indx])
+                                    & (inindx))[0]
                     self.assignments['satisfied'][icat] = 1
                     rsids.remove(curr_rsids[icurr])
+
+        self.decollide_unassigned()
+
+    def _assign_multibright(self, indxs=None):
+        """Assigns nx1 bright targets (no constraints) en masse
+
+        Parameters
+        ----------
+
+        indxs : ndarray of np.int32
+            indices into self.targets of targets to assign
+
+        Notes
+        -----
+
+        Loops through robots, and assigns its unused exposures to
+        multibrights (does not take advantage of using different 
+        robots at different epochs).
+
+        Ignores collisions! Doesn't account for spare calib fibers.
+"""
+        rsids = set(self.targets['rsid'][indxs])
+
+        for robotID in self.mastergrid.robotDict:
+            r = self.mastergrid.robotDict[robotID]
+            robot_rsids = set(r.validTargetIDs)
+            curr_rsids = np.array(list(robot_rsids.intersection(rsids)),
+                                  dtype=np.int64)
+            if(len(curr_rsids) > 0):
+                np.random.shuffle(curr_rsids)
+                ifree = np.where(self._robot2indx[robotID, :] < 0)[0]
+                icurr = 0
+                irsid = 0
+                while((icurr < len(ifree)) & (irsid < len(curr_rsids))):
+                    curr_rsid = curr_rsids[irsid]
+                    indx = self.rsid2indx[curr_rsid]
+                    nexp = clist.cadences[self.targets['cadence'][indx]].nepochs
+                    if(icurr + nexp < len(ifree)):
+                        for i in np.arange(nexp, dtype=np.int32):
+                            self.assign_robot_exposure(robotID=robotID,
+                                                       rsid=curr_rsid,
+                                                       iexp=ifree[icurr],
+                                                       reset_satisfied=False,
+                                                       reset_has_spare=False)
+                            icurr = icurr + 1
+                        self._set_satisfied(catalogids=[self.targets['catalogid'][indx]])
+                        rsids.remove(curr_rsid)
+                    irsid = irsid + 1
 
         self.decollide_unassigned()
 
@@ -1970,7 +2045,7 @@ class Field(object):
         out = out + "\nCarton completion:\n"
         cartons = np.unique(self.targets['carton'])
         for carton in cartons:
-            isscience= (self.targets['category'] == 'science')
+            isscience = (self.targets['category'] == 'science')
             incarton = (self.targets['carton'] == carton)
             issatisfied = (self.assignments['satisfied'] > 0)
             icarton = np.where(incarton & isscience)[0]
