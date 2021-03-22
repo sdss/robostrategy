@@ -108,6 +108,8 @@ def field_options(ifield):
                                        fieldid=fieldid)
     f = field.Field(filename=field_target_file, speedy=True)
 
+    print(f.speedy)
+
     try:
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
     except:

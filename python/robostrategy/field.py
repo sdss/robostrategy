@@ -243,11 +243,11 @@ class Field(object):
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
         self.collisionBuffer = hdr['CBUFFER']
-        if('SPEEDY' in hdr):
+        if(('SPEEDY' in hdr) & (self.speedy == False)):
             self.speedy = np.bool(hdr['SPEEDY'])
             if(self.speedy):
                 self.nocalib = True
-        if('NOCALIB' in hdr):
+        if(('NOCALIB' in hdr) & (self.nocalib == False)):
             self.nocalib = np.bool(hdr['NOCALIB'])
         self.mastergrid = self._robotGrid()
         field_cadence = hdr['FCADENCE']
