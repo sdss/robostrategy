@@ -17,6 +17,7 @@ import argparse
 import os
 import sys
 import multiprocessing
+import datetime
 import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -33,6 +34,7 @@ sdss_path = sdss_access.path.Path(release='sdss5')
 os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites user specified directory
 
 coordinated_dict = None
+noclobber = False
 
 _proc_status = '/proc/%d/status' % os.getpid()
 
@@ -92,20 +94,30 @@ def assign_field(indx):
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
 
-    f = field.Field(filename=field_target_file)
-    f.set_field_cadence(field_cadence)
+    field_assigned_file = sdss_path.full('rsFieldAssignments',
+                                         plan=plan,
+                                         observatory=observatory,
+                                         fieldid=fieldid)
 
+    if((noclobber is True) & os.path.isfile(field_assigned_file)):
+        print("Fieldid {f} exists already".format(f=fieldid))
+        return
+
+    print(datetime.datetime.now(), flush=True)
+    f = field.Field(filename=field_target_file)
+    print(datetime.datetime.now(), flush=True)
+    f.set_field_cadence(field_cadence)
+    print(datetime.datetime.now(), flush=True)
+
+    print(datetime.datetime.now(), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
     f.targets['cadence'][icalib] = field_cadence
+    print(datetime.datetime.now(), flush=True)
 
     if(f.field_cadence is not None):
         print("Assign targets", flush=True)
         f.assign(coordinated_targets=coordinated_dict)
 
-    field_assigned_file = sdss_path.full('rsFieldAssignments',
-                                         plan=plan,
-                                         observatory=observatory,
-                                         fieldid=fieldid)
     print("Write assignments", flush=True)
     f.tofits(field_assigned_file)
 
@@ -194,6 +206,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--coordinate', dest='coordinate',
                         default=False, action='store_true',
                         help='coordinate target overlap')
+    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+                        help='do not clobber', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -201,6 +216,7 @@ if __name__ == '__main__':
     start = args.start
     end = args.end
     coordinate = args.coordinate
+    noclobber = args.noclobber
     print(time.ctime(time.time()))
 
     rsParams = params.RobostrategyParams(plan=plan)
