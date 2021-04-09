@@ -21,6 +21,7 @@ import kaiju.robotGrid
 _alphaLen = 7.4
 _betaLen = 15
 
+# Make these to save some time later
 onetrue = np.ones(1, dtype=np.bool)
 onefalse = np.zeros(1, dtype=np.bool)
 
@@ -244,7 +245,6 @@ class Field(object):
         self._unique_catalogids = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
-        self.methods['assign_cadence'] = 'first'
         self._add_dummy_cadences()
         return
 
@@ -425,6 +425,10 @@ class Field(object):
             self.assignments_dtype = np.dtype([('assigned', np.int32),
                                                ('satisfied', np.int32),
                                                ('robotID', np.int32,
+                                                (self.field_cadence.nexp_total,)),
+                                               ('target_skybrightness', np.float32,
+                                                (self.field_cadence.nexp_total,)),
+                                               ('field_skybrightness', np.float32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('fiberType', np.unicode_, 10),
                                                ('rsflags', np.int32)])
@@ -622,12 +626,18 @@ class Field(object):
         # Set up outputs
         assignments = np.zeros(len(targets),
                                dtype=self.assignments_dtype)
+
+        field_skybrightness = self.field_cadence.skybrightness[self.field_cadence.epochs]
+        assignments['field_skybrightness'] = np.outer(np.ones(len(targets)),
+                                                      field_skybrightness)
         if(assignment_array is None):
             assignments['fiberType'] = targets['fiberType']
             assignments['robotID'] = -1
+            assignments['target_skybrightness'] = -1.
         else:
             for n in self.assignments_dtype.names:
-                if((n == 'robotID') & (self.field_cadence.nexp_total == 1)):
+                listns = ['robotID', 'target_skybrightness', 'field_skybrightness']
+                if((n in listns) & (self.field_cadence.nexp_total == 1)):
                     assignments[n][:, 0] = assignment_array[n]
                 else:
                     assignments[n] = assignment_array[n]
@@ -1380,6 +1390,12 @@ class Field(object):
         --------
 
         available : dictionary, with key value pairs below
+            'available' : bool
+                is the overall ask available
+
+            'nAvailableRobotIDs' : ndarray of int32
+                how many available robotIDs at each epoch
+
             'availableRobotIDs' : list of lists
                 for each epoch, list of available robotIDs sorted by robotID
 
@@ -1394,11 +1410,14 @@ class Field(object):
         validRobotIDs = self.masterTargetDict[rsid].validRobotIDs
         validRobotIDs = np.array(validRobotIDs, dtype=np.int32)
 
+        nAvailableRobotIDs = np.zeros(len(epochs), dtype=np.int32)
         availableRobotIDs = [[]] * len(epochs)
         frees = [[]] * len(epochs)
 
         if(len(validRobotIDs) == 0):
             available = dict()
+            available['available'] = False
+            available['nAvailableRobotIDs'] = nAvailableRobotIDs
             available['availableRobotIDs'] = availableRobotIDs
             available['freeExposures'] = frees
             return(available)
@@ -1409,6 +1428,8 @@ class Field(object):
             if(len(epochs) == 1):
                 if(self._robotnexp_max[validRobotIDs, epochs[0]].max() < nexps[0]):
                     available = dict()
+                    available['available'] = False
+                    available['nAvailableRobotIDs'] = nAvailableRobotIDs
                     available['availableRobotIDs'] = availableRobotIDs
                     available['freeExposures'] = frees
                     return(available)
@@ -1416,6 +1437,8 @@ class Field(object):
                 for iepoch, epoch in enumerate(epochs):
                     if(self._robotnexp_max[validRobotIDs, epoch].max() < nexps[iepoch]):
                         available = dict()
+                        available['available'] = False
+                        available['nAvailableRobotIDs'] = nAvailableRobotIDs
                         available['availableRobotIDs'] = availableRobotIDs
                         available['freeExposures'] = frees
                         return(available)
@@ -1445,9 +1468,12 @@ class Field(object):
                     if(first):
                         break
             availableRobotIDs[iepoch] = arlist
+            nAvailableRobotIDs[iepoch] = len(arlist)
             frees[iepoch] = flist
 
         available = dict()
+        available['available'] = nAvailableRobotIDs.min() > 0
+        available['nAvailableRobotIDs'] = nAvailableRobotIDs
         available['availableRobotIDs'] = availableRobotIDs
         available['freeExposures'] = frees
         return(available)
@@ -1550,36 +1576,29 @@ class Field(object):
         if(ok == False):
             return False
 
-        # Find set of epochs which is "most available"
-        if(self.methods['assign_cadence'] == 'mostavailable'):
-            navailable = np.zeros(len(epochs_list), dtype=np.int32)
-            for indx, epochs in enumerate(epochs_list):
-                nexps = nexps_list[indx]
-                iscalib = False
-                if(self.nocalib is False):
-                    if(self.targets['category'][self.rsid2indx[rsid]] in self.required_calibrations):
-                        iscalib = True
-                available = self.available_epochs(rsid=rsid, epochs=epochs, nexps=nexps,
-                                                  iscalib=iscalib, strict=True)
-                availableRobotIDs = available['availableRobotIDs']
-
-                navailable[indx] = 1
-                for ari in availableRobotIDs:
-                    navailable[indx] = navailable[indx] + len(ari)
-
-            imost = np.argmax(navailable)
-            epochs = epochs_list[imost]
-            nexps = nexps_list[imost]
-            if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
-                return True
-
-        # Or just use first available
-        if(self.methods['assign_cadence'] == 'first'):
-            for indx, epochs in enumerate(epochs_list):
+        # Check for all potential epochs whether they can accomodate at
+        # least the minimum number of exposures; if not we can eliminate
+        # them.
+        if(len(epochs_list) > 100):
+            epochs = np.arange(self.field_cadence.nepochs, dtype=np.int32)
+            nexps = (np.zeros(self.field_cadence.nepochs, dtype=np.int32) + 
+                     clist.cadences[target_cadence].nexp.min())
+        else:
+            epochs = np.unique(np.array([e for es in epochs_list for e in es]))
+            nexps = np.zeros(len(epochs), dtype=np.int32) + np.array([ne for nes in nexps_list for ne in nes], dtype=np.int32).min()
+            
+        available = self.available_epochs(rsid, epochs=epochs, nexps=nexps,
+                                          iscalib=False, strict=False, first=True)
+        ibad = np.where(available['nAvailableRobotIDs'] == 0)[0]
+        epoch_bad = np.zeros(self.field_cadence.nepochs, dtype=np.bool)
+        epoch_bad[epochs[ibad]] = True
+        
+        for indx, epochs in enumerate(epochs_list):
+            if(epoch_bad[epochs].max() == False):
                 nexps = nexps_list[indx]
                 if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
                     return True
-
+                
         return False
 
     def _set_satisfied(self, catalogids=None):
@@ -1681,11 +1700,16 @@ class Field(object):
         # Find single bright cases
         cadences = np.unique(self.targets['cadence'][indxs])
         singlebright = np.zeros(len(self.targets), dtype=np.bool)
+        multibright = np.zeros(len(self.targets), dtype=np.bool)
         for cadence in cadences:
             if(clist.cadence_consistency(cadence, '_field_single_1x1',
                                          return_solutions=False)):
                 icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
                 singlebright[indxs[icad]] = True
+            elif(clist.cadence_consistency(cadence, '_field_single_12x1',
+                                           return_solutions=False)):
+                icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
+                multibright[indxs[icad]] = True
 
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
@@ -1696,8 +1720,22 @@ class Field(object):
             self._set_competing_targets(rsids[iormore])
 
             iassign = np.where((singlebright[indxs] == False) &
+                               (multibright[indxs] == False) &
                                (self.assignments['satisfied'][indxs] == 0) &
                                (self.targets['priority'][indxs] == priority))[0]
+
+            if(self.verbose):
+                outstr = "fieldid {fid}: Includes cadences ".format(fid=self.fieldid)
+                pcads = np.unique(self.targets['cadence'][indxs[iassign]])
+                for pcad in pcads:
+                    outstr = outstr + pcad + " "
+                print(outstr, flush=True)
+
+                outstr = "fieldid {fid}: Includes cartons ".format(fid=self.fieldid)
+                pcarts = np.unique(self.targets['carton'][indxs[iassign]])
+                for pcart in pcarts:
+                    outstr = outstr + pcart + " "
+                print(outstr, flush=True)
             
             if(len(iassign) > 0):
                 if(self.verbose):
@@ -1728,6 +1766,19 @@ class Field(object):
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[isinglebright].sum(), fid=self.fieldid), flush=True)
 
+            for icycle in range(1):
+                imultibright = np.where(multibright[indxs] &
+                                        (self.assignments['satisfied'][indxs] == 0) &
+                                        (self.targets['priority'][indxs] == priority))[0]
+                if(len(imultibright) > 0):
+                    if(self.verbose):
+                        print("fieldid {fid}:  - {n} assigning as multi bright (cycle {i})".format(n=len(imultibright), i=icycle, fid=self.fieldid), flush=True)
+                    self._assign_multibright(indxs=indxs[imultibright])
+                    success[imultibright] = self.assignments['satisfied'][indxs[imultibright]]
+
+                    if(self.verbose):
+                        print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
+
             self._competing_targets = None
 
         return(success)
@@ -1740,95 +1791,11 @@ class Field(object):
 
         indxs : ndarray of np.int32
             indices into self.targets of targets to assign
-        
-
-        Notes
-        -----
-
-        First, uniquifies on catalogid so as not to repeat itself.
-
-        Second, loops through robots, and assigns its unused exposures to
-        singlebrights.
-
-        Ignores collisions!
 """
         rsids = self.targets['rsid'][indxs]
         iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
 
         tdict = self.mastergrid.targetDict
-
-#        for robotID in self.mastergrid.robotDict:
-#            r = self.mastergrid.robotDict[robotID]
-#            robot_rsids = set(r.validTargetIDs)
-#            curr_rsids = list(robot_rsids.intersection(rsids))
-#
-#            # Only check possibly free exposures
-#            robot2indx = self._robot2indx[robotID, iexps]
-#            spare = self._has_spare_calib[self._calibration_index[robot2indx + 1], iexps]
-#            ifree = np.where((robot2indx < 0) | (spare == True))[0]
-#            for iexp in iexps[ifree]:
-#                for curr_rsid in curr_rsids:
-#                    collided = self.collide_robot_exposure(rsid=curr_rsid,
-#                                                           robotID=robotID,
-#                                                           iexp=iexp)
-#                    if(collided == False):
-#                        self.assign_robot_exposure(robotID=robotID,
-#                                                   rsid=curr_rsid,
-#                                                   iexp=iexp,
-#                                                   reset_satisfied=False,
-#                                                   reset_has_spare=False)
-#                        indx = self.rsid2indx[curr_rsid]
-#                        icat = np.where((self.targets['catalogid'] == 
-#                                         self.targets['catalogid'][indx])
-#                                        & (inindx))[0]
-#                        self.assignments['satisfied'][icat] = 1
-#                        rsids.remove(curr_rsid)
-#                        curr_rsids.remove(curr_rsid)
-#                        break
-#                 
-#            self._set_has_spare_calib()  
-
-        # Set up dictionary of rsids for each robotID
-#        curr_rsids = dict()
-#        for robotID in self.mastergrid.robotDict:
-#            r = self.mastergrid.robotDict[robotID]
-#            robot_rsids = set(r.validTargetIDs)
-#            tmp_rsids = list(robot_rsids.intersection(rsids))
-#            random.shuffle(tmp_rsids)
-#            curr_rsids[robotID] = tmp_rsids
-#
-#        for iexp in iexps:
-#            # Only check possibly free robots
-#            robot2indx = self._robot2indx[:, iexp]
-#            spare = self._has_spare_calib[self._calibration_index[robot2indx + 1], iexp]
-#            robotIDs = np.where((robot2indx < 0) | (spare == True))[0]
-#            for robotID in robotIDs:
-#                robot2indx = self._robot2indx[robotID, iexp]
-#                # Since the number of calibrations can change, we need
-#                # to double check if the robot is really free
-#                if((robot2indx >= 0) &
-#                   (self._has_spare_calib[self._calibration_index[robot2indx + 1], iexp] == False)):
-#                    continue
-#                for curr_rsid in curr_rsids[robotID]:
-#                    collided = self.collide_robot_exposure(rsid=curr_rsid,
-#                                                           robotID=robotID,
-#                                                           iexp=iexp)
-#                    if(collided == False):
-#                        self.assign_robot_exposure(robotID=robotID,
-#                                                   rsid=curr_rsid,
-#                                                   iexp=iexp,
-#                                                   reset_satisfied=False,
-#                                                   reset_has_spare=False)
-#                        if(spare[robotID]):
-#                            self._set_has_spare_calib()  
-#                        indx = self.rsid2indx[curr_rsid]
-#                        icat = np.where((self.targets['catalogid'] == 
-#                                         self.targets['catalogid'][indx])
-#                                        & (inindx))[0]
-#                        self.assignments['satisfied'][icat] = 1
-#                        for validRobotID in tdict[curr_rsid].validRobotIDs:
-#                            curr_rsids[validRobotID].remove(curr_rsid)
-#                        break
 
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
@@ -1861,6 +1828,58 @@ class Field(object):
 
                     if(gotem):
                         break
+
+        return
+
+    def _assign_multibright(self, indxs=None):
+        """Assigns nx1 bright targets en masse
+
+        Parameters
+        ----------
+
+        indxs : ndarray of np.int32
+            indices into self.targets of targets to assign
+"""
+        rsids = self.targets['rsid'][indxs]
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
+
+        tdict = self.mastergrid.targetDict
+
+        for rsid in rsids:
+            indx = self.rsid2indx[rsid]
+            nexp = clist.cadences[self.targets['cadence'][indx]].nexp_total
+            robotIDs = np.array(tdict[rsid].validRobotIDs)
+
+            if((len(robotIDs) > 0) &
+               (self.assignments['satisfied'][indx] == 0)):
+
+                iexpgot = []
+                for iexp in iexps:
+                    # Only check possibly free robots
+                    robot2indx = self._robot2indx[robotIDs, iexp]
+                    if(self.nocalib is False):
+                        spare = self._has_spare_calib[self._calibration_index[robot2indx + 1], iexp]
+                        ifree = np.where((robot2indx < 0) | (spare == True))[0]
+                    else:
+                        ifree = np.where(robot2indx < 0)[0]
+                    for robotID in robotIDs[ifree]:
+                        collided = self.collide_robot_exposure(rsid=rsid,
+                                                               robotID=robotID,
+                                                               iexp=iexp)
+                        if(collided == False):
+                            iexpgot.append(iexp)
+                            break
+
+                    if(len(iexpgot) >= nexp):
+                        break
+                    
+                if(len(iexpgot) >= nexp):
+                    for iexp in iexpgot[0:nexp]:
+                        self.assign_robot_exposure(robotID=robotID,
+                                                   rsid=rsid,
+                                                   iexp=iexp,
+                                                   reset_satisfied=True,
+                                                   reset_has_spare=True)
 
         return
 
@@ -2583,10 +2602,11 @@ class FieldSpeedy(Field):
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=2.,
-                 fieldid=1):
+                 fieldid=1, verbose=False):
         super().__init__(filename=filename, racen=racen, pa=pa,
                          observatory=observatory, field_cadence=field_cadence,
                          collisionBuffer=collisionBuffer, fieldid=fieldid,
+                         verbose=verbose,
                          nocalib=True, nocollide=True, allgrids=False)
         return
 
