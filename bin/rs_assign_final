@@ -104,7 +104,7 @@ def assign_field(indx):
         return
 
     print(datetime.datetime.now(), flush=True)
-    f = field.Field(filename=field_target_file)
+    f = field.Field(filename=field_target_file, verbose=True)
     print(datetime.datetime.now(), flush=True)
     f.set_field_cadence(field_cadence)
     print(datetime.datetime.now(), flush=True)

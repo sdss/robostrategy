@@ -219,7 +219,7 @@ class Field(object):
         self._calibration_index = np.zeros(1, dtype=np.bool)
         if(filename is not None):
             if(self.verbose):
-                print("Reading from {f}".format(f=filename))
+                print("Reading from {f}".format(f=filename), flush=True)
             self.fromfits(filename=filename)
         else:
             self.racen = racen
@@ -329,7 +329,7 @@ class Field(object):
 
     def clear_field_cadence(self):
         if(self.verbose):
-            print("Clearing field cadence")
+            print("Clearing field cadence", flush=True)
         if(self.assignments is not None):
             self.clear_assignments()
 
@@ -349,7 +349,7 @@ class Field(object):
                     self.calibrations[n] = np.zeros(0, dtype=np.int32)
 
         if(self.verbose):
-            print(" (done clearing field cadence)")
+            print(" (done clearing field cadence)", flush=True)
 
         return
 
@@ -405,7 +405,7 @@ class Field(object):
                 return
         if(field_cadence != 'none'):
             if(self.verbose):
-                print("Setting field cadence")
+                print("Setting field cadence", flush=True)
             self.field_cadence = clist.cadences[field_cadence]
             if(self.allgrids):
                 for i in range(self.field_cadence.nexp_total):
@@ -438,7 +438,7 @@ class Field(object):
             if(self.nocalib is False):
                 self._set_has_spare_calib()
             if(self.verbose):
-                print("  (done setting field cadence)")
+                print("  (done setting field cadence)", flush=True)
         else:
             self.field_cadence = None
             if(self.allgrids):
@@ -1690,7 +1690,7 @@ class Field(object):
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
             if(self.verbose):
-                print("Assigning priority {p}".format(p=priority))
+                print("Assigning priority {p}".format(p=priority), flush=True)
             iormore = np.where((self.targets['priority'][indxs] >= priority) &
                                (self._is_calibration[indxs] == False))[0]
             self._set_competing_targets(rsids[iormore])
@@ -1701,13 +1701,13 @@ class Field(object):
             
             if(len(iassign) > 0):
                 if(self.verbose):
-                    print(" - {n} assigning one-by-one".format(n=len(iassign)))
+                    print(" - {n} assigning one-by-one".format(n=len(iassign)), flush=True)
                     
                 success[iassign] = self._assign_one_by_one(rsids=rsids[iassign],
                                                            check_satisfied=check_satisfied)  
                     
                 if(self.verbose):
-                    print("   (assigned {n})".format(n=success[iassign].sum()))
+                    print("   (assigned {n})".format(n=success[iassign].sum()), flush=True)
 
             # It is always affordable to run through the single bright
             # cases twice. Why does it matter? Because when they displace
@@ -1721,12 +1721,12 @@ class Field(object):
                                          (self.targets['priority'][indxs] == priority))[0]
                 if(len(isinglebright) > 0):
                     if(self.verbose):
-                        print(" - {n} assigning as single bright (cycle {i})".format(n=len(isinglebright), i=icycle))
+                        print(" - {n} assigning as single bright (cycle {i})".format(n=len(isinglebright), i=icycle), flush=True)
                     self._assign_singlebright(indxs=indxs[isinglebright])
                     success[isinglebright] = self.assignments['satisfied'][indxs[isinglebright]]
 
                     if(self.verbose):
-                        print("   (assigned {n})".format(n=success[isinglebright].sum()))
+                        print("   (assigned {n})".format(n=success[isinglebright].sum()), flush=True)
 
             self._competing_targets = None
 
@@ -2040,19 +2040,19 @@ class Field(object):
             return
 
         if(self.verbose):
-            print("Assigning calibrations")
+            print("Assigning calibrations", flush=True)
         
         icalib = np.where(self._is_calibration)[0]
         self.assign_cadences(rsids=self.targets['rsid'][icalib])
         self._set_has_spare_calib()
         if(self.verbose):
-            print("  (done assigning calibrations)")
+            print("  (done assigning calibrations)", flush=True)
         return
 
     def assign_science(self):
         """Assign all science targets"""
         if(self.verbose):
-            print("Assigning science")
+            print("Assigning science", flush=True)
 
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
@@ -2063,7 +2063,7 @@ class Field(object):
         self.assign_cadences(rsids=self.targets['rsid'][iscience])
 
         if(self.verbose):
-            print("  (done assigning science)")
+            print("  (done assigning science)", flush=True)
         return
 
     def assign(self, coordinated_targets=None):
