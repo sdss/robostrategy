@@ -103,20 +103,22 @@ def assign_field(indx):
         print("Fieldid {f} exists already".format(f=fieldid))
         return
 
-    print(datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
     f = field.Field(filename=field_target_file, verbose=True)
-    print(datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
     f.set_field_cadence(field_cadence)
-    print(datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
 
-    print(datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
     f.targets['cadence'][icalib] = field_cadence
-    print(datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
 
     if(f.field_cadence is not None):
         print("Assign targets", flush=True)
         f.assign(coordinated_targets=coordinated_dict)
+
+    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
 
     print("Write assignments", flush=True)
     f.tofits(field_assigned_file)
@@ -251,6 +253,7 @@ if __name__ == '__main__':
                                                                    allocate.field_array['deccen'][ikeep], 
                                                                    ikeep,observatory=observatory)
 
+        np.random.shuffle(parallel_ids)
         with multiprocessing.Pool() as pool:
             pool.map(assign_field, parallel_ids)
 
@@ -273,6 +276,7 @@ if __name__ == '__main__':
         for i in sequential_ids:
             assign_field(i)
     else:
+        np.random.shuffle(ikeep)
         with multiprocessing.Pool() as pool:
             pool.map(assign_field, ikeep)
     print('DONE: rs_assign_final')
