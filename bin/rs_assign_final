@@ -103,22 +103,23 @@ def assign_field(indx):
         print("Fieldid {f} exists already".format(f=fieldid))
         return
 
-    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
-    f = field.Field(filename=field_target_file, verbose=True)
-    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
+    f = field.Field(filename=field_target_file, verbose=True,
+                    fieldid=fieldid)
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
     f.set_field_cadence(field_cadence)
-    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
-    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
     f.targets['cadence'][icalib] = field_cadence
-    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
     if(f.field_cadence is not None):
         print("Assign targets", flush=True)
         f.assign(coordinated_targets=coordinated_dict)
 
-    print("fieldid {fid}: ".format(fid=fieldid) + datetime.datetime.now(), flush=True)
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
     print("Write assignments", flush=True)
     f.tofits(field_assigned_file)
