@@ -37,6 +37,7 @@ import os
 import sys
 import argparse
 
+import robostrategy.params as params
 import sdss_access.path
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
@@ -97,6 +98,15 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    if('TypesToRotate' in rsParams.cfg.options('Fields')):
+        types_to_rotate = rsParams.cfg.get('Fields', 'TypesToRotate')
+    else:
+        types_to_rotate = ['AllSkySloane', 'BHMSPIDERS',
+                           'BHMAqmesMedium', 'BHMAqmesWide2',
+                           'MWMTESS_OBAF', 'MWMWD']
+
     infile = sdss_path.full('rsFields', plan=plan,
                             observatory=observatory)
     outfile = infile.replace('rsFields', 'rsFieldsRotated')
@@ -129,7 +139,8 @@ if __name__ == '__main__':
     col_type = 'type'
 
     # take subset of fields that have type == 'AllSkySloane'
-    m = np.where((fdata[col_type] == 'AllSkySloane'), True, False)
+    ok = np.array([t in types_to_rotate for t in fdata[col_type]])
+    m = np.where(ok, True, False)
     fas = np.extract(m, fdata)
     del m
 
