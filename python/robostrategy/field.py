@@ -1725,14 +1725,17 @@ class Field(object):
                                (self.targets['priority'][indxs] == priority))[0]
 
             if(self.verbose):
+                iall = np.where((self.assignments['satisfied'][indxs] == 0) &
+                               (self.targets['priority'][indxs] == priority))[0]
+
                 outstr = "fieldid {fid}: Includes cadences ".format(fid=self.fieldid)
-                pcads = np.unique(self.targets['cadence'][indxs[iassign]])
+                pcads = np.unique(self.targets['cadence'][indxs[iall]])
                 for pcad in pcads:
                     outstr = outstr + pcad + " "
                 print(outstr, flush=True)
 
                 outstr = "fieldid {fid}: Includes cartons ".format(fid=self.fieldid)
-                pcarts = np.unique(self.targets['carton'][indxs[iassign]])
+                pcarts = np.unique(self.targets['carton'][indxs[iall]])
                 for pcart in pcarts:
                     outstr = outstr + pcart + " "
                 print(outstr, flush=True)
