@@ -106,9 +106,7 @@ def field_options(ifield):
     field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                        observatory=observatory,
                                        fieldid=fieldid)
-    f = field.Field(filename=field_target_file, speedy=True)
-
-    print(f.speedy)
+    f = field.FieldSpeedy(filename=field_target_file)
 
     try:
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
