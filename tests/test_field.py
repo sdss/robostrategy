@@ -93,7 +93,7 @@ def test_radec():
                       instrument='BOSS')
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
-    x, y = f.radec2xy(ra=180.5, dec=0.5)
+    x, y = f.radec2xy(ra=180.5, dec=0.5, fiberType='APOGEE')
     ra, dec = f.xy2radec(x=x, y=y)
     assert np.abs(ra - 180.5) < 1.e-7
     assert np.abs(dec - 0.5) < 1.e-7

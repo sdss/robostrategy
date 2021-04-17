@@ -190,10 +190,10 @@ class Field(object):
         else:
             self.racen = racen
             self.deccen = deccen
-            self._ot = obstime.ObsTime(observatory=self.observatory)
-            self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
             self.pa = pa
             self.observatory = observatory
+            self._ot = obstime.ObsTime(observatory=self.observatory)
+            self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
             self.collisionBuffer = collisionBuffer
             self.mastergrid = self._robotGrid()
             if(self.nocalib is False):
