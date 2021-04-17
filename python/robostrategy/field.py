@@ -15,6 +15,9 @@ import ortools.sat.python.cp_model as cp_model
 import roboscheduler.cadence as cadence
 import kaiju
 import kaiju.robotGrid
+import robostrategy.obstime as obstime
+import coordio.time
+import coordio.utils
 
 # alpha and beta lengths for plotting
 _alphaLen = 7.4
@@ -68,7 +71,6 @@ Dependencies:
 
 # Establish access to the CadenceList singleton
 clist = cadence.CadenceList()
-
 
 class Field(object):
     """Field class
@@ -150,6 +152,9 @@ class Field(object):
         for each epoch for 'sky_boss', 'standard_boss', 'sky_apogee',
         'standard_apogee'
 
+    obstime : coordio Time object
+        nominal time of observation to use for calculating x/y
+
     _robot2indx : ndarray of int32 or None
         [nrobots, nexp_total] array of indices into targets
 
@@ -185,6 +190,8 @@ class Field(object):
         else:
             self.racen = racen
             self.deccen = deccen
+            self._ot = obstime.ObsTime(observatory=self.observatory)
+            self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
             self.pa = pa
             self.observatory = observatory
             self.collisionBuffer = collisionBuffer
@@ -216,6 +223,8 @@ class Field(object):
         self.observatory = hdr['OBS']
         self.collisionBuffer = hdr['CBUFFER']
         self.mastergrid = self._robotGrid()
+        self._ot = obstime.ObsTime(observatory=self.observatory)
+        self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
         field_cadence = hdr['FCADENCE']
         if(self.nocalib is False):
             self.required_calibrations = collections.OrderedDict()
@@ -434,65 +443,36 @@ class Field(object):
                 flagnames.append(fn)
         return(flagnames)
 
-    # Temporary method to deal with x&y to ra&dec conversion
-    def radec2xy(self, ra=None, dec=None):
-        # Yikes!
-        if(self.observatory == 'apo'):
-            scale = 218.
-        if(self.observatory == 'lco'):
-            scale = 329.
-
-        # From Meeus Ch. 17
-        deccen_rad = self.deccen * np.pi / 180.
-        racen_rad = self.racen * np.pi / 180.
-        dec_rad = dec * np.pi / 180.
-        ra_rad = ra * np.pi / 180.
-        x = (np.cos(deccen_rad) * np.sin(dec_rad) -
-             np.sin(deccen_rad) * np.cos(dec_rad) *
-             np.cos(ra_rad - racen_rad))
-        y = np.cos(dec_rad) * np.sin(ra_rad - racen_rad)
-        z = (np.sin(deccen_rad) * np.sin(dec_rad) +
-             np.cos(deccen_rad) * np.cos(dec_rad) *
-             np.cos(ra_rad - racen_rad))
-        d_rad = np.arctan2(np.sqrt(x**2 + y**2), z)
-
-        pay = np.sin(ra_rad - racen_rad)
-        pax = (np.cos(deccen_rad) * np.tan(dec_rad) -
-               np.sin(deccen_rad) * np.cos(ra_rad - racen_rad))
-        pa_rad = np.arctan2(pay, pax)  # I think E of N?
-
-        pa_rad = pa_rad - self.pa * np.pi / 180.
-
-        x = d_rad * 180. / np.pi * scale * np.sin(pa_rad)
-        y = d_rad * 180. / np.pi * scale * np.cos(pa_rad)
-
+    def radec2xy(self, ra=None, dec=None, epoch=None, pmra=None,
+                 pmdec=None, fiberType=None):
+        if(isinstance(fiberType, str)):
+            wavename = fiberType.capitalize()
+        else:
+            wavename = np.array([x.capitalize() for x in fiberType])
+        epoch = self.obstime.jd
+        x, y, warn, ha, pa = coordio.utils.radec2wokxy(ra, dec, epoch,
+                                                       wavename,
+                                                       self.racen, self.deccen,
+                                                       self.pa,
+                                                       self.observatory.upper(),
+                                                       self.obstime.jd,
+                                                       pmra=pmra,
+                                                       pmdec=pmdec)
         return(x, y)
 
-    # Temporary method to deal with x&y to ra&dec conversion
-    def _min_xy_diff(self, radec, xt, yt):
-        x, y = self.radec2xy(ra=radec[0], dec=radec[1])
-        resid2 = (x - xt)**2 + (y - yt)**2
-        return(resid2)
-
-    # Temporary method to deal with x&y to ra&dec conversion
-    def xy2radec(self, x=None, y=None):
-        # This doesn't handle poles well
-        # Yikes!
-        if(self.observatory == 'apo'):
-            scale = 218.
-        if(self.observatory == 'lco'):
-            scale = 329.
+    def xy2radec(self, x=None, y=None, fiberType=None):
+        if(isinstance(fiberType, str)):
+            wavename = fiberType.capitalize()
+        else:
+            wavename = np.array([t.capitalize() for t in fiberType])
         xa = self._arrayify(x, dtype=np.float64)
         ya = self._arrayify(y, dtype=np.float64)
-        rast = self.racen - xa / scale / np.cos(self.deccen * np.pi / 180.)
-        decst = self.deccen + ya / scale
-        ra = np.zeros(len(xa), dtype=np.float64)
-        dec = np.zeros(len(xa), dtype=np.float64)
-        for i in np.arange(len(xa)):
-            res = optimize.minimize(self._min_xy_diff, [rast[i], decst[i]],
-                                    (xa[i], ya[i]))
-            ra[i] = res.x[0]
-            dec[i] = res.x[1]
+        ra, dec, warn = coordio.utils.wokxy2radec(xa, ya,
+                                                  wavename,
+                                                  self.racen, self.deccen,
+                                                  self.pa,
+                                                  self.observatory.upper(),
+                                                  self.obstime.jd)
         return(ra, dec)
 
     def targets_fromfits(self, filename=None):
@@ -590,7 +570,8 @@ class Field(object):
 
         # Convert ra/dec to x/y
         targets['x'], targets['y'] = self.radec2xy(ra=targets['ra'],
-                                                   dec=targets['dec'])
+                                                   dec=targets['dec'],
+                                                   fiberType=targets['fiberType'])
 
         # Add targets to robotGrids
         self._targets_to_robotgrid(targets=targets,
