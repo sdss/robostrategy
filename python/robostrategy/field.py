@@ -621,10 +621,12 @@ class Field(object):
                                          _is_calibration)
         self._calibration_index = np.append(self._calibration_index,
                                             _calibration_index)
-        if(assignments is not None):
-            self.assignments = np.append(self.assignments, assignments, axis=0)
 
         self._unique_catalogids = np.unique(self.targets['catalogid'])
+
+        if(assignments is not None):
+            self.assignments = np.append(self.assignments, assignments, axis=0)
+            self._set_satisfied()
 
         return
 
