@@ -26,9 +26,7 @@ import pickle
 from sdssdb.peewee.sdss5db import database
 database.set_profile('operations')
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 if __name__ == '__main__':
@@ -64,20 +62,22 @@ if __name__ == '__main__':
     for c in cfg['Cadences']:
         adjustment = cfg.get('Cadences', c)
         if(adjustment == 'NoDelta'):
-            for i in cadencelist.cadences[c].epoch_indx[:-1]:
-                cadencelist.cadences[c].delta[i] = -1.
-                cadencelist.cadences[c].delta_min[i] = -1.
-                cadencelist.cadences[c].delta_max[i] = -1.
+            if(c in cadencelist.cadences):
+                for i in cadencelist.cadences[c].epoch_indx[:-1]:
+                    cadencelist.cadences[c].delta[i] = -1.
+                    cadencelist.cadences[c].delta_min[i] = -1.
+                    cadencelist.cadences[c].delta_max[i] = -1.
         else:
-            tmpc = cadencelist.cadences[adjustment]
-            cadencelist.add_cadence(name=c,
-                                    nexposures=tmpc.nexposures,
-                                    skybrightness=tmpc.skybrightness,
-                                    delta=tmpc.delta,
-                                    delta_min=tmpc.delta_min,
-                                    delta_max=tmpc.delta_max,
-                                    instrument=tmpc.instrument,
-                                    version=tmpc.version)
+            if(c in cadencelist.cadences):
+                tmpc = cadencelist.cadences[adjustment]
+                cadencelist.add_cadence(name=c,
+                                        nexposures=tmpc.nexposures,
+                                        skybrightness=tmpc.skybrightness,
+                                        delta=tmpc.delta,
+                                        delta_min=tmpc.delta_min,
+                                        delta_max=tmpc.delta_max,
+                                        instrument=tmpc.instrument,
+                                        version=tmpc.version)
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
