@@ -20,7 +20,7 @@ import sys
 import numpy as np
 import fitsio
 import peewee
-import roboscheduler.cadence as cadence
+import roboscheduler.cadence
 import robostrategy.params as params
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdss_access.path
@@ -112,10 +112,10 @@ def get_targets(cfg=None):
                                          targetdb.Version.plan,
                                          targetdb.Version.tag)
                   .join(targetdb.CartonToTarget)
-                  .join(targetdb.Instrument).switch(targetdb.CartonToTarget)
-                  .join(targetdb.Cadence).switch(targetdb.CartonToTarget)
+                  .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+                  .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
                   .join(targetdb.Carton)
-                  .join(targetdb.Mapper).switch(targetdb.Carton)
+                  .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
                   .join(targetdb.Version).switch(targetdb.Carton)
                   .join(targetdb.Category).switch(targetdb.Target)
                   .where((targetdb.Carton.carton == carton) &
@@ -137,6 +137,32 @@ def get_targets(cfg=None):
                                 problems.append(n)
 
             tmp_targets['rsid'] = tmp_targets['carton_to_target_pk']
+
+            inofibertype = np.where(tmp_targets['fiberType'] == '')[0]
+            if(len(inofibertype) > 0):
+                msg = "WARNING: {n} targets in {c} with no fiberType".format(n=len(inofibertype), c=carton)
+                if(carton in c2c['CartonToFiberType']):
+                    fiberType = c2c.get('CartonToFiberType', carton)
+                    print("{msg}, SETTING TO {fiberType}".format(msg=msg, fiberType=fiberType))
+                    tmp_targets['fiberType'][inofibertype] = fiberType
+                else:
+                    print("{msg}, NOT FIXING".format(msg=msg))
+
+            inocadence = np.where(tmp_targets['cadence'] == '')[0]
+            if(len(inocadence) > 0):
+                msg = "WARNING: {n} targets in {c} with no cadence".format(n=len(inocadence), c=carton)
+                if(carton in c2c['CartonToCadence']):
+                    cadence = c2c.get('CartonToCadence', carton)
+                    print("{msg}, SETTING TO {cadence}".format(msg=msg, cadence=cadence))
+                    tmp_targets['cadence'][inocadence] = cadence
+                    if(cadence == 'dark_174x8'):
+                        ii = np.where((np.abs(tmp_targets['ra'][inocadence] - 90.) < 6.) &
+                                      (np.abs(tmp_targets['dec'][inocadence] + 66.56) < 2.))[0]
+                        if(len(ii) > 0):
+                            tmp_targets['cadence'][inocadence[ii]] = 'dark_100x8'
+                else:
+                    print("{msg}, NOT FIXING".format(msg=msg))
+                    
             targets = np.append(targets, tmp_targets)
 
     targets['rsid'] = np.arange(len(targets), dtype=np.int64)
@@ -159,7 +185,7 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    cadencelist = cadence.CadenceList()
+    cadencelist = roboscheduler.cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
@@ -167,9 +193,9 @@ if __name__ == '__main__':
     fiberType = dict()
     for c in cadencelist.cadences:
         instrument = cadencelist.cadences[c].instrument
-        if(instrument == cadence.Instrument.ApogeeInstrument):
+        if(instrument == roboscheduler.cadence.Instrument.ApogeeInstrument):
             fiberType[c] = 'APOGEE'
-        if(instrument == cadence.Instrument.BossInstrument):
+        if(instrument == roboscheduler.cadence.Instrument.BossInstrument):
             fiberType[c] = 'BOSS'
 
     c2cfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
@@ -187,9 +213,6 @@ if __name__ == '__main__':
     cfg.read(cfgfile)
 
     targets = get_targets(cfg=cfg)
-    print(len(targets))
-
-    print(np.unique(targets['carton']))
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)

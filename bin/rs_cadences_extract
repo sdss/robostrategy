@@ -79,6 +79,14 @@ if __name__ == '__main__':
                                         instrument=tmpc.instrument,
                                         version=tmpc.version)
 
+    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                            'data', 'v0.5-cadence-hack.fits')
+    cadencelist.fromfits(hackfile)
+
+    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                            'data', 'v0.5-field-cadences-hack.cfg')
+    cadencelist.fromcfg(hackfile)
+
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadences_array = cadencelist.toarray()
