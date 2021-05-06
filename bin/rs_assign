@@ -50,7 +50,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     target_got = np.zeros(len(f.targets), dtype=np.int32)
     target_assigned = f.assignments['robotID'][:, 0:nvisit] >= 0
     target_nexposures = np.array([cadencelist.cadences[t].nexp_total
-                                  if(t != 'none') else 1
+                                  if(t != '') else 1
                                   for t in f.targets['cadence']])
     igot = np.where(target_assigned.sum(axis=1) >= target_nexposures)[0]
     target_got[igot] = 1
@@ -106,7 +106,8 @@ def field_options(ifield):
     field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                        observatory=observatory,
                                        fieldid=fieldid)
-    f = field.FieldSpeedy(filename=field_target_file)
+    f = field.FieldSpeedy(filename=field_target_file,
+                          verbose=True, fieldid=fieldid)
 
     try:
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
@@ -119,15 +120,15 @@ def field_options(ifield):
     print(field_cadences)
 
     for full_field_cadence in field_cadences:
-        last = full_field_cadence.split('-')[-1]
+        last = full_field_cadence.split('_')[-1]
         if(last[0] == 'n'):
             n_field_cadence = True
-            if(last != 'n'):
-                minn = int(last[1:])
+            if(last != 'nx1'):
+                minn = int(last[1])
             else:
                 minn = 1
-            field_cadence_base = full_field_cadence.split('-')[0]
-            field_cadence = field_cadence_base + "-n"
+            field_cadence_base = "_".join(full_field_cadence.split('_')[0:-1])
+            field_cadence = field_cadence_base + "_nx1"
         else:
             n_field_cadence = False
             minn = 0
@@ -149,8 +150,8 @@ def field_options(ifield):
             assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
             for indx in np.arange(minn, ncadence + 1, dtype=np.int32):
                 print("indx={indx}".format(indx=indx), flush=True)
-                fcadence = '{base}-{n}'.format(base=field_cadence_base,
-                                               n=indx)
+                fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
+                                                 n=indx)
                 assign_entry = make_assign_entry(f, fields_entry,
                                                  fcadence, utcadences,
                                                  utcartons, assign_dtype)
@@ -261,12 +262,6 @@ if __name__ == '__main__':
         fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
 
-    targets_file = sdss_path.full('rsTargets', plan=plan,
-                                  observatory=observatory)
-    targets_all = fitsio.read(targets_file)
-    targets_coord = coordinates.SkyCoord(ra=targets_all['ra'] * units.degree,
-                                         dec=targets_all['dec'] * units.degree)
-
     field_cadence_file = sdss_path.full('rsFieldCadences',
                                         plan=plan, observatory=observatory)
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
@@ -278,20 +273,21 @@ if __name__ == '__main__':
         all_cadences.append(hdr['CAD{indx}'.format(indx=indx)])
     all_cadences = np.array(all_cadences)
 
-    # Make list of all unique target cadences
-    tcadences = [x.strip() for x in targets_all['cadence']]
-    utcadences = np.unique(np.array(tcadences))
+    target_cadence_file = field_cadence_file.replace('rsFieldCadences',
+                                                     'rsTargetCadences')
+    carr = fitsio.read(target_cadence_file, ext=1)
+    utcadences = carr['cadence']
     nutcadences = len(utcadences)
 
-    # Make list of all unique target cartons
-    tcartons = [x.strip() for x in targets_all['carton']]
-    utcartons = np.unique(np.array(tcartons))
+    carr = fitsio.read(target_cadence_file, ext=2)
+    utcartons = carr['carton']
+    nutcartons = len(utcartons)
+
     ifgotcarton = np.where(utcartons == fgot_carton)[0]
     if(len(ifgotcarton) == 1):
         ifgotcarton = ifgotcarton[0]
     else:
         ifgotcarton = -1
-    nutcartons = len(utcartons)
 
     assign_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
