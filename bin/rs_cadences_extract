@@ -96,16 +96,19 @@ if __name__ == '__main__':
     # all of the possibilities in RM fields; instead, we will assume that
     # any epochs will do.
     for cn in cadencelist.cadences:
-        if(cadencelist.cadences[cn].nepochs >= 8):
-            cadencelist.cadences[cn].delta = np.zeros(cadencelist.cadences[cn].nepochs, dtype=np.float32) - 1.
-            cadencelist.cadences[cn].delta_min = np.zeros(cadencelist.cadences[cn].nepochs, dtype=np.float32) - 1.
-            cadencelist.cadences[cn].delta_max = np.zeros(cadencelist.cadences[cn].nepochs, dtype=np.float32) - 1.
-
-    for cn in cadencelist.cadences:
-        if('' in cn):
-            print(cn)
+        if((cadencelist.cadences[cn].nepochs >= 5) & ('single' not in cn)):
+            cadencelist.cadences[cn].delta_min = cadencelist.cadences[cn].delta - 0.5
+            cadencelist.cadences[cn].delta_max = cadencelist.cadences[cn].delta + 1.
+            print("{cn}: special case for consistency with RM fields".format(cn=cn))
             c = cadencelist.cadence_consistency(cn, 'dark_174x8')
+            print(c[0])
             c = cadencelist.cadence_consistency(cn, 'dark_100x8')
+            print(c[0])
+        else:
+            if('single' not in cn):
+                print("{cn}: treat as normal for consistency with RM fields".format(cn=cn))
+                c = cadencelist.cadence_consistency(cn, 'dark_174x8')
+                c = cadencelist.cadence_consistency(cn, 'dark_100x8')
 
     pkl_file = cadences_file + ".pkl"
     fp = open(pkl_file, 'wb')
