@@ -65,7 +65,7 @@ if __name__ == '__main__':
     for indx, full_target in enumerate(full_targets):
         rsid2indx[full_target['rsid']] = indx
 
-    satisfied_dtype = np.dtype([('pk', np.int64),
+    satisfied_dtype = np.dtype([('carton_to_target_pk', np.int64),
                                 ('rsid', np.int64),
                                 ('catalogid', np.int64),
                                 ('ra', np.float64),
@@ -75,7 +75,7 @@ if __name__ == '__main__':
                                 ('assigned', np.int32)])
     satisfied = np.zeros(len(full_targets), dtype=satisfied_dtype)
 
-    xferlist = ['pk', 'rsid', 'catalogid', 'ra', 'dec', 'cadence']
+    xferlist = ['carton_to_target_pk', 'rsid', 'catalogid', 'ra', 'dec', 'cadence']
     for xfer in xferlist:
         satisfied[xfer] = full_targets[xfer]
 
