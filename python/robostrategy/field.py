@@ -264,7 +264,8 @@ class Field(object):
                           delta=[-1.],
                           delta_min=[-1.],
                           delta_max=[-1.],
-                          nexp=[1])
+                          nexp=[1],
+													max_length=[9999999.])
         clist.add_cadence(name='_field_single_12x1',
                           nepochs=12,
                           instrument='BOSS',
@@ -272,7 +273,8 @@ class Field(object):
                           delta=[-1.] * 12,
                           delta_min=[-1.] * 12,
                           delta_max=[-1.] * 12,
-                          nexp=[1] * 12)
+                          nexp=[1] * 12,
+													max_length=[9999999.] * 12)
         return
 
     def fromfits(self, filename=None):
@@ -587,9 +589,8 @@ class Field(object):
         # Determine if it is within the field cadence
         for itarget, target_cadence in enumerate(targets['cadence']):
             if(target_cadence in clist.cadences):
-                ok = clist.cadence_consistency(target_cadence,
-                                               self.field_cadence.name,
-                                               return_solutions=False)
+                ok, solns = clist.cadence_consistency(target_cadence,
+                                                      self.field_cadence.name)
                 targets['incadence'][itarget] = ok
 
         if(self.allgrids):
