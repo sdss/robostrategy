@@ -63,7 +63,7 @@ if __name__ == '__main__':
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
-    assignment_dtype = np.dtype([('pk', np.int64),
+    assignment_dtype = np.dtype([('carton_to_target_pk', np.int64),
                                  ('rsid', np.int64),
                                  ('catalogid', np.int64),
                                  ('ra', np.float64),
@@ -108,7 +108,7 @@ if __name__ == '__main__':
                 if(len(iassigned) > 0):
                     tmp_assignment = np.zeros(len(iassigned),
                                               dtype=assignment_dtype)
-                    tmp_assignment['pk'] = targets['target_pk'][iassigned]
+                    tmp_assignment['carton_to_target_pk'] = targets['carton_to_target_pk'][iassigned]
                     tmp_assignment['rsid'] = targets['rsid'][iassigned]
                     tmp_assignment['catalogid'] = targets['catalogid'][iassigned]
                     tmp_assignment['ra'] = targets['ra'][iassigned]
