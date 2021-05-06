@@ -198,16 +198,12 @@ if __name__ == '__main__':
             imatch = d2.argmin()
             fields_north_array['type'][imatch] = 'BHMAqmesMedium'
         
-    in_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                              'data', 'fields-RM-v0.1.7.fits')
-    if('BHM' in rsParams.cfg['Fields']):
-        in_rm_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                  'data',
-                                  'candidate_target_fields_bhm_rm_{v}.fits')
-        in_rm_file = in_rm_file.format(v=rsParams.cfg['Fields']['BHM'])
-
     if('RM' in rsParams.cfg['Fields']):
-        in_rm = fitsio.read(in_rm_file)
+        in_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                               'data',
+                               'candidate_target_fields_bhm_rm_{v}.fits')
+        in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
+        in_rm = fitsio.read(in_file)
         tmp_fields_rm = np.zeros(len(in_rm), dtype=fields_dtype)
         tmp_fields_rm['racen'] = in_rm['RACEN']
         tmp_fields_rm['deccen'] = in_rm['DECCEN']
@@ -225,29 +221,28 @@ if __name__ == '__main__':
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields_rm[ino])
 
-    if('RV' in rsParams.cfg['Fields']):
-        nsdiv = np.float32(rsParams.cfg['Fields']['NSDiv'])
-        in_rv_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                  'data', 'MWM-RV-FieldCenters-v05.fits')
-        in_rv = fitsio.read(in_rv_file)
-
-        inorth = np.where(in_rv['DECCEN'] > nsdiv)[0]
-        tmp_rv_north = np.zeros(len(inorth), dtype=fields_dtype)
-        tmp_rv_north['racen'] = in_rv['RACEN'][inorth]
-        tmp_rv_north['deccen'] = in_rv['DECCEN'][inorth]
-        tmp_rv_north['radius'] = [1.49] * len(inorth)
-        tmp_rv_north['type'] = 'RV'
-        fields_north_array = np.append(fields_north_array,
-                                       tmp_rv_north)
-
-        isouth = np.where(in_rv['DECCEN'] <= nsdiv)[0]
-        tmp_rv_south = np.zeros(len(isouth), dtype=fields_dtype)
-        tmp_rv_south['racen'] = in_rv['RACEN'][isouth]
-        tmp_rv_south['deccen'] = in_rv['DECCEN'][isouth]
-        tmp_rv_south['radius'] = [0.95] * len(isouth)
-        tmp_rv_south['type'] = 'RV'
-        fields_south_array = np.append(fields_south_array,
-                                       tmp_rv_south)
+    if('MWMTESS_OBAF' in rsParams.cfg['Fields']):
+        in_file_t = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                 'data',
+                                 'mwm-tess_obaf-{obs}-{v}.fits')
+        in_file = in_file_t.format(v=rsParams.cfg['Fields']['MWM'],
+                                   obs='apo')
+        tessobaf_north = fitsio.read(in_file)
+        for i in np.arange(len(tessobaf_north)):
+            d2 = ((fields_north_array['racen'] - tessobaf_north['racen'][i])**2 *
+                  np.cos(tessobaf_north['deccen'][i] * np.pi / 180.)**2 +
+                  (fields_north_array['deccen'] - tessobaf_north['deccen'][i])**2)
+            imatch = d2.argmin()
+            fields_north_array['type'][imatch] = 'MWMTESS_OBAF'
+        in_file = in_file_t.format(v=rsParams.cfg['Fields']['MWM'],
+                                   obs='lco')
+        tessobaf_south = fitsio.read(in_file)
+        for i in np.arange(len(tessobaf_south)):
+            d2 = ((fields_south_array['racen'] - tessobaf_south['racen'][i])**2 *
+                  np.cos(tessobaf_south['deccen'][i] * np.pi / 180.)**2 +
+                  (fields_south_array['deccen'] - tessobaf_south['deccen'][i])**2)
+            imatch = d2.argmin()
+            fields_south_array['type'][imatch] = 'MWMTESS_OBAF'
 
     fields_north_array['fieldid'] = np.arange(len(fields_north_array),
                                               dtype=np.int32) + 1
