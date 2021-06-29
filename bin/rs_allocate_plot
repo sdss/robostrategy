@@ -21,11 +21,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import fitsio
 import robostrategy.allocate
+import roboscheduler.cadence
 import sdss_access.path
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 if __name__ == '__main__':
@@ -44,6 +43,11 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    cadencelist = roboscheduler.cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file)
+
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
@@ -54,7 +58,16 @@ if __name__ == '__main__':
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
 
     cadences = [c.strip() for c in allocate.field_array['cadence']]
-    base_cadences = np.array([c.split('-')[0] for c in cadences])
+    base_cadences = []
+    for c in cadences:
+        last = c.split('_')[-2]
+        if(last == 'single'):
+            base_cadence = "_".join(c.split('_')[0:-1])
+        else:
+            base_cadence = c
+        base_cadences.append(base_cadence)
+    base_cadences = np.array(base_cadences)
+    print(np.unique(base_cadences))
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-all')
@@ -86,6 +99,22 @@ if __name__ == '__main__':
     plt.clf()
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='radec-dark')
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+    allocate.plot_fields(darkorbright='dark')
+    plt.title("All cadences")
+    plt.savefig(png_file)
+    plt.clf()
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                              observatory=observatory, name='radec-bright')
+    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+    allocate.plot_fields(darkorbright='bright')
+    plt.title("All cadences")
+    plt.savefig(png_file)
+    plt.clf()
+
+    png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='radec-labeled')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_fields(label=True)
@@ -96,15 +125,20 @@ if __name__ == '__main__':
     ncad = np.int32(hdr['NCAD'])
     for icad in np.arange(ncad):
         field_cadence = hdr['CAD{icad}'.format(icad=icad)]
-        base_field_cadence = field_cadence.split('-')[0]
-        print(field_cadence)
-        name = 'radec-{base_field_cadence}'.format(
-            base_field_cadence=base_field_cadence)
+        last = field_cadence.split('_')[-1]
+        if(last[0] == 'n'):
+            field_cadence_base = "_".join(field_cadence.split('_')[0:-1])
+        else:
+            field_cadence_base = field_cadence
+        print(field_cadence_base)
+        name = 'radec-{field_cadence_base}'.format(
+            field_cadence_base=field_cadence_base)
         png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                   observatory=observatory, name=name)
-        indx = np.where(base_cadences == base_field_cadence)[0]
+        indx = np.where(base_cadences == field_cadence_base)[0]
+        print(len(indx))
         matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
         allocate.plot_fields(indx=indx)
-        plt.title(base_field_cadence)
+        plt.title(field_cadence_base)
         plt.savefig(png_file)
         plt.clf()
