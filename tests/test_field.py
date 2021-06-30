@@ -6,13 +6,14 @@ import roboscheduler.cadence as cadence
 
 
 def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
-            category='science'):
+            category='science', fiberType='BOSS'):
     t_dtype = np.dtype([('ra', np.float64),
                         ('dec', np.float64),
                         ('priority', np.int32),
                         ('category', np.unicode_, 30),
                         ('cadence', np.unicode_, 30),
                         ('catalogid', np.int64),
+                        ('fiberType', 'U8'),
                         ('rsid', np.int64)])
     t = np.zeros(nt, dtype=t_dtype)
     np.random.seed(seed)
@@ -27,6 +28,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
     t['priority'] = 1
     t['category'] = category
     t['cadence'] = 'single_1x1'
+    t['fiberType'] = fiberType
     t['catalogid'] = np.arange(nt, dtype=np.int64)
     t['rsid'] = np.arange(nt, dtype=np.int64) + rsid_start
     f.targets_fromarray(t)
@@ -43,7 +45,6 @@ def test_field_init():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=0.)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -55,7 +56,6 @@ def test_field_init():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[1] * 2,
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x1')
@@ -67,7 +67,6 @@ def test_field_init():
                       delta_min=[-1., -1.],
                       delta_max=[-1., -1.],
                       nexp=[2, 2],
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                           field_cadence='single_2x2')
@@ -93,7 +92,6 @@ def test_radec():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -113,7 +111,6 @@ def test_target_fromarray():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -130,7 +127,6 @@ def test_flags():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -153,7 +149,6 @@ def test_assign_robot_epoch():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     clist.add_cadence(name='single_2x2', nepochs=2,
@@ -162,7 +157,6 @@ def test_assign_robot_epoch():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[2] * 2,
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
@@ -213,7 +207,6 @@ def test_available_epochs():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     clist.add_cadence(name='single_2x2', nepochs=2,
@@ -222,8 +215,8 @@ def test_available_epochs():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[2, 2],
-                      instrument='BOSS',
                       max_length=[0.] * 2)
+
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
     targets(f, nt=500, seed=102)
@@ -234,11 +227,21 @@ def test_available_epochs():
             tid0 = tids[0]
             tid1 = tids[1]
 
+            av = f.available_epochs(rsid=tid0, epochs=[0, 1], nexps=[2, 2])
+            print(av['nAvailableRobotIDs'])
+            print(av['availableRobotIDs'])
+            print(av['freeExposures'])
+
             f.assign_robot_epoch(rsid=tid0, robotID=rid, epoch=0, nexp=1)
+
+            print(f.assignments['robotID'][f.rsid2indx[tid0]])
 
             av = f.available_epochs(rsid=tid1, epochs=[0, 1], nexps=[2, 2])
             ar = av['availableRobotIDs']
             fe = av['freeExposures']
+
+            print(ar)
+            print(fe)
 
             assert rid not in ar[0]
             assert rid in ar[1]
@@ -267,7 +270,6 @@ def test_assign_epochs():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     clist.add_cadence(name='single_2x2', nepochs=2,
@@ -276,7 +278,6 @@ def test_assign_epochs():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[2, 2],
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
@@ -323,7 +324,6 @@ def test_clear_assignments():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     clist.add_cadence(name='single_2x2', nepochs=2,
@@ -332,7 +332,6 @@ def test_clear_assignments():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[2, 2],
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
@@ -363,7 +362,6 @@ def test_append_targets():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     clist.add_cadence(name='single_2x2', nepochs=2,
@@ -372,7 +370,6 @@ def test_append_targets():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[2] * 2,
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
@@ -399,7 +396,6 @@ def test_append_targets_after_assign():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     clist.add_cadence(name='single_2x2', nepochs=2,
@@ -408,7 +404,6 @@ def test_append_targets_after_assign():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[2] * 2,
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
@@ -441,7 +436,6 @@ def test_collisions():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     clist.add_cadence(name='single_2x2', nepochs=2,
@@ -450,7 +444,6 @@ def test_collisions():
                       delta_min=[-1.] * 2,
                       delta_max=[-1.] * 2,
                       nexp=[2] * 2,
-                      instrument='BOSS',
                       max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
@@ -484,7 +477,6 @@ def test_assign_science():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='APOGEE',
                       max_length=[0.])
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
@@ -511,7 +503,6 @@ def test_assign():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='APOGEE',
                       max_length=[0.])
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
@@ -548,7 +539,6 @@ def test_assign_noallgrids():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='APOGEE',
                       max_length=[0.])
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
@@ -585,7 +575,6 @@ def test_clear():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='APOGEE',
                       max_length=[0.])
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
@@ -632,7 +621,7 @@ def test_clear():
             assert aorig[n] == anew[n]
 
 
-def test_assign_boss_in_apogee():
+def test_assign_apogee():
     clist = cadence.CadenceList()
     clist.reset()
 
@@ -642,22 +631,12 @@ def test_assign_boss_in_apogee():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='APOGEE',
-                      max_length=[0.])
-
-    clist.add_cadence(name='single_1x1_boss', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
-                    field_cadence='single_1x1_boss')
+                    field_cadence='single_1x1')
     ntot = 400
-    targets(f, nt=ntot, seed=101)
+    targets(f, nt=ntot, seed=101, fiberType='APOGEE')
 
     f.assign_science()
     f.decollide_unassigned()
@@ -678,7 +657,6 @@ def test_assign_cp_model():
                       delta_min=[-1.],
                       delta_max=[-1.],
                       nexp=[1],
-                      instrument='BOSS',
                       max_length=[0.])
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',

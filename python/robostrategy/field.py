@@ -790,7 +790,7 @@ class Field(object):
            (self.nocollide)):
             return False
         rg = self.robotgrids[iexp]
-        return rg.wouldCollideWithAssigned(robotID, rsid)
+        return rg.wouldCollideWithAssigned(robotID, rsid)[0]
 
     def _set_has_spare_calib(self):
         """Set _has_spare for each exposure"""
