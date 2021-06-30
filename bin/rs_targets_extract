@@ -30,7 +30,8 @@ database.set_profile('operations')
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
-target_dtype = [('rsid', np.int64), # set equal to carton_to_target_pk
+target_dtype = [('rsassign', np.int32),
+                ('rsid', np.int64), # set equal to carton_to_target_pk
                 ('carton_to_target_pk', np.int64), # from carton_to_target
                 ('priority', np.int32),
                 ('value', np.float32),
@@ -47,97 +48,103 @@ target_dtype = [('rsid', np.int64), # set equal to carton_to_target_pk
                 ('target_pk', np.int64),
                 ('carton', np.unicode_, 30), # from carton
                 ('program', np.unicode_, 15), 
-                ('mapper', np.unicode_, 5), # from mapper
+                ('mapper', np.unicode_, 3), # from mapper
                 ('category', np.unicode_, 15), # from category
-                ('cadence', np.unicode_, 30), # from cadence
-                ('fiberType', np.unicode_, 10),  # from instrument
-                ('plan', np.unicode_, 10),  # from version
-                ('tag', np.unicode_, 10)]
+                ('cadence', np.unicode_, 22), # from cadence
+                ('fiberType', np.unicode_, 6),  # from instrument
+                ('plan', np.unicode_, 8),  # from version
+                ('tag', np.unicode_, 8)]
 
 
-def get_targets(cfg=None):
+def get_targets(carton=None, version=None, justcount=False):
 
-    targets = np.zeros(0, dtype=target_dtype)
-
-    for carton in cfg['Cartons']:
-        version = cfg['Cartons'][carton]
+    if(justcount):
+        print("Counting carton {p}, version {v}".format(p=carton,
+                                                        v=version))
+    else:
         print("Extracting carton {p}, version {v}".format(p=carton,
                                                           v=version))
 
-        # First look at all targets in this carton/version
-        ntall = (targetdb.Target.select(targetdb.Target.pk)
-                 .join(targetdb.CartonToTarget)
-                 .join(targetdb.Carton)
-                 .join(targetdb.Version)
-                 .where((targetdb.Carton.carton == carton) &
-                        (targetdb.Version.plan == version))).count()
+    # First look at all targets in this carton/version
+    ntall = (targetdb.Target.select(targetdb.Target.pk)
+             .join(targetdb.CartonToTarget)
+             .join(targetdb.Carton)
+             .join(targetdb.Version)
+             .where((targetdb.Carton.carton == carton) &
+                    (targetdb.Version.plan == version))).count()
 
-        # Now look at those with a cadence and instrument not null
-        nt = (targetdb.Target.select(targetdb.Target.pk)
+    if(justcount):
+        print(" ... {ntall} targets".format(ntall=ntall), flush=True)
+        return(ntall)
+
+    # Now look at those with a cadence and instrument not null
+    nt = (targetdb.Target.select(targetdb.Target.pk)
+          .join(targetdb.CartonToTarget)
+          .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+          .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+          .join(targetdb.Carton)
+          .join(targetdb.Version)
+          .where((targetdb.Carton.carton == carton) &
+                 (targetdb.Version.plan == version))).count()
+
+    if(nt != ntall):
+        print("WARNING: only {nt} of {ntall} targets in carton {carton} have cadence and instrument non-null".format(nt=nt, ntall=ntall, carton=carton))
+
+    print(" ... {nt} targets".format(nt=nt), flush=True)
+    tmp_targets = None
+    if(nt > 0):
+        tmp_targets = np.zeros(nt, dtype=target_dtype)
+
+        ts = (targetdb.Target.select(targetdb.Target.ra,
+                                     targetdb.Target.dec,
+                                     targetdb.Target.pmra,
+                                     targetdb.Target.pmdec,
+                                     targetdb.Target.epoch,
+                                     targetdb.Target.parallax,
+                                     targetdb.Target.pk.alias('target_pk'),
+                                     targetdb.Target.catalogid,
+                                     targetdb.CartonToTarget.pk.alias('carton_to_target_pk'),
+                                     targetdb.CartonToTarget.priority,
+                                     targetdb.CartonToTarget.value,
+                                     targetdb.CartonToTarget.lambda_eff,
+                                     targetdb.CartonToTarget.delta_ra,
+                                     targetdb.CartonToTarget.delta_dec,
+                                     targetdb.Carton.carton,
+                                     targetdb.Carton.program,
+                                     targetdb.Mapper.label.alias('mapper'),
+                                     targetdb.Category.label.alias('category'),
+                                     targetdb.Cadence.label.alias('cadence'),
+                                     targetdb.Instrument.label.alias('fiberType'),
+                                     targetdb.Version.plan,
+                                     targetdb.Version.tag)
               .join(targetdb.CartonToTarget)
               .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
               .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
               .join(targetdb.Carton)
-              .join(targetdb.Version)
+              .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
+              .join(targetdb.Version).switch(targetdb.Carton)
+              .join(targetdb.Category).switch(targetdb.Target)
               .where((targetdb.Carton.carton == carton) &
-                     (targetdb.Version.plan == version))).count()
+                     (targetdb.Version.plan == version))).dicts()
 
-        if(nt != ntall):
-            print("WARNING: only {nt} of {ntall} targets in carton {carton} have cadence and instrument non-null".format(nt=nt, ntall=ntall, carton=carton))
-
-        print(" ... {nt} targets".format(nt=nt), flush=True)
-        if(nt > 0):
-            tmp_targets = np.zeros(nt, dtype=target_dtype)
-
-            ts = (targetdb.Target.select(targetdb.Target.ra,
-                                         targetdb.Target.dec,
-                                         targetdb.Target.pmra,
-                                         targetdb.Target.pmdec,
-                                         targetdb.Target.epoch,
-                                         targetdb.Target.parallax,
-                                         targetdb.Target.pk.alias('target_pk'),
-                                         targetdb.Target.catalogid,
-                                         targetdb.CartonToTarget.pk.alias('carton_to_target_pk'),
-                                         targetdb.CartonToTarget.priority,
-                                         targetdb.CartonToTarget.value,
-                                         targetdb.CartonToTarget.lambda_eff,
-                                         targetdb.CartonToTarget.delta_ra,
-                                         targetdb.CartonToTarget.delta_dec,
-                                         targetdb.Carton.carton,
-                                         targetdb.Carton.program,
-                                         targetdb.Mapper.label.alias('mapper'),
-                                         targetdb.Category.label.alias('category'),
-                                         targetdb.Cadence.label.alias('cadence'),
-                                         targetdb.Instrument.label.alias('fiberType'),
-                                         targetdb.Version.plan,
-                                         targetdb.Version.tag)
-                  .join(targetdb.CartonToTarget)
-                  .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-                  .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-                  .join(targetdb.Carton)
-                  .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
-                  .join(targetdb.Version).switch(targetdb.Carton)
-                  .join(targetdb.Category).switch(targetdb.Target)
-                  .where((targetdb.Carton.carton == carton) &
-                         (targetdb.Version.plan == version))).dicts()
-
-            castn = dict()
-            for n in tmp_targets.dtype.names:
-                castn[n] = np.cast[type(tmp_targets[n][0])]
+        castn = dict()
+        for n in tmp_targets.dtype.names:
+            castn[n] = np.cast[type(tmp_targets[n][0])]
             
-            problems = []
-            for indx, t in enumerate(ts):
-                for n in tmp_targets.dtype.names:
-                    if(n != 'rsid'):
-                        if(t[n] is not None):
-                            tmp_targets[n][indx] = castn[n](t[n])
-                        else:
-                            if(n not in problems):
-                                print("problem with {n}".format(n=n))
-                                problems.append(n)
+        problems = []
+        for indx, t in enumerate(ts):
+            for n in tmp_targets.dtype.names:
+                if((n != 'rsid') & (n != 'rsassign')):
+                    if(t[n] is not None):
+                        tmp_targets[n][indx] = castn[n](t[n])
+                    else:
+                        if(n not in problems):
+                            print("problem with {n}".format(n=n))
+                            problems.append(n)
 
-            tmp_targets['rsid'] = tmp_targets['carton_to_target_pk']
+        tmp_targets['rsid'] = tmp_targets['carton_to_target_pk']
 
+        if(c2c is not None):
             inofibertype = np.where(tmp_targets['fiberType'] == '')[0]
             if(len(inofibertype) > 0):
                 msg = "WARNING: {n} targets in {c} with no fiberType".format(n=len(inofibertype), c=carton)
@@ -162,11 +169,19 @@ def get_targets(cfg=None):
                             tmp_targets['cadence'][inocadence[ii]] = 'dark_100x8'
                 else:
                     print("{msg}, NOT FIXING".format(msg=msg))
-                    
-            targets = np.append(targets, tmp_targets)
 
-    targets['rsid'] = np.arange(len(targets), dtype=np.int64)
-    return(targets)
+        if(carton == 'mwm_tess_ob'):
+            isouth = np.where(tmp_targets['dec'] < 0.)[0]
+            inorth = np.where(tmp_targets['dec'] > 0.)[0]
+            np.random.seed(10)
+            np.random.shuffle(inorth)
+            tmp_targets_south = tmp_targets[isouth]
+            tmp_targets_north = tmp_targets[inorth[0:100]]
+            tmp_targets = tmp_targets_south
+            tmp_targets = np.append(tmp_targets, tmp_targets_north)
+            tmp_targets['priority'] = 1000
+
+    return(tmp_targets)
 
 
 if __name__ == '__main__':
@@ -199,10 +214,13 @@ if __name__ == '__main__':
             fiberType[c] = 'BOSS'
 
     c2cfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
-                           'cadence-list.cfg')
-    c2c = configparser.ConfigParser(allow_no_value=True)
-    c2c.optionxform = str
-    c2c.read(c2cfile)
+                           'cadence-list-{plan}.cfg'.format(plan=plan))
+    if(os.path.exists(c2cfile)):
+       c2c = configparser.ConfigParser(allow_no_value=True)
+       c2c.optionxform = str
+       c2c.read(c2cfile)
+    else:
+       c2c = None
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -212,7 +230,47 @@ if __name__ == '__main__':
     cfg.optionxform = str
     cfg.read(cfgfile)
 
-    targets = get_targets(cfg=cfg)
+    nt = 0
+    for carton in cfg['Cartons']:
+        version = cfg['Cartons'][carton]
+        nt = nt + get_targets(carton, version, justcount=True)
+
+    for carton in cfg['CartonsExtra']:
+        version = cfg['CartonsExtra'][carton]
+        if(carton in cfg['Cartons']):
+            print("Duplicate carton in CartonsExtra! Ignoring!")
+            continue
+        nt = nt + get_targets(carton, version, justcount=True)
+
+    targets = np.zeros(nt, dtype=target_dtype)
+
+    nt = 0
+    for carton in cfg['Cartons']:
+        version = cfg['Cartons'][carton]
+        tmp_targets = get_targets(carton, version)
+        if(tmp_targets is not None):
+            tmp_targets['rsassign'] = 1
+            targets[nt:nt + len(tmp_targets)] = tmp_targets
+            nt = nt + len(tmp_targets)
+
+    for carton in cfg['CartonsExtra']:
+        version = cfg['CartonsExtra'][carton]
+        if(carton in cfg['Cartons']):
+            print("Duplicate carton in CartonsExtra! Ignoring!")
+            continue
+        tmp_targets = get_targets(carton, version)
+        if(tmp_targets is not None):
+            tmp_targets['rsassign'] = 0
+            targets[nt:nt + len(tmp_targets)] = tmp_targets
+            nt = nt + len(tmp_targets)
+
+    if(nt != len(targets)):
+        print("Lost some targets ... hope that is expected!")
+        targets.resize(nt)
+
+    # FUDGE dark_1x4 to dark_2x2
+    i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
+    targets['cadence'][i4] = 'dark_2x2'
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)

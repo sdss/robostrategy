@@ -84,7 +84,8 @@ if __name__ == '__main__':
         field_cadence = hdr['CAD{indx}'.format(indx=indx)]
 
         matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-        m = basemap.Basemap(projection='moll', lon_0=270, resolution='c')
+        m = basemap.Basemap(projection='moll', lon_0=270, resolution='c',
+                            celestial=True)
 
         # draw parallels and meridians.
         m.drawparallels(np.arange(-90., 120., 30.),

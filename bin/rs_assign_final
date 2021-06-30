@@ -13,8 +13,10 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import argparse
 import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
 import sys
 import multiprocessing
 import datetime
@@ -29,9 +31,7 @@ import fitsio
 import time
 from astropy.coordinates.angle_utilities import angular_separation
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 coordinated_dict = None
 noclobber = False
@@ -107,12 +107,10 @@ def assign_field(indx):
     f = field.Field(filename=field_target_file, verbose=True,
                     fieldid=fieldid)
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-    f.set_field_cadence(field_cadence)
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
     f.targets['cadence'][icalib] = field_cadence
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
+    f.set_field_cadence(field_cadence)
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
     if(f.field_cadence is not None):

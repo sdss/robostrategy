@@ -25,9 +25,7 @@ import robostrategy.params as params
 import roboscheduler.cadence as cadence
 import sdss_access.path
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 if __name__ == '__main__':
@@ -87,15 +85,48 @@ if __name__ == '__main__':
 
     # Alterations to values in field options here
     try:
-        scales = np.ones(len(focadences))
-        for c in rsParams.cfg['ValueRescale']:
-            indx = np.where(c == focadences)[0]
-            if(len(indx) > 0):
-                scale = np.float32(rsParams.cfg.get('ValueRescale', c))
-                scales[indx] = scale
-        for indx in np.arange(len(field_options)):
-            field_options['valuegot'][indx] = (
-                field_options['valuegot_pcd'][indx, :] * scales).sum()
+        rescale = 'percadence'
+        if('PerCarton' in rsParams.cfg['ValueRescale']):
+            rescale = 'percarton'
+        if(rescale == 'percadence'):
+            scales_pcd = np.ones(len(focadences))
+            if('default' in rsParams.cfg['ValueRescale']):
+                scales_pcd = (np.zeros(len(focadences)) +
+                              np.float32(rsParams.cfg.get('ValueRescale',
+                                                          'default')))
+            for c in rsParams.cfg['ValueRescale']:
+                indx = np.where(c == focadences)[0]
+                if(len(indx) > 0):
+                    scale = np.float32(rsParams.cfg.get('ValueRescale',
+                                                        c))
+                    scales_pcd[indx] = scale
+            for indx in np.arange(len(field_options)):
+                field_options['valuegot'][indx] = (
+                    field_options['valuegot_pcd'][indx, :] *
+                    scales_pcd).sum()
+        if(rescale == 'percarton'):
+            scales_pct = np.ones(len(focartons))
+            if('default' in rsParams.cfg['ValueRescale']):
+                scales_pct = (np.zeros(len(focartons)) +
+                              np.float32(rsParams.cfg.get('ValueRescale',
+                                                          'default')))
+            for c in rsParams.cfg['ValueRescale']:
+                if(c == 'default'):
+                    scales_default = np.float32(rsParams.cfg.get('ValueRescale',
+                                                                 c))
+                indx = np.where(c == focartons)[0]
+                if(len(indx) > 0):
+                    scale = np.float32(rsParams.cfg.get('ValueRescale',
+                                                        c))
+                    scales_pct[indx] = scale
+            for indx in np.arange(len(field_options)):
+                field_options['valuegot'][indx] = (
+                    field_options['valuegot_pct'][indx, :] *
+                    scales_pct).sum()
+            # for f in field_options:
+             #    print("{c} : {v}",format(c=field_options['cadence'],
+             #                             v=field_options['valuegot']),
+             #          flush=True)
     except KeyError:
         print("No ValueRescale")
 
@@ -132,6 +163,9 @@ if __name__ == '__main__':
         if(rsParams.cfg.get('Allocation', 'Cost') == 'D'):
             print("Use cost model D")
             allocate_class = robostrategy.allocate.AllocateLSTCostD
+        if(rsParams.cfg.get('Allocation', 'Cost') == 'E'):
+            print("Use cost model E")
+            allocate_class = robostrategy.allocate.AllocateLSTCostE
     else:
         print("Use default cost model")
         allocate_class = robostrategy.allocate.AllocateLST
