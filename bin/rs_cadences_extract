@@ -20,6 +20,7 @@ import sys
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
+import robostrategy.params as params
 import sdss_access.path
 import pickle
 
@@ -64,19 +65,15 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
-                           'robostrategy-{plan}.cfg'.format(plan=plan))
-    cfg = configparser.ConfigParser(allow_no_value=True)
-    cfg.optionxform = str
-    cfg.read(cfgfile)
+    rsParams = params.RobostrategyParams(plan=plan)
 
     cadencelist = cadence.CadenceList()
     cadencelist.reset()
     cadencelist.fromdb()
 
     cadence_change = dict()
-    for c in cfg['Cadences']:
-        adjustment = cfg.get('Cadences', c)
+    for c in rsParams.cfg['Cadences']:
+        adjustment = rsParams.cfg.get('Cadences', c)
         if(adjustment == 'NoDelta'):
             if(c in cadencelist.cadences):
                 for i in cadencelist.cadences[c].epoch_indx[:-1]:
@@ -117,9 +114,9 @@ if __name__ == '__main__':
 #            cadencelist.cadences[c].delta_max[0:2] = cadencelist.cadences['dark_2x1'].delta_max
 #            cadencelist.cadences[c].max_length[0:2] = cadencelist.cadences['dark_2x1'].max_length
 
-    if('ExtraFile' in cfg['Cadences']):
+    if('ExtraFile' in rsParams.cfg['Cadences']):
         print("Extra cadence files:")
-        extrafiles = cfg.get('Cadences', 'ExtraFile').split()
+        extrafiles = rsParams.cfg.get('Cadences', 'ExtraFile').split()
         for extrafile in extrafiles:
             print(" " + extrafile)
             cadencelist.fromcfg(os.path.join(os.getenv('ROBOSTRATEGY_DIR'),

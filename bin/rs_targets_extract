@@ -224,20 +224,14 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
-    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
-                           'robostrategy-{plan}.cfg'.format(plan=plan))
-    cfg = configparser.ConfigParser(allow_no_value=True)
-    cfg.optionxform = str
-    cfg.read(cfgfile)
-
     nt = 0
-    for carton in cfg['Cartons']:
-        version = cfg['Cartons'][carton]
+    for carton in rsParams.cfg['Cartons']:
+        version = rsParams.cfg['Cartons'][carton]
         nt = nt + get_targets(carton, version, justcount=True)
 
-    for carton in cfg['CartonsExtra']:
-        version = cfg['CartonsExtra'][carton]
-        if(carton in cfg['Cartons']):
+    for carton in rsParams.cfg['CartonsExtra']:
+        version = rsParams.cfg['CartonsExtra'][carton]
+        if(carton in rsParams.cfg['Cartons']):
             print("Duplicate carton in CartonsExtra! Ignoring!")
             continue
         nt = nt + get_targets(carton, version, justcount=True)
@@ -245,17 +239,17 @@ if __name__ == '__main__':
     targets = np.zeros(nt, dtype=target_dtype)
 
     nt = 0
-    for carton in cfg['Cartons']:
-        version = cfg['Cartons'][carton]
+    for carton in rsParams.cfg['Cartons']:
+        version = rsParams.cfg['Cartons'][carton]
         tmp_targets = get_targets(carton, version)
         if(tmp_targets is not None):
             tmp_targets['rsassign'] = 1
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
-    for carton in cfg['CartonsExtra']:
-        version = cfg['CartonsExtra'][carton]
-        if(carton in cfg['Cartons']):
+    for carton in rsParams.cfg['CartonsExtra']:
+        version = rsParams.cfg['CartonsExtra'][carton]
+        if(carton in rsParams.cfg['Cartons']):
             print("Duplicate carton in CartonsExtra! Ignoring!")
             continue
         tmp_targets = get_targets(carton, version)

@@ -23,6 +23,7 @@ import astropy.units as u
 import fitsio
 import sdss_access.path
 import robostrategy.field as field
+import robostrategy.params as params
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -64,14 +65,10 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
-                           'robostrategy-{plan}.cfg'.format(plan=plan))
-    cfg = configparser.ConfigParser(allow_no_value=True)
-    cfg.optionxform = str
-    cfg.read(cfgfile)
+    rsParams = params.RobostrategyParams(plan=plan)
 
-    if('DarkPlane' in cfg['Fields']):
-        pars = np.array(cfg['Fields']['DarkPlane'].split())
+    if('DarkPlane' in rsParams.cfg['Fields']):
+        pars = np.array(rsParams.cfg['Fields']['DarkPlane'].split())
         darkPlaneObs = pars[2:]
         if(observatory in darkPlaneObs):
             darkPlane = True
@@ -84,16 +81,16 @@ if __name__ == '__main__':
         darkPlane = False
         darkPlaneLat = 0
 
-    if('forceTessOB' in cfg['Fields']):
+    if('forceTessOB' in rsParams.cfg['Fields']):
         print("Forcing TESS OB fields")
         forceTessOB = True
     else:
         print("Not forcing TESS OB fields")
         forceTessOB = False
 
-    if('Rotate' in cfg['Fields']):
+    if('Rotate' in rsParams.cfg['Fields']):
         rotate = True
-        paname = cfg['Fields']['Rotate']
+        paname = rsParams.cfg['Fields']['Rotate']
     else:
         rotate = False
         paname = ''
@@ -125,9 +122,9 @@ if __name__ == '__main__':
 
         target_cadences = np.unique(f['cadence'])
 
-        cadences = np.array(cfg['Fields'][fieldtype].split())
+        cadences = np.array(rsParams.cfg['Fields'][fieldtype].split())
         if('FromTargets' in cadences):
-            field_cadences = cadences_from_targets(cfg=cfg,
+            field_cadences = cadences_from_targets(cfg=rsParams.cfg,
                                                    target_cadences=target_cadences)
             field_cadences = list(field_cadences)
         else:

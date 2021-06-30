@@ -21,6 +21,7 @@ import numpy as np
 import fitsio
 import sdss_access.path
 import robostrategy.allocate
+import robostrategy.params as params
 
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
 sdss_path = sdss_access.path.Path(release='sdss5')
@@ -44,11 +45,7 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
-                           'robostrategy-{plan}.cfg'.format(plan=plan))
-    cfg = configparser.ConfigParser(allow_no_value=True)
-    cfg.optionxform = str
-    cfg.read(cfgfile)
+    rsParams = params.RobostrategyParams(plan=plan)
 
     field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
                                                          plan=plan, observatory=observatory))
@@ -72,10 +69,10 @@ if __name__ == '__main__':
 """)
     fp.write("<body>")
 
-    summary = cfg.get('Documentation', 'summary',
-                      fallback='No summary provided')
-    description = cfg.get('Documentation', 'description',
-                          fallback='No description provided')
+    summary = rsParams.cfg.get('Documentation', 'summary',
+                               fallback='No summary provided')
+    description = rsParams.cfg.get('Documentation', 'description',
+                                   fallback='No description provided')
     fp.write("""<h2>Description</h2>
 <p>This page describes the results of robostrategy for plan {plan},
 for the SDSS-V FPS carton observing for the Milky Way Mapper and
@@ -94,10 +91,10 @@ here</a>.</p>
 
     fp.write("""<p><b>Settings:</b></p>
 <ul>""")
-    if('AllFields' in cfg['Allocation']):
+    if('AllFields' in rsParams.cfg['Allocation']):
         fp.write("<li><i>AllFields</i>: All fields are guaranteed to get some observations.</li>")
-    if('Cost' in cfg['Allocation']):
-        fp.write("<li><i>Cost model</i>: uses cost model {m}</li>".format(m=cfg.get('Allocation', 'Cost')))
+    if('Cost' in rsParams.cfg['Allocation']):
+        fp.write("<li><i>Cost model</i>: uses cost model {m}</li>".format(m=rsParams.cfg.get('Allocation', 'Cost')))
     fp.write("""</ul>""")
 
     fp.write("""<table style="border: 1px solid black;" cellspacing=0px>""")
@@ -109,9 +106,9 @@ here</a>.</p>
         </tr>
     </thead>""")
     fp.write("""<tbody>""")
-    for carton in cfg['Cartons']:
+    for carton in rsParams.cfg['Cartons']:
         fp.write("<tr><td>{p}</td><td>{v}</td></tr>".format(p=carton,
-                                                            v=cfg['Cartons'][carton]))
+                                                            v=rsParams.cfg['Cartons'][carton]))
     fp.write("""</tbody>""")
     fp.write("""</table>""")
 
@@ -126,10 +123,10 @@ here</a>.</p>
     </thead>""")
     fp.write("""<tbody>""")
     exclude = ['NSDiv']
-    for field_type in cfg['Fields']:
+    for field_type in rsParams.cfg['Fields']:
         if(field_type not in exclude):
             fp.write("<tr><td>{ft}</td><td>{c}</td></tr>".format(ft=field_type,
-                                                                 c=cfg.get('Fields', field_type)))
+                                                                 c=rsParams.cfg.get('Fields', field_type)))
     fp.write("""</tbody>""")
     fp.write("""</table>""")
 
@@ -144,9 +141,9 @@ here</a>.</p>
     </thead>""")
     fp.write("""<tbody>""")
     exclude = []
-    for target_cadence in cfg['CadencesFromTargets']:
+    for target_cadence in rsParams.cfg['CadencesFromTargets']:
         if(target_cadence not in exclude):
-            clist = cfg.get('CadencesFromTargets', target_cadence)
+            clist = rsParams.cfg.get('CadencesFromTargets', target_cadence)
             if(clist is None):
                 clist = target_cadence
             fp.write("<tr><td>{tc}</td><td>{c}</td></tr>".format(tc=target_cadence,
