@@ -72,12 +72,24 @@ if __name__ == '__main__':
 
     if('DarkPlane' in cfg['Fields']):
         pars = np.array(cfg['Fields']['DarkPlane'].split())
-        darkPlane = True
-        darkPlaneNum = np.int32(pars[0])
-        darkPlaneLat = np.float64(pars[1])
+        darkPlaneObs = pars[2:]
+        if(observatory in darkPlaneObs):
+            darkPlane = True
+            darkPlaneNum = np.int32(pars[0])
+            darkPlaneLat = np.float64(pars[1])
+        else:
+            darkPlane = False
+            darkPlaneLat = 0
     else:
         darkPlane = False
         darkPlaneLat = 0
+
+    if('forceTessOB' in cfg['Fields']):
+        print("Forcing TESS OB fields")
+        forceTessOB = True
+    else:
+        print("Not forcing TESS OB fields")
+        forceTessOB = False
 
     if('Rotate' in cfg['Fields']):
         rotate = True
@@ -104,13 +116,14 @@ if __name__ == '__main__':
         fieldid = fields_entry['fieldid']
         fieldtype = fields_entry['type'].strip()
 
+        print(fieldid, flush=True)
+
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
-        f = field.Field(filename=field_target_file)
+        f = fitsio.read(field_target_file)
 
-        cadences = np.array([c.strip() for c in f.targets['cadence']])
-        target_cadences = np.unique(cadences)
+        target_cadences = np.unique(f['cadence'])
 
         cadences = np.array(cfg['Fields'][fieldtype].split())
         if('FromTargets' in cadences):
@@ -128,10 +141,17 @@ if __name__ == '__main__':
                 print(field_cadences)
 
         if(darkPlane & (np.abs(fields_b[ifield]) < darkPlaneLat)):
-            for ic, fc in enumerate(field_cadences):
-                if('bright_single' in fc):
-                    field_cadences[ic] = fc.replace('bright',
-                                                    'mixed' + str(darkPlaneNum))
+            field_cadences = ['mixed2_single_n2x1']
+
+        if(forceTessOB):
+            if('mwm_tess_ob' in f['carton']):
+                if('bright_8x4' in field_cadences):
+                    field_cadences = ['bright_8x4']
+                if('bright_8x2' in field_cadences):
+                    field_cadences = ['bright_8x2']
+                if('bright_8x1' in field_cadences):
+                    field_cadences = ['bright_8x1']
+                print(field_cadences)
 
         all_field_cadences.append(np.array(field_cadences))
 

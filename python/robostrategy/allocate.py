@@ -352,6 +352,8 @@ class AllocateLST(object):
         solver = pywraplp.Solver("allocate_lst",
                                  pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
 
+        solver.SetNumThreads(64)
+
         # Set up variables; these variables ('vars') will correspond to
         # the number of exposures in each slot for each field-cadence.
         objective = solver.Objective()
@@ -648,6 +650,24 @@ class AllocateLST(object):
 
         return(got)
 
+    def _used_lst_cadence(self, iskybrightness=None):
+        used = np.zeros(self.field_array['slots_time'][0, :, 0].shape,
+                        dtype=np.float32)
+        for ifield, field in enumerate(self.field_array):
+            issky = (self.cadencelist.cadences[field['cadence']].skybrightness
+                     == self.slots.skybrightness[iskybrightness + 1])
+            nsky = self.cadencelist.cadences[field['cadence']].nexp[issky].sum()
+
+            if(nsky > 0):
+                avgx = ((field['xfactor'] * field['slots_time']).sum() /
+                        field['slots_time'].sum())
+                skytime = nsky * self.slots.duration * avgx
+                curr_used = field['slots_time'][:, iskybrightness]
+                curr_used = skytime * curr_used / curr_used.sum()
+                used = used + curr_used
+
+        return(used)
+
     def plot_full(self, iskybrightness=None, title=None):
         """Plot the LST distributions for the allocations
 
@@ -664,6 +684,7 @@ class AllocateLST(object):
         available = self._available_lst()
         used = self._used_lst()
         got = self._got_ra()
+        useddark = None
 
         if(iskybrightness is None):
             used = used.sum(axis=1)
@@ -673,16 +694,23 @@ class AllocateLST(object):
             used = used[:, iskybrightness]
             available = available[:, iskybrightness]
             got = got[:, iskybrightness]
+            if(iskybrightness == 0):
+                useddark = self._used_lst_cadence(iskybrightness=0)
 
         plt.plot(used, color='red', linewidth=3, alpha=0.6,
-                 label='Hours used per LST')
+                 label='Hours used per LST ({t:>3.1f} h)'.format(t=used.sum()))
         plt.plot(available, color='red', linewidth=1,
-                 label='Hours available per LST')
+                 label='Hours available per LST ({t:>.1f} h)'.format(t=available.sum()))
         print(used.sum())
         print(available.sum())
         plt.plot(got, color='blue', linewidth=3, alpha=0.6,
-                 label='Hours observed per RA')
+                 label='Hours observed per RA ({t:>.1f} h)'.format(t=got.sum()))
         print(got.sum())
+        if(useddark is not None):
+            plt.plot(useddark, color='green', linewidth=3, alpha=0.6,
+                     label='Dark cadence used per LST ({t:>.1f} h)'.format(t=useddark.sum()))
+            print(useddark.sum())
+
         plt.xlabel('LST or RA (hours)')
         plt.ylabel('Exposure hours')
         plt.ylim(np.array([-0.05, 1.2]) * np.array([got.max(), used.max(),
@@ -697,7 +725,8 @@ class AllocateLST(object):
         return m(((360. - ra) + 180.) % 360., dec, inverse=False)
 
     def plot_fields(self, indx=None, label=False, linear=False,
-                    colorbar=True, lon_0=270., **kwargs):
+                    colorbar=True, lon_0=270., darkorbright=None,
+                    **kwargs):
         """Plot the RA/Dec distribution of fields allocated
 
         Parameters:
@@ -713,7 +742,8 @@ class AllocateLST(object):
         if basemap is None:
             raise ImportError('basemap was not imported. Is it installed?')
 
-        m = basemap.Basemap(projection='moll', lon_0=lon_0, resolution='c')
+        m = basemap.Basemap(projection='moll', lon_0=lon_0, resolution='c',
+                            celestial=True)
 
         # draw parallels and meridians.
         m.drawparallels(np.arange(-90., 120., 30.),
@@ -726,11 +756,19 @@ class AllocateLST(object):
         ii = np.where(self.field_array['nfilled'][indx] > 0)[0]
         ii = indx[ii]
 
+        if(darkorbright is not None):
+            if(darkorbright == 'dark'):
+                nfilled = self.field_array['slots_exposures'][ii, :, :].sum(axis=1)[:, 0]
+            if(darkorbright == 'bright'):
+                nfilled = self.field_array['slots_exposures'][ii, :, :].sum(axis=1)[:, 1]
+        else:
+            nfilled = self.field_array['nfilled'][ii]
+
         if(linear is False):
-            nfilled_value = np.log10(self.field_array['nfilled'][ii])
+            nfilled_value = np.log10(nfilled)
             colorbar_label = '$\log_{10} N$'
         else:
-            nfilled_value = self.field_array['nfilled'][ii]
+            nfilled_value = nfilled
             colorbar_label = '$N$'
 
         if(label is False):
@@ -969,4 +1007,61 @@ class AllocateLSTCostD(AllocateLST):
         if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
             exponent = 1.0
         xfactor = airmass**exponent
+        return(xfactor)
+
+
+class AllocateLSTCostE(AllocateLST):
+    """LST allocation object for robostrategy, with cost model E
+
+    This class is exactly like AllocateLSTCostD,
+    but using the fraction of the cadence in dark and bright
+    time to scale things.
+"""
+    def xfactor(self, racen=None, deccen=None, skybrightness=None, lst=None,
+                cadence=None):
+        """Exposure time cost factor relative to nominal
+
+        Parameters:
+        ----------
+
+        racen : np.float64
+            RA center of field, degrees
+
+        deccen : np.float64
+            Dec center of field, degrees
+
+        cadence : str
+            cadence name
+
+        skybrightness : np.float32
+            maximum sky brightness of observation
+
+        lst : np.float32
+            LST of observation, hours
+
+        Returns:
+        -------
+
+        xfactor : np.float64
+            length of exposure relative to nominal
+
+        Comments:
+        --------
+
+        If the sky brightness requirement of an epoch is <= 0.4,
+        then it assumes you are working in the optical and care about blue
+        throughput, and it scales exposure time with airmass^1. If not, it
+        scales the cost as airmass^0.05. For mixed cadences, it only scales
+        the dark fraction as airmass^1.
+"""
+        ha = self.observer.ralst2ha(ra=racen, lst=lst * 15.)
+        (alt, az) = self.observer.hadec2altaz(ha=ha, dec=deccen,
+                                              lat=self.observer.latitude)
+        airmass = self.observer.alt2airmass(alt=alt)
+        exponent_bright = 0.05
+        exponent_dark = 1.0
+        idark = np.where(self.cadencelist.cadences[cadence].skybrightness < 0.4)[0]
+        fdark = np.float32(len(idark)) / np.float32(self.cadencelist.cadences[cadence].nepochs)
+        xfactor = (fdark * airmass**exponent_dark +
+                   (1 - fdark) * airmass**exponent_bright)
         return(xfactor)

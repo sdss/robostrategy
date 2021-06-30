@@ -214,10 +214,10 @@ if __name__ == '__main__':
     hdu_out = fits.BinTableHDU.from_columns(fdata)
 
     # add some header keywords
-    hdu_out.header.append(fits.Card('COMMENT',
-                                    'The field rotations, pa1, pa2 are defined '
-                                    'such that a hexagon with two edges '
-                                    'aligned East-West has PA=0deg'))
+    #hdu_out.header.append(fits.Card('COMMENT',
+                                    #'The field rotations, pa1, pa2 are defined '
+                                    #'such that a hexagon with two edges '
+                                    #'aligned East-West has PA=0deg'))
 
     hdu_out.writeto(outfile, overwrite=True, checksum=True)
     print(f'Main outfile is at: {outfile}')

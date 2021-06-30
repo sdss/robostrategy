@@ -29,6 +29,22 @@ database.set_profile('operations')
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
+def copy_cadence(from_cadence, to_cadence, nepochs=None):
+    if(nepochs is None):
+        nepochs = cadencelist.cadences[from_cadence].nepochs
+
+    cadencelist.add_cadence(name=to_cadence,
+                            nepochs=nepochs,
+                            instrument=cadencelist.cadences[from_cadence].instrument,
+                            skybrightness=cadencelist.cadences[from_cadence].skybrightness[0:nepochs],
+                            delta=cadencelist.cadences[from_cadence].delta[0:nepochs],
+                            delta_min=cadencelist.cadences[from_cadence].delta_min[0:nepochs],
+                            delta_max=cadencelist.cadences[from_cadence].delta_max[0:nepochs],
+                            nexp=cadencelist.cadences[from_cadence].nexp[0:nepochs],
+                            max_length=cadencelist.cadences[from_cadence].max_length[0:nepochs])
+    return
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -77,15 +93,37 @@ if __name__ == '__main__':
                                         delta_min=tmpc.delta_min,
                                         delta_max=tmpc.delta_max,
                                         instrument=tmpc.instrument,
-                                        version=tmpc.version)
+                                        max_length=tmpc.max_length)
 
-    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                            'data', 'v0.5-cadence-hack.fits')
-    cadencelist.fromfits(hackfile)
+    copy_cadence('mixed2_single_99x1', 'mixed2_single_nx1')
+    copy_cadence('bright_single_99x1', 'bright_single_nx1')
+    copy_cadence('bright_1x1', 'bright_single_1x1')
+    copy_cadence('bright_2x1', 'bright_single_2x1')
+    copy_cadence('mixed2_single_3x1', 'mixed2_single_2x1', nepochs=2)
 
-    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                            'data', 'v0.5-field-cadences-hack.cfg')
-    cadencelist.fromcfg(hackfile)
+#
+#    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+#                            'data', 'v0.5-cadence-hack.fits')
+#    cadencelist.fromfits(hackfile)
+
+#    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+#                            'data', 'v0.5-field-cadences-hack.cfg')
+#    cadencelist.fromcfg(hackfile)
+
+#    for c in cadencelist.cadences:
+#        if(c[0:6] == 'mixed2'):
+#            cadencelist.cadences[c].delta[0:2] = cadencelist.cadences['dark_2x1'].delta
+#            cadencelist.cadences[c].delta_min[0:2] = cadencelist.cadences['dark_2x1'].delta_min
+#            cadencelist.cadences[c].delta_max[0:2] = cadencelist.cadences['dark_2x1'].delta_max
+#            cadencelist.cadences[c].max_length[0:2] = cadencelist.cadences['dark_2x1'].max_length
+
+    if('ExtraFile' in cfg['Cadences']):
+        print("Extra cadence files:")
+        extrafiles = cfg.get('Cadences', 'ExtraFile').split()
+        for extrafile in extrafiles:
+            print(" " + extrafile)
+            cadencelist.fromcfg(os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                             'data', extrafile))
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)

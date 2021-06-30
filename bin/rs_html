@@ -304,6 +304,38 @@ of the file are as follows:
     fp.write("</tr>")
     fp.write("</table>")
 
+    fp.write("""<h2>Exposures per field</h2>
+
+
+    <p>These plots show the number of exposures per field, and then the number of bright exposures and number of dark exposures. Note that these do not necessarily match the cadences, since bright cadences can be observed in dark time.</p>
+""")
+
+    fp.write("<table>")
+    fp.write("<tr>")
+    name = 'radec'
+    png_file = os.path.basename(
+        sdss_path.full('rsAllocationPng', plan=plan,
+                       observatory=observatory, name=name))
+    fp.write("<td>")
+    fp.write(img_tag.format(png_file=png_file))
+    fp.write("</td>")
+    name = 'radec-bright'
+    png_file = os.path.basename(
+        sdss_path.full('rsAllocationPng', plan=plan,
+                       observatory=observatory, name=name))
+    fp.write("<td>")
+    fp.write(img_tag.format(png_file=png_file))
+    fp.write("</td>")
+    name = 'radec-dark'
+    png_file = os.path.basename(
+        sdss_path.full('rsAllocationPng', plan=plan,
+                       observatory=observatory, name=name))
+    fp.write("<td>")
+    fp.write(img_tag.format(png_file=png_file))
+    fp.write("</td>")
+    fp.write("</tr>")
+    fp.write("</table>")
+
     fp.write("""<h2>Cadences per field</h2>
 
 
@@ -315,8 +347,12 @@ of the file are as follows:
     for icad in np.arange(ncad):
         fp.write("<tr>")
         field_cadence = cadence_hdr['CAD{icad}'.format(icad=icad)]
-        base_field_cadence = field_cadence.split('-')[0]
-        print(base_field_cadence)
+        last = field_cadence.split('_')[-1]
+        if(last[0] == 'n'):
+            field_cadence_base = "_".join(field_cadence.split('_')[0:-1])
+        else:
+            field_cadence_base = field_cadence
+        print(field_cadence_base)
 
         png_file = os.path.basename(sdss_path.full('rsFieldCadencesPng',
                                                    name=field_cadence, plan=plan,
@@ -325,8 +361,8 @@ of the file are as follows:
         fp.write(img_tag.format(png_file=png_file))
         fp.write("</td>")
 
-        name = 'radec-{base_field_cadence}'.format(
-            base_field_cadence=base_field_cadence)
+        name = 'radec-{field_cadence_base}'.format(
+            field_cadence_base=field_cadence_base)
         png_file = os.path.basename(
             sdss_path.full('rsAllocationPng', plan=plan,
                            observatory=observatory, name=name))

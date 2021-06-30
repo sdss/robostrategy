@@ -49,8 +49,10 @@ targets_dtype = np.dtype([('ra', np.float64),
                           ('cadence', np.unicode_, 30),
                           ('fiberType', np.unicode_, 10),
                           ('catalogid', np.int64),
+                          ('carton_to_target_pk', np.int64),
                           ('rsid', np.int64),
-                          ('target_pk', np.int64)])
+                          ('target_pk', np.int64),
+                          ('rsassign', np.int32)])
 
 # Dictionary defining meaning of flags
 _flagdict = {'CADENCE_INCONSISTENT': 1,
@@ -224,6 +226,7 @@ class Field(object):
         self.target_duplicated = np.zeros(0, dtype=np.int32)
         self._is_calibration = np.zeros(0, dtype=np.bool)
         self._calibration_index = np.zeros(1, dtype=np.bool)
+        self._unique_catalogids = None
         if(filename is not None):
             if(self.verbose):
                 print("fieldid {fid}: Reading from {f}".format(f=filename, fid=self.fieldid), flush=True)
@@ -250,7 +253,6 @@ class Field(object):
         self._set_radius()
         self.flagdict = _flagdict
         self._competing_targets = None
-        self._unique_catalogids = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
         self._add_dummy_cadences()
@@ -643,11 +645,13 @@ class Field(object):
             if(n in target_array.dtype.names):
                 targets[n] = target_array[n]
 
-        # Default value of 1 for priority and value
+        # Default value of 1 for priority, value, and rsassign
         if('value' not in target_array.dtype.names):
             targets['value'] = 1.
         if('priority' not in target_array.dtype.names):
             targets['priority'] = 1.
+        if('rsassign' not in target_array.dtype.names):
+            targets['rsassign'] = 1
 
         # Set fiber type
         if('fiberType' not in target_array.dtype.names):
@@ -1176,6 +1180,8 @@ class Field(object):
         return
 
     def _set_assigned(self, itarget=None):
+        if(itarget is None):
+            print("Must specify a target.")
         self.assignments['assigned'][itarget] = (self.assignments['robotID'][itarget, :] >= 0).sum() > 0
         return
 
@@ -1616,7 +1622,6 @@ class Field(object):
                 for icat in icats:
                     other_cadence_name = self.targets['cadence'][icat]
 
-                    # TODO: CHECK OUT EFFICIENCY HERE
                     fits = clist.exposure_consistency(other_cadence_name,
                                                       self.field_cadence.name,
                                                       iexp)
@@ -2042,14 +2047,28 @@ class Field(object):
         return
 
     def assign_calibrations(self):
-        """Assign all calibration targets"""
+        """Assign all calibration targets
+
+        Notes
+        -----
+
+        This assigns all targets with 'category' set to one of 
+        the required calibrations for this Field and with 'rsassign' 
+        set to 1.
+
+        It calls assign_cadences(), which will assign the targets
+        in order of their priority value. The order of assignment is
+        randomized within each priority value. The random seed is 
+        set according to the fieldid.
+"""
         if(self.nocalib):
             return
 
         if(self.verbose):
             print("fieldid {fid}: Assigning calibrations".format(fid=self.fieldid), flush=True)
         
-        icalib = np.where(self._is_calibration)[0]
+        icalib = np.where(self._is_calibration &
+                          (self.targets['rsassign'] != 0))[0]
         self.assign_cadences(rsids=self.targets['rsid'][icalib])
         self._set_has_spare_calib()
         if(self.verbose):
@@ -2057,13 +2076,26 @@ class Field(object):
         return
 
     def assign_science(self):
-        """Assign all science targets"""
+        """Assign all science targets
+
+        Notes
+        -----
+
+        This assigns all targets with 'category' set to 'science'
+        and with 'rsassign' set to 1.
+
+        It calls assign_cadences(), which will assign the targets
+        in order of their priority value. The order of assignment is
+        randomized within each priority value. The random seed is 
+        set according to the fieldid.
+"""
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
 
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
-                            (self.target_duplicated == 0))[0]
+                            (self.target_duplicated == 0) &
+                            (self.targets['rsassign'] != 0))[0]
         np.random.seed(self.fieldid)
         random.seed(self.fieldid)
         np.random.shuffle(iscience)
@@ -2101,6 +2133,10 @@ class Field(object):
         self.assign_calibrations()
         self.assign_science()
         self.decollide_unassigned()
+        for itarget in np.arange(len(self.assignments), dtype=np.int32):
+            self._set_assigned(itarget=itarget)
+        self._set_satisfied()
+        return
 
     def assess(self):
         """Assess the current results of assignment in field

@@ -37,7 +37,7 @@ cadencelist = cadence.CadenceList()
 noclobber = False
 
 def make_assign_entry(f, fields_entry, field_cadence, utcadences,
-                      utcartons, assign_dtype):
+                      utcartons, assign_dtype, nfield=False):
     assign_entry = np.zeros(1, dtype=assign_dtype)
 
     assign_entry['fieldid'] = fields_entry['fieldid']
@@ -48,11 +48,21 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     assign_entry['nvisit'] = nvisit
     assign_entry['ntargets'] = len(f.targets)
     target_got = np.zeros(len(f.targets), dtype=np.int32)
-    target_assigned = f.assignments['robotID'][:, 0:nvisit] >= 0
-    target_nexposures = np.array([cadencelist.cadences[t].nexp_total
-                                  if(t != '') else 1
-                                  for t in f.targets['cadence']])
-    igot = np.where(target_assigned.sum(axis=1) >= target_nexposures)[0]
+    if(nfield):
+        target_assigned = np.zeros((len(f.targets), nvisit),
+                                   dtype=np.int32)
+        for catalogid in np.unique(f.targets['catalogid']):
+            icat = np.where(f.targets['catalogid'] == catalogid)[0]
+            robotID = f.assignments['robotID'][icat, 0:nvisit]
+            target_assigned[icat] = robotID.max(axis=0) >= 0
+        target_nexposures = np.array([cadencelist.cadences[t].nexp_total
+                                      if((t != 'none') & (t != '')) else 1
+                                      for t in f.targets['cadence']])
+        igot = np.where((target_assigned.sum(axis=1) >=
+                         target_nexposures) &
+                        (f.assignments['satisfied']))[0]
+    else:
+        igot = np.where(f.assignments['satisfied'])[0]
     target_got[igot] = 1
     iok = np.where((f.targets['incadence']) & (f.targets['within']))[0]
     assign_entry['nwithin'] = len(iok)
@@ -112,12 +122,12 @@ def field_options(ifield):
     try:
         icadences = np.where(cadence_mask[ifield, :] != 0)[0]
     except:
-        print(ifield)
+        print(ifield, flush=True)
         print(cadence_mask.shape)
         sys.exit(1)
     field_cadences = all_cadences[icadences]
 
-    print(field_cadences)
+    print(field_cadences, flush=True)
 
     for full_field_cadence in field_cadences:
         last = full_field_cadence.split('_')[-1]
@@ -138,7 +148,6 @@ def field_options(ifield):
         print("{fc} {fi}".format(fc=field_cadence, fi=fieldid), flush=True)
 
         f.set_field_cadence(field_cadence)
-
         f.assign_science()
         f.decollide_unassigned()
 
@@ -148,14 +157,35 @@ def field_options(ifield):
         if(n_field_cadence):
             print("n_field_cadence", flush=True)
             assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
-            for indx in np.arange(minn, ncadence + 1, dtype=np.int32):
+            for indx in np.arange(19, ncadence + 1, dtype=np.int32):
                 print("indx={indx}".format(indx=indx), flush=True)
                 fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
                                                  n=indx)
                 assign_entry = make_assign_entry(f, fields_entry,
                                                  fcadence, utcadences,
-                                                 utcartons, assign_dtype)
+                                                 utcartons, assign_dtype,
+                                                 nfield=True)
                 assign_entries[indx - minn] = assign_entry
+
+            # Up to 18x1, do them individually; this is necessary 
+            # because if there is a cadenced observation of (say) 9x1,
+            # which is HIGH priority, it can get favored in the 99x1 
+            # case, but then you lose it for (say) 6x1. This here
+            # assumes our longest cadenced nx1 case is 18x1
+            for indx in np.arange(minn, 19, dtype=np.int32):
+                print("indx={indx}".format(indx=indx), flush=True)
+                f.clear_field_cadence()
+                fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
+                                                 n=indx)
+                f.set_field_cadence(field_cadence)
+                f.assign_science()
+                f.decollide_unassigned()
+                assign_entry = make_assign_entry(f, fields_entry,
+                                                 fcadence, utcadences,
+                                                 utcartons, assign_dtype,
+                                                 nfield=True)
+                assign_entries[indx - minn] = assign_entry
+                
 
             if(assign_entries['ngot'].max() == 0):
                 ikeep = 0
@@ -212,7 +242,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-n', '--ncadence', dest='ncadence',
                         type=np.int32, help='max number of cadences',
-                        default=100)
+                        default=99)
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-s', '--start', dest='start',
@@ -324,7 +354,7 @@ if __name__ == '__main__':
     # Concatenate all
     assign_all = np.zeros(0, dtype=assign_dtype)
     for fieldid in fields_array['fieldid']:
-        print(fieldid)
+        print(fieldid, flush=True)
         tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
                                   observatory=observatory,
                                   fieldid=fieldid)
