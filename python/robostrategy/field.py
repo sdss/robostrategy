@@ -588,9 +588,9 @@ class Field(object):
     def _robotGrid(self):
         """Return a RobotGridFilledHex instance, with all robots at home"""
         if(self.observatory == 'apo'):
-            rg = kaiju.robotGrid.RobotGridAPO(collisionBuffer=self.collisionBuffer)
+            rg = kaiju.robotGrid.RobotGridFilledHex(collisionBuffer=self.collisionBuffer)
         if(self.observatory == 'lco'):
-            rg = kaiju.robotGrid.RobotGridLCO(collisionBuffer=self.collisionBuffer)
+            rg = kaiju.robotGrid.RobotGridFilledHex(collisionBuffer=self.collisionBuffer)
         for k in rg.robotDict.keys():
             rg.homeRobot(k)
         return(rg)
