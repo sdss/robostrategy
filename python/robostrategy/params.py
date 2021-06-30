@@ -29,7 +29,7 @@ class RobostrategyParams(object, metaclass=RobostrategyParamsSingleton):
         self.reset(plan=plan)
 
     def reset(self, plan=None):
-        cfgfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
+        cfgfile = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                'robostrategy-{plan}.cfg'.format(plan=plan))
         self.cfg = configparser.ConfigParser(allow_no_value=True)
         self.cfg.optionxform = str
