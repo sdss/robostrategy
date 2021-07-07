@@ -1722,7 +1722,7 @@ class Field(object):
         if(self.nocalib is False):
             isspare = self._is_spare(rsid=rsid)
         else:
-            isspare = False
+            isspare = np.zeros(self.field_cadence.nexp_total, dtype=np.bool)
 
         for iepoch, epoch in enumerate(epochs):
             nexp = nexps[iepoch]
@@ -2386,10 +2386,32 @@ class Field(object):
             print("fieldid {fid}:   (done assigning science)".format(fid=self.fieldid), flush=True)
         return
 
-    def assign_science_and_calibs(self):
-        """Assign all science targets and calibrations"""
+    def assign_science_and_calibs(self, coordinated_targets=None):
+        """Assign all science targets and calibrations
+
+        Parameters:
+        ----------
+
+        coordinated_targets : dict
+            dictionary of coordinated targets (keys are rsids, values are bool)
+
+
+        Notes:
+        -----
+
+        Does not try to assign any targets for which
+        coordinated_targets[rsid] is True.
+"""
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
+
+        # Deal with any targets duplicated
+        self.target_duplicated[:] = 0
+        if(coordinated_targets is not None):
+            for id_idx, rsid in enumerate(self.targets['rsid']):
+                if rsid in coordinated_targets.keys():
+                    if coordinated_targets[rsid]:
+                        self.target_duplicated[id_idx] = 1
 
         # Assign calibration to one exposure to determine achievable
         # requirements and then unassign
@@ -2410,7 +2432,8 @@ class Field(object):
         
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
-                            (self.target_duplicated == 0))[0]
+                            (self.target_duplicated == 0) &
+                            (self.targets['rsassign'] != 0))[0]
         np.random.seed(self.fieldid)
         random.seed(self.fieldid)
         np.random.shuffle(iscience)
@@ -2436,7 +2459,8 @@ class Field(object):
                 if(self.verbose):
                     print("   ... {c}".format(c=c))
                 iexps = np.where(assigned_exposure_calib[c] == False)[0]
-                icalib = np.where(self.targets['category'] == c)[0]
+                icalib = np.where((self.targets['category'] == c) &
+                                  (self.targets['rsassign'] != 0))[0]
                 for i in icalib:
                     self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps)
 
@@ -2463,7 +2487,8 @@ class Field(object):
                 for c in self.required_calibrations:
                     if(self.verbose):
                         print("   ... {c}".format(c=c))
-                    icalib = np.where(self.targets['category'] == c)[0]
+                    icalib = np.where((self.targets['category'] == c) &
+                                      (self.targets['rsassign'] != 0))[0]
                     for i in icalib:
                         self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps)
                     assigned_exposure_calib[c][iexps] = True
@@ -2503,7 +2528,7 @@ class Field(object):
         Notes:
         -----
 
-        Does not true to assign any targets for which
+        Does not try to assign any targets for which
         coordinated_targets[rsid] is True.
 """
 

@@ -115,7 +115,7 @@ def assign_field(indx):
 
     if(f.field_cadence is not None):
         print("Assign targets", flush=True)
-        f.assign(coordinated_targets=coordinated_dict)
+        f.assign_science_and_calibs(coordinated_targets=coordinated_dict)
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
