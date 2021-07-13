@@ -119,8 +119,8 @@ if __name__ == '__main__':
         extrafiles = rsParams.cfg.get('Cadences', 'ExtraFile').split()
         for extrafile in extrafiles:
             print(" " + extrafile)
-            cadencelist.fromcfg(os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                             'data', extrafile))
+            cadencelist.fromcfg(os.path.join(os.getenv('RSCONFIG_DIR'),
+                                             'etc', extrafile))
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
@@ -128,8 +128,8 @@ if __name__ == '__main__':
     fitsio.write(cadences_file, cadences_array, clobber=True)
 
     # For cadences with many epochs, we will not solve explicitly for
-    # all of the possibilities in RM fields; instead, we will assume that
-    # any epochs will do.
+    # all of the possibilities in RM fields; instead, we will 
+    # assume very strict target cadences.
     for cn in cadencelist.cadences:
         if((cadencelist.cadences[cn].nepochs >= 5) & ('single' not in cn)):
             cadencelist.cadences[cn].delta_min = cadencelist.cadences[cn].delta - 0.5
