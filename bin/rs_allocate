@@ -180,6 +180,7 @@ if __name__ == '__main__':
                               observe_all_cadences=all_cadences,
                               dark_prefer=dark_prefer,
                               cartons=focartons,
+                              cadences=focadences,
                               minimum_ntargets=minimum_ntargets)
     allocate.construct()
     status = allocate.solve()
