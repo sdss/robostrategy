@@ -89,6 +89,7 @@ if __name__ == '__main__':
         if('PerCarton' in rsParams.cfg['ValueRescale']):
             rescale = 'percarton'
         if(rescale == 'percadence'):
+            print("Rescale Per Cadence")
             scales_pcd = np.ones(len(focadences))
             if('default' in rsParams.cfg['ValueRescale']):
                 scales_pcd = (np.zeros(len(focadences)) +
@@ -105,6 +106,7 @@ if __name__ == '__main__':
                     field_options['valuegot_pcd'][indx, :] *
                     scales_pcd).sum()
         if(rescale == 'percarton'):
+            print("Rescale Per Carton")
             scales_pct = np.ones(len(focartons))
             if('default' in rsParams.cfg['ValueRescale']):
                 scales_pct = (np.zeros(len(focartons)) +
@@ -178,6 +180,7 @@ if __name__ == '__main__':
                               observe_all_cadences=all_cadences,
                               dark_prefer=dark_prefer,
                               cartons=focartons,
+                              cadences=focadences,
                               minimum_ntargets=minimum_ntargets)
     allocate.construct()
     status = allocate.solve()
