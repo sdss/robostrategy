@@ -242,10 +242,10 @@ class Field(object):
             self.mastergrid = self._robotGrid()
             if(self.nocalib is False):
                 self.required_calibrations = collections.OrderedDict()
-                self.required_calibrations['sky_boss'] = 80
-                self.required_calibrations['standard_boss'] = 80
-                self.required_calibrations['sky_apogee'] = 30
-                self.required_calibrations['standard_apogee'] = 20
+                self.required_calibrations['sky_boss'] = np.zeros(0, dtype=np.int32)
+                self.required_calibrations['standard_boss'] = np.zeros(0, dtype=np.int32)
+                self.required_calibrations['sky_apogee'] = np.zeros(0, dtype=np.int32)
+                self.required_calibrations['standard_apogee'] = np.zeros(0, dtype=np.int32)
                 self.calibrations = collections.OrderedDict()
                 for n in self.required_calibrations:
                     self.calibrations[n] = np.zeros(0, dtype=np.int32)
@@ -447,7 +447,41 @@ class Field(object):
                                                ('fiberType', np.unicode_, 10),
                                                ('rsflags', np.int32)])
             self.assignments = np.zeros(0, dtype=self.assignments_dtype)
+
+            if(self.field_cadence.obsmode_pk != ''):
+                self.design_mode = self.field_cadence.obsmode_pk
+            else:
+                self.design_mode = np.array([''] * self.field_cadence.nexp_total)
+                for iexp in np.arange(self.field_cadence.nexp_total):
+                    epoch = self.field_cadence.epochs[iexp]
+                    if(self.field_cadence.skybrightness[epoch] >= 0.5):
+                        self.design_mode[iexp] = 'bright_time'
+                    else:
+                        if(('dark_100x8' in self.field_cadence.name) |
+                           ('dark_174x8' in self.field_cadence.name)):
+                            self.design_mode[iexp] = 'dark_rm'
+                        elif(('dark_10x4' in self.field_cadence.name) |
+                             ('dark_2x4' in self.field_cadence.name) |
+                             ('dark_3x4' in self.field_cadence.name)):
+                            self.design_mode[iexp] = 'dark_monit'
+                        elif('dark_1x1' in self.field_cadence.name) |
+                             'dark_1x2' in self.field_cadence.name) |
+                             'dark_2x1' in self.field_cadence.name) |
+                             'mixed2' in self.field_cadence.name)):
+                            self.design_mode[iexp] = 'dark_plane'
+                        else:
+                            self.design_mode[iexp] = 'dark_faint'
+                    
             if(self.nocalib is False):
+                for c in self.required_calibrations:
+                    if(c == 'standard_boss'):
+                        self.required_calibrations[c] = [designModeDict[d].n_stds_min['BOSS'] for d in self.design_mode]
+                    elif(c == 'standard_apogee'):
+                        self.required_calibrations[c] = [designModeDict[d].n_stds_min['APOGEE'] for d in self.design_mode]
+                    elif(c == 'sky_boss'):
+                        self.required_calibrations[c] = [designModeDict[d].n_skies_min['BOSS'] for d in self.design_mode]
+                    elif(c == 'sky_apogee'):
+                        self.required_calibrations[c] = [designModeDict[d].n_skies_min['APOGEE'] for d in self.design_mode]
                 for c in self.calibrations:
                     self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                     dtype=np.int32)
