@@ -180,7 +180,7 @@ class AllocateLST(object):
 """
     def __init__(self, slots=None, fields=None, field_slots=None,
                  field_options=None, seed=100, filename=None,
-                 observatory=None, cartons=None,
+                 observatory=None, cartons=None, cadences=None,
                  observe_all_fields=[], observe_all_cadences=[],
                  dark_prefer=1., minimum_ntargets={}):
         if(filename is None):
@@ -189,6 +189,7 @@ class AllocateLST(object):
             self.field_slots = field_slots
             self.field_options = field_options
             self.cartons = cartons
+            self.cadences = cadences
             self.minimum_ntargets = minimum_ntargets
             self.nfields = len(self.field_options)
         else:
@@ -602,8 +603,13 @@ class AllocateLST(object):
         fitsio.write(filename, self.field_slots, clobber=False)
         fitsio.write(filename, self.field_options, clobber=False)
         cartons_arr = np.zeros(len(self.cartons),
-                               dtype=[('carton', 'a40')])
+                               dtype=[('carton', 'U50')])
+        cartons_arr['carton'] = self.cartons
+        cadences_arr = np.zeros(len(self.cadences),
+                               dtype=[('cadences', 'U50')])
+        cadences_arr['cadences'] = self.cadences
         fitsio.write(filename, cartons_arr, clobber=False)
+        fitsio.write(filename, cadences_arr, clobber=False)
         return
 
     def fromfits(self, filename=None):
