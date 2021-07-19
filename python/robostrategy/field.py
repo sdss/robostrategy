@@ -382,10 +382,11 @@ class Field(object):
         self.field_cadence = None
         self.assignments_dtype = None
         self.assignments = None
+        self.design_mode = None
         if(self.nocalib is False):
-            for c in self.calibrations:
-                for n in self.required_calibrations:
-                    self.calibrations[n] = np.zeros(0, dtype=np.int32)
+            for n in self.required_calibrations:
+                self.calibrations[n] = np.zeros(0, dtype=np.int32)
+                self.required_calibrations[n] = np.zeros(0, dtype=np.int32)
 
         if(self.verbose):
             print("fieldid {fid}:  (done clearing field cadence)".format(fid=self.fieldid), flush=True)
