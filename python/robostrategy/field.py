@@ -19,6 +19,8 @@ import kaiju.robotGrid
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
+import mugatu.designmode
+    
 
 # alpha and beta lengths for plotting
 _alphaLen = 7.4
@@ -164,6 +166,9 @@ class Field(object):
           'robotID', 'rsflags', 'fiberType'
         for each target; set to None prior to definition of field_cadence
 
+    designMode : dict of DesignMode objects
+        possible design modes
+
     required_calibrations : OrderedDict
         dictionary with numbers of required calibration sources specified
         for 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee'
@@ -240,6 +245,12 @@ class Field(object):
             self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
             self.collisionBuffer = collisionBuffer
             self.mastergrid = self._robotGrid()
+            self.designModes = mugatu.designmode.allDesignModes() 
+            if(self.designModes is None):
+                default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                              'etc',
+                                              'default_designmodes.fits')
+                mugatu.designmode.allDesignModes(filename=default_dm_file)
             if(self.nocalib is False):
                 self.required_calibrations = collections.OrderedDict()
                 self.required_calibrations['sky_boss'] = np.zeros(0, dtype=np.int32)
@@ -304,12 +315,26 @@ class Field(object):
             for n in self.required_calibrations:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
         self.set_field_cadence(field_cadence)
-        targets = fitsio.read(filename, ext=1)
+        try:
+            targets = fitsio.read(filename, ext='TARGET')
+        except:
+            targets = fitsio.read(filename, ext=1)
         self.targets_fromarray(target_array=targets)
         try:
-            assignments = fitsio.read(filename, ext=2)
+            try:
+                assignments = fitsio.read(filename, ext='ASSIGN')
+            except:
+                assignments = fitsio.read(filename, ext=2)
         except:
             assignments = None
+        try:
+            self.designModes = mugatu.designmode.allDesignModes(filename,
+                                                                ext='DESMODE')
+        except:
+            default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                          'etc',
+                                          'default_designmodes.fits')
+            self.designModes = mugatu.designmode.allDesignModes(default_dm_file)
         if(assignments is not None):
             if(self.field_cadence.nexp_total == 1):
                 iassigned = np.where(assignments['robotID'])
@@ -448,10 +473,19 @@ class Field(object):
                                                ('rsflags', np.int32)])
             self.assignments = np.zeros(0, dtype=self.assignments_dtype)
 
-            if(self.field_cadence.obsmode_pk != ''):
-                self.design_mode = self.field_cadence.obsmode_pk
+            try:
+                obsmode_pk = self.field_cadence.obsmode_pk
+            except AttributeError:
+                obsmode_pk = np.array([''] * self.field_cadence.nexp_total)
+
+            if(obsmode_pk[0] != ''):
+                if((type(obsmode_pk) == list) |
+                   (type(obsmode_pk) == np.ndarray)):
+                    self.design_mode = np.array(obsmode_pk)
+                else:
+                    self.design_mode = np.array([obsmode_pk])
             else:
-                self.design_mode = np.array([''] * self.field_cadence.nexp_total)
+                self.design_mode = [''] * self.field_cadence.nexp_total
                 for iexp in np.arange(self.field_cadence.nexp_total):
                     epoch = self.field_cadence.epochs[iexp]
                     if(self.field_cadence.skybrightness[epoch] >= 0.5):
@@ -464,24 +498,25 @@ class Field(object):
                              ('dark_2x4' in self.field_cadence.name) |
                              ('dark_3x4' in self.field_cadence.name)):
                             self.design_mode[iexp] = 'dark_monit'
-                        elif('dark_1x1' in self.field_cadence.name) |
-                             'dark_1x2' in self.field_cadence.name) |
-                             'dark_2x1' in self.field_cadence.name) |
-                             'mixed2' in self.field_cadence.name)):
+                        elif(('dark_1x1' in self.field_cadence.name) |
+                             ('dark_1x2' in self.field_cadence.name) |
+                             ('dark_2x1' in self.field_cadence.name) |
+                             ('mixed2' in self.field_cadence.name)):
                             self.design_mode[iexp] = 'dark_plane'
                         else:
                             self.design_mode[iexp] = 'dark_faint'
+                    print(self.design_mode[iexp])
                     
             if(self.nocalib is False):
                 for c in self.required_calibrations:
                     if(c == 'standard_boss'):
-                        self.required_calibrations[c] = [designModeDict[d].n_stds_min['BOSS'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModes[d].n_stds_min['BOSS'] for d in self.design_mode]
                     elif(c == 'standard_apogee'):
-                        self.required_calibrations[c] = [designModeDict[d].n_stds_min['APOGEE'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModes[d].n_stds_min['APOGEE'] for d in self.design_mode]
                     elif(c == 'sky_boss'):
-                        self.required_calibrations[c] = [designModeDict[d].n_skies_min['BOSS'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModes[d].n_skies_min['BOSS'] for d in self.design_mode]
                     elif(c == 'sky_apogee'):
-                        self.required_calibrations[c] = [designModeDict[d].n_skies_min['APOGEE'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModes[d].n_skies_min['APOGEE'] for d in self.design_mode]
                 for c in self.calibrations:
                     self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                     dtype=np.int32)
@@ -796,11 +831,18 @@ class Field(object):
                 name = 'RCNAME{indx}'.format(indx=indx)
                 num = 'RCNUM{indx}'.format(indx=indx)
                 hdr[name] = rc
-                hdr[num] = self.required_calibrations[rc]
+                hdr[num] = ' '.join([str(n) for n in self.required_calibrations[rc]])
         fitsio.write(filename, None, header=hdr, clobber=True)
-        fitsio.write(filename, self.targets)
+        fitsio.write(filename, self.targets, extname='TARGET')
         if(self.assignments is not None):
-            fitsio.write(filename, self.assignments)
+            fitsio.write(filename, self.assignments, extname='ASSIGN')
+        dmarr = None
+        for i, d in enumerate(self.designModes):
+            arr = self.designModes[d].toarray()
+            if(dmarr is None):
+                dmarr = np.zeros(len(self.designModes), dtype=arr.dtype)
+            dmarr[i] = arr
+        fitsio.write(filename, dmarr, extname='DESMODE')
         return
 
     def collide_robot_exposure(self, rsid=None, robotID=None, iexp=None):
@@ -1009,7 +1051,7 @@ class Field(object):
                 spare = np.zeros(self.field_cadence.nexp_total, dtype=np.bool)
                 category = self.targets['category'][robot2indx[icalib]]
                 calibspare = np.array([self.calibrations[category[i]][icalib[i]] >
-                                       self.required_calibrations[category[i]]
+                                       self.required_calibrations[category[i]][icalib[i]]
                                        for i in range(len(category))], dtype=np.bool)
                 spare[icalib] = calibspare
                 spare = spare & (isspare == False)
@@ -2192,10 +2234,10 @@ class Field(object):
             out = out + "\n"
             out = out + "Calibration targets:\n"
             for c in self.required_calibrations:
-                tmp = " {c} (want {rc}):"
-                out = out + tmp.format(c=c, rc=self.required_calibrations[c])
-                for rcn in self.calibrations[c]:
-                    out = out + " {rcn}".format(rcn=rcn)
+                tmp = " {c}:"
+                out = out + tmp.format(c=c)
+                for cn, rcn in zip(self.calibrations[c], self.required_calibrations[c]):
+                    out = out + " {cn}/{rcn}".format(cn=cn, rcn=rcn)
                 out = out + "\n"
         else:
             out = out + "No calibrations\n"
