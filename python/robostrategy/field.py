@@ -378,9 +378,9 @@ class Field(object):
     def _robotGrid(self):
         """Return a RobotGridAPO or RobotGridLCO instance, with all robots at home"""
         if(self.observatory == 'apo'):
-            rg = kaiju.robotGrid.RobotGridAPO(collisionBuffer=self.collisionBuffer)
+            rg = kaiju.robotGrid.RobotGridAPO(collisionBuffer=self.collisionBuffer, stepSize=0.05)
         if(self.observatory == 'lco'):
-            rg = kaiju.robotGrid.RobotGridLCO(collisionBuffer=self.collisionBuffer)
+            rg = kaiju.robotGrid.RobotGridLCO(collisionBuffer=self.collisionBuffer, stepSize=0.05)
         for k in rg.robotDict.keys():
             rg.homeRobot(k)
         return(rg)
