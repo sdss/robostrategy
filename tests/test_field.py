@@ -175,10 +175,10 @@ def test_assign_robot_epoch():
     assert f.assignments['robotID'][f.rsid2indx[tid], 1] == -1
     assert f.assignments['robotID'][f.rsid2indx[tid], 2] == -1
     assert f.assignments['robotID'][f.rsid2indx[tid], 3] == -1
-    assert f._robot2indx[rid, 0] == f.rsid2indx[tid]
-    assert f._robot2indx[rid, 1] == -1
-    assert f._robot2indx[rid, 2] == -1
-    assert f._robot2indx[rid, 3] == -1
+    assert f._robot2indx[rid - 1, 0] == f.rsid2indx[tid]
+    assert f._robot2indx[rid - 1, 1] == -1
+    assert f._robot2indx[rid - 1, 2] == -1
+    assert f._robot2indx[rid - 1, 3] == -1
 
     f.assign_robot_epoch(rsid=tid, robotID=rid, epoch=1, nexp=2)
     assert f.available_robot_epoch(robotID=rid, epoch=0, nexp=1)[0] == True
@@ -187,8 +187,8 @@ def test_assign_robot_epoch():
     assert f.available_robot_epoch(robotID=rid, epoch=1, nexp=2)[0] == False
     assert f.assignments['robotID'][f.rsid2indx[tid], 2] == rid
     assert f.assignments['robotID'][f.rsid2indx[tid], 3] == rid
-    assert f._robot2indx[rid, 2] == f.rsid2indx[tid]
-    assert f._robot2indx[rid, 3] == f.rsid2indx[tid]
+    assert f._robot2indx[rid - 1, 2] == f.rsid2indx[tid]
+    assert f._robot2indx[rid - 1, 3] == f.rsid2indx[tid]
 
     f.unassign_epoch(rsid=tid, epoch=0)
     assert f.available_robot_epoch(robotID=rid, epoch=0, nexp=1)[0] == True
@@ -252,12 +252,12 @@ def test_available_epochs():
                 assert fe[1][i][0] == True
                 assert fe[1][i][1] == True
 
-            assert f._robot2indx[rid, 0] == f.rsid2indx[tid0]
+            assert f._robot2indx[rid - 1, 0] == f.rsid2indx[tid0]
 
             f.unassign(rsid=tid0)
             f.unassign(rsid=tid1)
 
-            assert f._robot2indx[rid, 0] == - 1
+            assert f._robot2indx[rid - 1, 0] == - 1
 
 
 def test_assign_epochs():
@@ -306,13 +306,10 @@ def test_assign_epochs():
                      (f.assignments['robotID'][indx2, 0] !=
                       f.assignments['robotID'][indx0, 0])))
 
-            assert f._robot2indx[rid, 0] == indx0
-            assert f._robot2indx[rid, 1] == indx1
-            assert f._robot2indx[rid, 2] == indx0
-            assert f._robot2indx[rid, 3] == indx1
-
             return
-
+            
+    assert 1 == 0
+    return
 
 def test_clear_assignments():
     clist = cadence.CadenceList()
@@ -448,12 +445,12 @@ def test_collisions():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
-    ntot = 400
+    ntot = 1000
     targets(f, nt=ntot, seed=101)
     targets(f, nt=ntot, rsid_start=ntot, ra=f.targets['ra'],
             dec=f.targets['dec'] + 0.005)
 
-    rid1 = 10
+    rid1 = 100
     tids1 = f.robotgrids[0].robotDict[rid1].validTargetIDs
     tid1 = tids1[0]
 
