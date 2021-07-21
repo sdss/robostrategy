@@ -5,6 +5,7 @@
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 
 
+import os
 import re
 import random
 import numpy as np
@@ -506,7 +507,6 @@ class Field(object):
                             self.design_mode[iexp] = 'dark_plane'
                         else:
                             self.design_mode[iexp] = 'dark_faint'
-                    print(self.design_mode[iexp])
                     
             if(self.nocalib is False):
                 for c in self.required_calibrations:
@@ -2238,7 +2238,7 @@ class Field(object):
                 tmp = " {c}:"
                 out = out + tmp.format(c=c)
                 for cn, rcn in zip(self.calibrations[c], self.required_calibrations[c]):
-                    out = out + " {cn}/{rcn}".format(cn=cn, rcn=rcn)
+                    out = out + " {cn}/{rcn}".format(cn=cn, rcn=int(rcn))
                 out = out + "\n"
         else:
             out = out + "No calibrations\n"
