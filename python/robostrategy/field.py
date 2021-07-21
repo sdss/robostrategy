@@ -2035,7 +2035,7 @@ class Field(object):
                         for rsid2 in r2.validTargetIDs:
                             if(rsid1 != rsid2):
                                 rg.assignRobot2Target(robotID2, rsid2)
-                                if(rg.isCollidedWithAssigned(robotID1)):
+                                if(rg.isCollidedWithAssigned(robotID1)[0]):
                                     collisions.append((robotID1,
                                                        rsid1,
                                                        robotID2,
