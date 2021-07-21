@@ -330,7 +330,7 @@ class Field(object):
     strings of unrelated exposures.
 
     This class internally assumes that robotIDs are sequential
-    integers starting at 0.
+    integers starting at 1.
 
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
@@ -505,14 +505,14 @@ class Field(object):
                         self.achievable_calibrations[hdr[name]] = np.int32(hdr[num])
 
             if(self.field_cadence.nexp_total == 1):
-                iassigned = np.where(assignments['robotID'])
+                iassigned = np.where(assignments['robotID'] >= 1)
                 for itarget in iassigned[0]:
                     self.assign_robot_exposure(robotID=assignments['robotID'][itarget],
                                                rsid=targets['rsid'][itarget],
                                                iexp=0, reset_satisfied=False,
                                                reset_has_spare=False)
             else:
-                iassigned = np.where(assignments['robotID'] >= 0)
+                iassigned = np.where(assignments['robotID'] >= 1)
                 for itarget, iexp in zip(iassigned[0], iassigned[1]):
                     self.assign_robot_exposure(robotID=assignments['robotID'][itarget, iexp],
                                                rsid=targets['rsid'][itarget],
@@ -588,11 +588,11 @@ class Field(object):
         return np.zeros(length, dtype=dtype) + quantity
 
     def _robotGrid(self):
-        """Return a RobotGridFilledHex instance, with all robots at home"""
+        """Return a RobotGridAPO or RobotGridLCO instance, with all robots at home"""
         if(self.observatory == 'apo'):
-            rg = kaiju.robotGrid.RobotGridFilledHex(collisionBuffer=self.collisionBuffer)
+            rg = kaiju.robotGrid.RobotGridAPO(collisionBuffer=self.collisionBuffer, stepSize=0.05)
         if(self.observatory == 'lco'):
-            rg = kaiju.robotGrid.RobotGridFilledHex(collisionBuffer=self.collisionBuffer)
+            rg = kaiju.robotGrid.RobotGridLCO(collisionBuffer=self.collisionBuffer, stepSize=0.05)
         for k in rg.robotDict.keys():
             rg.homeRobot(k)
         return(rg)
@@ -1001,14 +1001,14 @@ class Field(object):
         if(self.nocalib is False):
             # Get indices of assigned targets to this robot
             # and make Boolean arrays of which are assigned and not
-            status.currindx = self._robot2indx[status.robotID, status.iexps]
+            status.currindx = self._robot2indx[status.robotID - 1, status.iexps]
             free = status.currindx < 0
             hasspare = self._has_spare_calib[self._calibration_index[status.currindx + 1], status.iexps]
             status.spare = (hasspare > 0) & (isspare == False) & (free == False)
             status.assignable = free | status.spare
         else:
             # Consider exposures for this epoch
-            status.currindx = self._robot2indx[status.robotID, status.iexps]
+            status.currindx = self._robot2indx[status.robotID - 1, status.iexps]
             status.assignable = status.currindx < 0
 
         if(status.rsid is not None):
@@ -1063,7 +1063,7 @@ class Field(object):
             return
 
         if(status.spare[i]):
-            rsid = self.targets['rsid'][self._robot2indx[status.robotID, iexp]]
+            rsid = self.targets['rsid'][self._robot2indx[status.robotID - 1, iexp]]
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
                                    reset_satisfied=True, reset_has_spare=True)
 
@@ -1130,33 +1130,10 @@ class Field(object):
             status.assignable=np.zeros(len(iexps), dtype=np.bool)
             return available, status
 
-            # Now optimize case where nexp=1
-            #if(cnexp == 1):
-                #iexp = self.field_cadence.epoch_indx[epoch]
-                #robot2indx = self._robot2indx[robotID, iexp]
-                #free = robot2indx < 0
-#
-                #if(free is False):
-                    #return False, onefalse
-            #
-                #if(self.nocalib is False):
-                    #if((free == False) & (isspare[iexp] == False)):
-                        #free = self._has_spare_calib[self._calibration_index[robot2indx + 1], iexp]
-#
-                #if(free & (rsid is not None)):
-                    ## TODO: COUNT AS FREE IF COLLIDER IS SPARE CALIB
-                    #free = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
-                                                       #iexp=iexp) == False
-#
-                #if(free):
-                    #return True, onetrue
-                #else:
-                    #return False, onefalse
-
         # Set assignent status
         self.set_assignment_status(status=status, isspare=isspare)
 
-        # Count this epoch as available if there are enough free exposures.
+        # Count this epoch as available if there are enough free exposures
         nfree = status.assignable.sum()
         available = nfree >= nexp
 
@@ -1205,7 +1182,7 @@ class Field(object):
 
         # Get indices of assigned targets to this robot
         # and make Boolean arrays of which are assigned and not
-        robot2indx = self._robot2indx[robotID, :]
+        robot2indx = self._robot2indx[robotID - 1, :]
         free = robot2indx < 0
 
         # Check if the assigned robots are to "spare" calibration targets.
@@ -1335,7 +1312,7 @@ class Field(object):
         self._competing_targets = np.zeros(len(self.mastergrid.robotDict), dtype=np.int32)
         for rsid in rsids:
             robotIDs = np.array(self.masterTargetDict[rsid].validRobotIDs, dtype=np.int32)
-            self._competing_targets[robotIDs] += 1
+            self._competing_targets[robotIDs - 1] += 1
         return
 
     def assign_robot_exposure(self, robotID=None, rsid=None, iexp=None,
@@ -1374,19 +1351,19 @@ class Field(object):
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
                                    reset_satisfied=True, reset_has_spare=True)
 
-        if(self._robot2indx[robotID, iexp] >= 0):
-            rsid_unassign = self.targets['rsid'][self._robot2indx[robotID,
+        if(self._robot2indx[robotID - 1, iexp] >= 0):
+            rsid_unassign = self.targets['rsid'][self._robot2indx[robotID - 1,
                                                                   iexp]]
             self.unassign_exposure(rsid=rsid_unassign, iexp=iexp,
                                    reset_assigned=True, reset_satisfied=True,
                                    reset_has_spare=True)
 
         self.assignments['robotID'][itarget, iexp] = robotID
-        self._robot2indx[robotID, iexp] = itarget
+        self._robot2indx[robotID - 1, iexp] = itarget
         epoch = self.field_cadence.epochs[iexp]
-        self._robotnexp[robotID, epoch] = self._robotnexp[robotID, epoch] - 1
+        self._robotnexp[robotID - 1, epoch] = self._robotnexp[robotID - 1, epoch] - 1
         if(self.targets['category'][itarget] == 'science'):
-            self._robotnexp_max[robotID, epoch] = self._robotnexp_max[robotID, epoch] - 1
+            self._robotnexp_max[robotID - 1, epoch] = self._robotnexp_max[robotID - 1, epoch] - 1
         self.assignments['assigned'][itarget] = 1
 
         # If this is a calibration target, update calibration target tracker
@@ -1495,16 +1472,16 @@ class Field(object):
         itarget = self.rsid2indx[rsid]
         category = self.targets['category'][itarget]
         robotID = self.assignments['robotID'][itarget, iexp]
-        if(robotID >= 0):
+        if(robotID >= 1):
             if(self.allgrids):
                 rg = self.robotgrids[iexp]
                 rg.unassignTarget(rsid)
             self.assignments['robotID'][itarget, iexp] = -1
-            self._robot2indx[robotID, iexp] = -1
+            self._robot2indx[robotID - 1, iexp] = -1
             epoch = self.field_cadence.epochs[iexp]
-            self._robotnexp[robotID, epoch] = self._robotnexp[robotID, epoch] + 1
+            self._robotnexp[robotID - 1, epoch] = self._robotnexp[robotID - 1, epoch] + 1
             if(self.targets['category'][itarget] == 'science'):
-                self._robotnexp_max[robotID, epoch] = self._robotnexp_max[robotID, epoch] + 1
+                self._robotnexp_max[robotID - 1, epoch] = self._robotnexp_max[robotID - 1, epoch] + 1
             if(self.nocalib is False):
                 if(self._is_calibration[itarget]):
                     self.calibrations[category][iexp] = self.calibrations[category][iexp] - 1
@@ -1697,28 +1674,11 @@ class Field(object):
             available['statuses'] = statuses
             return(available)
 
-        # If we are going to require ALL epochs can be fulfilled, we
-        # can punt early
-        #if(strict):
-            #if(len(epochs) == 1):
-                #if(self._robotnexp_max[validRobotIDs, epochs[0]].max() < nexps[0]):
-                    #available = dict()
-                    #available['available'] = False
-                    #available['nAvailableRobotIDs'] = nAvailableRobotIDs
-                    #available['availableRobotIDs'] = availableRobotIDs
-                    #available['statuses'] = statuses
-                    #return(available)
-            #else:
-                #for iepoch, epoch in enumerate(epochs):
-                    #if(self._robotnexp_max[validRobotIDs, epoch].max() < nexps[iepoch]):
-                        #available = dict()
-                        #available['available'] = False
-                        #available['nAvailableRobotIDs'] = nAvailableRobotIDs
-                        #available['availableRobotIDs'] = availableRobotIDs
-                        #available['statuses'] = statuses
-                        #return(available)
+        # Prefer BOSS-only robots if they are available
+        hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                              for x in validRobotIDs])
+        validRobotIDs = validRobotIDs[hasApogee.argsort()]
 
-        validRobotIDs.sort()
         if(self.nocalib is False):
             isspare = self._is_spare(rsid=rsid)
         else:
@@ -1731,8 +1691,7 @@ class Field(object):
             iexps = np.arange(iexpst, iexpnd, dtype=np.int32)
             arlist = []
             slist = []
-            # ican = np.where(self._robotnexp_max[validRobotIDs, epoch] >= nexp)[0]
-            for robotID in validRobotIDs: #[ican]:
+            for robotID in validRobotIDs:
                 ok, status = self.available_robot_epoch(rsid=rsid,
                                                         robotID=robotID,
                                                         epoch=epoch,
@@ -1802,7 +1761,7 @@ class Field(object):
             if(self.methods['assign_epochs'] == 'first'):
                 irobot = 0
             if(self.methods['assign_epochs'] == 'fewestcompeting'):
-                irobot = np.argmin(self._competing_targets[currRobotIDs])
+                irobot = np.argmin(self._competing_targets[currRobotIDs - 1])
             robotID = currRobotIDs[irobot]
             status = statuses[iepoch][irobot]
             nexp = nexps[iepoch]
@@ -2239,7 +2198,7 @@ class Field(object):
                         for rsid2 in r2.validTargetIDs:
                             if(rsid1 != rsid2):
                                 rg.assignRobot2Target(robotID2, rsid2)
-                                if(rg.isCollidedWithAssigned(robotID1)):
+                                if(rg.isCollidedWithAssigned(robotID1)[0]):
                                     collisions.append((robotID1,
                                                        rsid1,
                                                        robotID2,
@@ -2308,12 +2267,12 @@ class Field(object):
         robotIDs = self._assign_cp_model(rsids=rsids)
 
         for rsid, robotID in zip(rsids, robotIDs):
-            if(robotID >= 0):
+            if(robotID >= 1):
                 for epoch in range(self.field_cadence.nepochs):
                     nexp = self.field_cadence.nexp[epoch]
                     self.assign_robot_epoch(rsid=rsid, robotID=robotID, epoch=epoch, nexp=nexp)
 
-        success = robotIDs >= 0
+        success = (robotIDs >= 1)
         return(success)
 
     def decollide_unassigned(self):
@@ -2592,7 +2551,7 @@ class Field(object):
         for epoch in range(self.field_cadence.nepochs):
             iexpst = self.field_cadence.epoch_indx[epoch]
             iexpnd = self.field_cadence.epoch_indx[epoch + 1]
-            rids = np.where(((self.assignments['robotID'][:, iexpst:iexpnd] >= 0).sum(axis=1) > 0) &
+            rids = np.where(((self.assignments['robotID'][:, iexpst:iexpnd] >= 1).sum(axis=1) > 0) &
                             (self._is_calibration == False))[0]
             perepoch[epoch] = len(rids)
             out = out + " {p}".format(p=perepoch[epoch])
@@ -2655,7 +2614,7 @@ class Field(object):
             for target, assignment in zip(self.targets, self.assignments):
                 if(target['category'] in self.required_calibrations):
                     for iexp, robotID in enumerate(assignment['robotID']):
-                        if(robotID >= 0):
+                        if(robotID >= 1):
                             test_calibrations[target['category']][iexp] += 1
 
         for indx, target in enumerate(self.targets):
@@ -2675,10 +2634,10 @@ class Field(object):
         # Check that assignments and _robot2indx agree with each other
         for itarget, assignment in enumerate(self.assignments):
             for iexp, robotID in enumerate(assignment['robotID']):
-                if(robotID >= 0):
-                    if(itarget != self._robot2indx[robotID, iexp]):
+                if(robotID >= 1):
+                    if(itarget != self._robot2indx[robotID - 1, iexp]):
                         rsid = self.targets['rsid'][itarget]
-                        print("assignments['robotID'] for rsid={rsid} and iexp={iexp} is robotID={robotID}, but _robot2indx[robotID, iexp] is {i}, meaning rsid={rsidtwo}".format(rsid=rsid, iexp=iexp, robotID=robotID, i=self._robot2indx[robotID, iexp], rsidtwo=self.targets['rsid'][self._robot2indx[robotID, iexp]]))
+                        print("assignments['robotID'] for rsid={rsid} and iexp={iexp} is robotID={robotID}, but _robot2indx[robotID, iexp] is {i}, meaning rsid={rsidtwo}".format(rsid=rsid, iexp=iexp, robotID=robotID, i=self._robot2indx[robotID - 1, iexp], rsidtwo=self.targets['rsid'][self._robot2indx[robotID - 1, iexp]]))
                         nproblems = nproblems + 1
 
         # Check that _robot2indx and _robotnexp agree with each other
@@ -2686,18 +2645,18 @@ class Field(object):
             nn = self.field_cadence.nexp.copy()
             for iexp in np.arange(self.field_cadence.nexp_total,
                                   dtype=np.int32):
-                if(self._robot2indx[robotID, iexp] >= 0):
+                if(self._robot2indx[robotID - 1, iexp] >= 0):
                     epoch = self.field_cadence.epochs[iexp]
                     nn[epoch] = nn[epoch] - 1
             for epoch in np.arange(self.field_cadence.nepochs, dtype=np.int32):
-                if(nn[epoch] != self._robotnexp[robotID, epoch]):
-                    print("_robotnexp for robotID={robotID} and epoch={epoch} is {rnexp}, but should be {nn}".format(robotID=robotID, epoch=epoch, rnexp=self._robotnexp[robotID, epoch], nn=nn[epoch]))
+                if(nn[epoch] != self._robotnexp[robotID - 1, epoch]):
+                    print("_robotnexp for robotID={robotID} and epoch={epoch} is {rnexp}, but should be {nn}".format(robotID=robotID, epoch=epoch, rnexp=self._robotnexp[robotID - 1, epoch], nn=nn[epoch]))
                     nproblems = nproblems + 1
 
         for robotID in self.mastergrid.robotDict:
             for iexp in np.arange(self.field_cadence.nexp_total,
                                   dtype=np.int32):
-                itarget = self._robot2indx[robotID, iexp]
+                itarget = self._robot2indx[robotID - 1, iexp]
                 if(itarget >= 0):
                     if(robotID != self.assignments['robotID'][itarget, iexp]):
                         print("_robot2indx is {i} for robotID=robotID and iexp={iexp} but assignments['robotID'] for itarget={i} is robotID={robotID}".format(iexp=iexp, robotID=robotID, i=itarget))
@@ -2723,8 +2682,8 @@ class Field(object):
                         itarget = self.rsid2indx[tid]
                     else:
                         itarget = -1
-                    if(self._robot2indx[robotID, iexp] != itarget):
-                        print("robotID={robotID} iexp={iexp} : expected {i1} in _robot2indx got {i2}".format(robotID=robotID, iexp=iexp, i1=itarget, i2=self._robot2indx[robotID, iexp]))
+                    if(self._robot2indx[robotID - 1, iexp] != itarget):
+                        print("robotID={robotID} iexp={iexp} : expected {i1} in _robot2indx got {i2}".format(robotID=robotID, iexp=iexp, i1=itarget, i2=self._robot2indx[robotID - 1, iexp]))
                         nproblems = nproblems + 1
 
                     if(itarget != -1):
@@ -2794,7 +2753,7 @@ class Field(object):
                     for iexp in range(iexpst, iexpnd):
                         rg = self.robotgrids[iexp]
                         robotID = assignment['robotID'][iexp]
-                        if(robotID >= 0):
+                        if(robotID >= 1):
                             if(rg.robotDict[robotID].assignedTargetID == target['rsid']):
                                 nexpr = nexpr + 1
                     if(nexpr != target_cadence.nexp[nepochs]):
@@ -2865,7 +2824,7 @@ class Field(object):
         if(self.assignments is not None):
             target_got = np.zeros(len(self.targets), dtype=np.int32)
             target_robotid = np.zeros(len(self.targets), dtype=np.int32)
-            itarget = np.where(self.assignments['robotID'][:, iexp] >= 0)[0]
+            itarget = np.where(self.assignments['robotID'][:, iexp] >= 1)[0]
             target_got[itarget] = 1
             target_robotid[itarget] = self.assignments['robotID'][itarget, iexp]
             for indx in np.arange(len(target_cadences)):
@@ -3026,7 +2985,7 @@ class FieldSpeedy(Field):
     Notes:
     -----
 
-    This class internally assumes that robotIDs are sequential integers starting at 0.
+    This class internally assumes that robotIDs are sequential integers starting at 1.
 
     Relative to Field, this class behaves as follows: 
      * nocalib is set True, so calibrations are skipped, which allows a
@@ -3154,7 +3113,7 @@ class FieldSpeedy(Field):
                                   dtype=np.int64)
             if(len(curr_rsids) > 0):
                 np.random.shuffle(curr_rsids)
-                ifree = np.where(self._robot2indx[robotID, :] < 0)[0]
+                ifree = np.where(self._robot2indx[robotID - 1, :] < 0)[0]
                 if(len(ifree) >= len(curr_rsids)):
                     ifree = ifree[0:len(curr_rsids)]
                 for icurr, iexp in enumerate(ifree):
@@ -3199,7 +3158,7 @@ class FieldSpeedy(Field):
                                   dtype=np.int64)
             if(len(curr_rsids) > 0):
                 np.random.shuffle(curr_rsids)
-                ifree = np.where(self._robot2indx[robotID, :] < 0)[0]
+                ifree = np.where(self._robot2indx[robotID - 1, :] < 0)[0]
                 icurr = 0
                 irsid = 0
                 while((icurr < len(ifree)) & (irsid < len(curr_rsids))):
