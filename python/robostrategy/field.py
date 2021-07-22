@@ -1028,11 +1028,12 @@ class Field(object):
             return
         rg = self.robotgrids[iexp]
         collided, fcollided, colliders = rg.wouldCollideWithAssigned(status.robotID, status.rsid)
+        colliders = np.array(colliders, dtype=np.int32)
         status.collided = collided | fcollided
         if(fcollided):
             status.assignable[i] = False
         if((len(colliders) > 0) and (fcollided is False)):
-            robotindx = self._robot2indx[colliders, iexp]
+            robotindx = self._robot2indx[colliders - 1, iexp]
             hasspare = self._has_spare_calib[self._calibration_index[robotindx + 1], iexp] > 0
             # If the collision is created ONLY by spare calibration targets
             # we will look at them in more detail
@@ -2870,7 +2871,7 @@ class Field(object):
                                   self.target_catalogid):
                 plt.text(cx, cy, ct, fontsize=8, clip_on=True)
 
-        used = (self._robot2indx[iexp, :] >= 0)
+        used = (self._robot2indx[:, iexp] >= 0)
 
         inot = np.where(used == False)[0]
         axfig.scatter(xcen[inot], ycen[inot], s=20, color='grey',
