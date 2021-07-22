@@ -1029,7 +1029,7 @@ class Field(object):
         rg = self.robotgrids[iexp]
         collided, fcollided, colliders = rg.wouldCollideWithAssigned(status.robotID, status.rsid)
         colliders = np.array(colliders, dtype=np.int32)
-        status.collided = collided | fcollided
+        status.collided[i] = collided | fcollided
         if(fcollided):
             status.assignable[i] = False
         if((len(colliders) > 0) and (fcollided is False)):
@@ -2376,7 +2376,7 @@ class Field(object):
                 self.achievable_calibrations[c] = self.required_calibrations[c]
         iassigned = np.where(self.assignments['assigned'])[0]
         self.unassign(rsids=self.targets['rsid'][iassigned])
-        
+
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
@@ -2440,7 +2440,7 @@ class Field(object):
                         self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps)
                     assigned_exposure_calib[c][iexps] = True
                 self.assign_cadences(rsids=self.targets['rsid'][ipriority])
-                
+
             # For all exposures that did not get assigned
             # calibrations, remove the calibration targets.
             # UNLESS this is the last priority
@@ -2452,7 +2452,6 @@ class Field(object):
                         if(assigned_exposure_calib[c][iexp] == False):
                             icalib = np.where(self.targets['category'] == c)[0]
                             self.unassign_exposure(rsid=self.targets['rsid'][i], iexp=iexp)
-
                             
         if(self.verbose):
             print("fieldid {fid}: Decolliding unassigned".format(fid=self.fieldid), flush=True)

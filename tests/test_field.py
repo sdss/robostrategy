@@ -567,7 +567,7 @@ def test_available_exposures():
         for robotID in f.robotgrids[0].targetDict[rsid].validRobotIDs:
             status = f.available_robot_exposures(robotID=robotID,
                                                  rsid=rsid)
-            iassignable = np.where(status.assignable)[0]
+            iassignable = status.assignable_exposures()
             for iexp in iassignable:
                 assigned = (f.robotgrids[iexp].robotDict[robotID].isAssigned() > 0)
                 if(assigned):
