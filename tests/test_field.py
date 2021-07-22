@@ -520,6 +520,75 @@ def test_assign():
     assert f.assignments['assigned'].sum() > 0
 
 
+def test_available_exposures():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    clist.add_cadence(name='single_1x1', nepochs=1,
+                      skybrightness=[1.],
+                      delta=[-1.],
+                      delta_min=[-1.],
+                      delta_max=[-1.],
+                      nexp=[1],
+                      max_length=[0.])
+
+    clist.add_cadence(name='single_3x1', nepochs=3,
+                      skybrightness=[1.] * 3,
+                      delta=[-1.] * 3,
+                      delta_min=[-1.] * 3,
+                      delta_max=[-1.] * 3,
+                      nexp=[1] * 3,
+                      max_length=[0.] * 3)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_3x1')
+
+    ntot = 1200
+    targets(f, nt=ntot, seed=101)
+    ntot = 100
+    targets(f, nt=ntot, seed=102, category='boss_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=103, category='boss_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=104, category='apogee_standard',
+            rsid_start=f.targets['rsid'].max() + 1)
+    ntot = 100
+    targets(f, nt=ntot, seed=105, category='apogee_sky',
+            rsid_start=f.targets['rsid'].max() + 1)
+
+    f.assign()
+
+    iun = np.where(f.targets['within'] &
+                   (f.assignments['assigned'] == 0))[0]
+    for i in iun:
+        rsid = f.targets['rsid'][i]
+        for robotID in f.robotgrids[0].targetDict[rsid].validRobotIDs:
+            status = f.available_robot_exposures(robotID=robotID,
+                                                 rsid=rsid)
+            iassignable = np.where(status.assignable)[0]
+            for iexp in iassignable:
+                assigned = (f.robotgrids[iexp].robotDict[robotID].isAssigned() > 0)
+                if(assigned):
+                    targetID = f.robotgrids[iexp].robotDict[robotID].assignedTargetID
+                    spare = f._is_spare(rsid=targetID, iexps=iexp) > 0
+                else:
+                    spare = False
+                collided, fc, cs = f.robotgrids[iexp].wouldCollideWithAssigned(robotID, rsid)
+                if(collided & (len(cs) > 0)):
+                    for c in cs:
+                        cspare = f._is_spare(rsid=c, iexps=iexp)
+                else:
+                    cspare = False
+                ok = (((not assigned) | spare) & ((not collided) | cspare))
+                assert ok
+                f.unassign_assignable(status=status, iexp=iexp)
+                f.assign_robot_exposure(robotID=robotID, rsid=rsid, iexp=iexp)
+
+    return
+
+
 def test_assign_noallgrids():
     clist = cadence.CadenceList()
     clist.reset()

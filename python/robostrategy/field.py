@@ -119,7 +119,7 @@ class AssignmentStatus(object):
         (initialized to False)
 
     spare_colliders : list of ndarrays of np.int32
-        array of spare calibration targets that assignment collide with
+        array of spare calibration targets that assignment collides with
         (initialized to list of empty arrays)
 
     Methods:
@@ -1140,80 +1140,57 @@ class Field(object):
 
         return available, status
 
-    def available_robot_exposures(self, rsid=None, robotID=None, iscalib=False):
+    def available_robot_exposures(self, rsid=None, robotID=None, isspare=False):
         """Return available robot exposures for an rsid
 
         Parameters:
         ----------
 
         rsid : np.int64
-            rsid (optional; will check for collisions)
+            rsid
 
         robotID : np.int64
             robotID to check
 
-        iscalib : bool
-            True if this is a calibration target
+        isspare : bool
+            True if this is a spare calibration target (default False)
 
         Returns:
         -------
 
-        available : ndarray of bool
+        status : AssignmentStatus for object
             for each exposure, is it available or not?
 
         Comments:
         --------
 
-        Checks if a robot is available at each exposure AND if
-        assigning the robot to the given target would cause a
-        collision.
-
-        The robot is available if it is not assigned to any science
-        target AND it is not assigned to a "spare" calibration
+        Checks if a robot is available to assign at each exposure.
+        The robot is available if it is not assigned to any target or
+        if it is assigned to a "spare" calibration target, AND if
+        assigning the target would not collide with any other robot or
+        if it would collide, it would be with a "spare" calibration
         target. A spare calibration target is one for which there are
         more than enough calibration targets of that type already.
-"""
-        # Check if this is an "extra" calibration target in any exposures;
-        # i.e. not necessary so should not bump any other calibration targets
-        isspare = False
-        if(self.nocalib is False):
-            if(iscalib):
-                cat = self.targets['category'][self.rsid2indx[rsid]]
-                isspare = self.calibrations[cat] > self.achievable_calibrations[cat]
 
-        # Get indices of assigned targets to this robot
-        # and make Boolean arrays of which are assigned and not
-        robot2indx = self._robot2indx[robotID - 1, :]
-        free = robot2indx < 0
+        The unassign_assignable() method can be used to unassign the
+        target assignments that are standing in the way of the
+        exposures deemed available.
 
-        # Check if the assigned robots are to "spare" calibration targets.
-        # These may be bumped if necessary (but won't be if the target under
-        # consideration is, itself, a "spare" calibration targets. This logic
-        # is not so straightforward but avoids expensive for loops.
-        if(self.nocalib is False):
-            iassigned = np.where(free == False)[0]
-            icalib = iassigned[np.where(self._is_calibration[robot2indx[iassigned]])[0]]
-            if(len(icalib) > 0):
-                spare = np.zeros(self.field_cadence.nexp_total, dtype=np.bool)
-                category = self.targets['category'][robot2indx[icalib]]
-                calibspare = np.array([self.calibrations[category[i]][icalib[i]] >
-                                       self.achievable_calibrations[category[i]]
-                                       for i in range(len(category))],
-                                      dtype=np.bool)
-                spare[icalib] = calibspare
-                spare = spare & (isspare == False)
+        So to assign these spare exposures one would do something like
+        the following:
 
-                # Now classify exposures as "free" or not (free if unassigned OR assigned to
-                # a calibration target that may be bumped).
-                free = free | spare
+        status = f.available_robot_exposures(robotID=robotID, rsid=rsid)
+        iassignable = np.where(status.assignable)[0]
+        for iexp in iassignable:
+            f.unassign_assignable(status=status, iexp=iexp)
+            f.assign_robot_exposure(robotID=robotID, rsid=rsid, iexp=iexp)
 
-        # Now (if there is an actual target under consideration) check for collisions.
-        for ifree in np.where(free)[0]:
-            # TODO: free if collided with spare calib
-            free[ifree] = self.collide_robot_exposure(rsid=rsid, robotID=robotID,
-                                                      iexp=ifree) == False
-
-        return(free)
+        """
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
+        status = AssignmentStatus(rsid=rsid, robotID=robotID,
+                                  iexps=iexps)
+        self.set_assignment_status(status=status, isspare=isspare)
+        return(status)
 
     def _is_spare(self, rsid=None, iexps=None):
         if(iexps is None):
