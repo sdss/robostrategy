@@ -1415,6 +1415,10 @@ class Field(object):
             True if successful, False otherwise
 """
         validRobotIDs = self.masterTargetDict[rsid].validRobotIDs
+        validRobotIDs = np.array(validRobotIDs, dtype=np.int32)
+        hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                              for x in validRobotIDs], dtype=np.bool)
+        validRobotIDs = validRobotIDs[np.argsort(hasApogee)]
         done = np.zeros(len(iexps), dtype=np.bool)
         for robotID in validRobotIDs:
             cexps = iexps[np.where(done == False)[0]]
@@ -2036,6 +2040,9 @@ class Field(object):
         inotsat = np.where(self.assignments['satisfied'][indxs] == 0)[0]
         for rsid in rsids[inotsat]:
             robotIDs = np.array(tdict[rsid].validRobotIDs)
+            hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                                  for x in robotIDs], dtype=np.bool)
+            robotIDs = robotIDs[np.argsort(hasApogee)]
 
             statusDict = dict()
             expList = [[] for _ in range(self.field_cadence.nexp_total)]
@@ -2088,6 +2095,9 @@ class Field(object):
             indx = self.rsid2indx[rsid]
             nexp_cadence = clist.cadences[self.targets['cadence'][indx]].nexp_total
             robotIDs = np.array(tdict[rsid].validRobotIDs)
+            hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                                  for x in robotIDs], dtype=np.bool)
+            robotIDs = robotIDs[np.argsort(hasApogee)]
 
             statusDict = dict()
             expList = [[] for _ in range(self.field_cadence.nexp_total)]
