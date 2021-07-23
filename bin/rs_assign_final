@@ -105,7 +105,7 @@ def assign_field(indx):
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
     f = field.Field(filename=field_target_file, verbose=True,
-                    fieldid=fieldid)
+                    fieldid=fieldid, collisionBuffer=collisionBuffer)
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
     f.targets['cadence'][icalib] = field_cadence
@@ -227,6 +227,11 @@ if __name__ == '__main__':
     else:
         rotate = False
         paname = ''
+
+    collisionBuffer = 2.
+    if('Kaiju' in rsParams.cfg):
+        if('collisionBuffer' in rsParams.cfg['Kaiju']):
+            collisionBuffer = np.float32(rsParams.cfg['Kaiju']['collisionBuffer'])
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
