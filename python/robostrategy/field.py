@@ -37,6 +37,14 @@ def interlist(list1, list2):
 # Type for targets array
 targets_dtype = np.dtype([('ra', np.float64),
                           ('dec', np.float64),
+                          ('epoch', np.float32),
+                          ('pmra', np.float32),
+                          ('pmdec', np.float32),
+                          ('parallax', np.float32),
+                          ('lambda_eff', np.float32),
+                          ('delta_ra', np.float64),
+                          ('delta_dec', np.float64),
+                          ('magnitude', np.float32, 7),
                           ('x', np.float64),
                           ('y', np.float64),
                           ('within', np.int32),
@@ -443,6 +451,7 @@ class Field(object):
                                                ('satisfied', np.int32),
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
+                                               ('holeID', np.dtype("|U15"), self.field_cadence.nexp_total),
                                                ('target_skybrightness', np.float32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('field_skybrightness', np.float32,
@@ -724,6 +733,16 @@ class Field(object):
 
         return
 
+    def _set_holeid(self):
+        self.assignments['holeID'][:, :] = ''
+        for i, assignment in enumerate(self.assignments):
+            iexps = np.where(assignment['robotID'] >= 1)[0]
+            for iexp in iexps:
+                robotID = assignment['robotID'][iexp]
+                holeID = self.mastergrid.robotDict[robotID].holeID
+                self.assignments['holeID'][i, iexp] = holeID
+        return
+
     def tofits(self, filename=None):
         """Write field and assignments to FITS file
 
@@ -769,6 +788,7 @@ class Field(object):
         fitsio.write(filename, None, header=hdr, clobber=True)
         fitsio.write(filename, self.targets)
         if(self.assignments is not None):
+            self._set_holeid()
             fitsio.write(filename, self.assignments)
         return
 
