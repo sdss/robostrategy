@@ -28,6 +28,9 @@ _betaLen = 15
 onetrue = np.ones(1, dtype=np.bool)
 onefalse = np.zeros(1, dtype=np.bool)
 
+# Default collision buffer
+defaultCollisionBuffer = 2.
+
 
 # intersection of lists
 def interlist(list1, list2):
@@ -111,6 +114,7 @@ class Field(object):
     
     collisionBuffer : float or np.float32
         collision buffer to send to kaiju in mm (default 2)
+        (if set, will override setting in rsFieldTargets)
 
     field_cadence : str
         field cadence (default 'none')
@@ -212,7 +216,7 @@ class Field(object):
     This class internally assumes that robotIDs are sequential integers starting at 1.
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
-                 observatory='apo', field_cadence='none', collisionBuffer=2.,
+                 observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  verbose=False):
         self.verbose = verbose
@@ -220,6 +224,7 @@ class Field(object):
         self.nocalib = nocalib
         self.nocollide = nocollide
         self.allgrids = allgrids
+        self.collisionBuffer = collisionBuffer
         if(self.allgrids is False):
             self.nocollide = True
         if(self.nocollide):
@@ -246,7 +251,8 @@ class Field(object):
             self.observatory = observatory
             self._ot = obstime.ObsTime(observatory=self.observatory)
             self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
-            self.collisionBuffer = collisionBuffer
+            if(self.collisionBuffer is None):
+                self.collisionBuffer = defaultCollisionBuffer
             self.mastergrid = self._robotGrid()
             if(self.nocalib is False):
                 self.required_calibrations = collections.OrderedDict()
@@ -293,7 +299,8 @@ class Field(object):
         self.deccen = np.float64(hdr['DECCEN'])
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
-        self.collisionBuffer = hdr['CBUFFER']
+        if(self.collisionBuffer is None):
+            self.collisionBuffer = hdr['CBUFFER']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
             self.nocalib = np.bool(hdr['NOCALIB'])
         self.mastergrid = self._robotGrid()
