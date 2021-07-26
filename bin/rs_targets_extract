@@ -46,7 +46,8 @@ target_dtype = [('rsassign', np.int32),
                 ('parallax', np.float32),
                 ('catalogid', np.int64),
                 ('target_pk', np.int64),
-                ('carton', np.unicode_, 30), # from carton
+                ('magnitude', np.float32, 7), # from magnitude
+                ('carton', np.unicode_, 50), # from carton
                 ('program', np.unicode_, 15), 
                 ('mapper', np.unicode_, 3), # from mapper
                 ('category', np.unicode_, 15), # from category
@@ -77,18 +78,19 @@ def get_targets(carton=None, version=None, justcount=False):
         print(" ... {ntall} targets".format(ntall=ntall), flush=True)
         return(ntall)
 
-    # Now look at those with a cadence and instrument not null
+    # Now look at those with a cadence, instrument, and magnitude not null
     nt = (targetdb.Target.select(targetdb.Target.pk)
           .join(targetdb.CartonToTarget)
           .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
           .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+          .join(targetdb.Magnitude, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
           .join(targetdb.Carton)
           .join(targetdb.Version)
           .where((targetdb.Carton.carton == carton) &
                  (targetdb.Version.plan == version))).count()
 
     if(nt != ntall):
-        print("WARNING: only {nt} of {ntall} targets in carton {carton} have cadence and instrument non-null".format(nt=nt, ntall=ntall, carton=carton))
+        print("WARNING: only {nt} of {ntall} targets in carton {carton} have cadence, instrument, and magnitude non-null".format(nt=nt, ntall=ntall, carton=carton))
 
     print(" ... {nt} targets".format(nt=nt), flush=True)
     tmp_targets = None
@@ -109,6 +111,13 @@ def get_targets(carton=None, version=None, justcount=False):
                                      targetdb.CartonToTarget.lambda_eff,
                                      targetdb.CartonToTarget.delta_ra,
                                      targetdb.CartonToTarget.delta_dec,
+                                     targetdb.Magnitude.g,
+                                     targetdb.Magnitude.r,
+                                     targetdb.Magnitude.i,
+                                     targetdb.Magnitude.bp,
+                                     targetdb.Magnitude.gaia_g,
+                                     targetdb.Magnitude.rp,
+                                     targetdb.Magnitude.h,
                                      targetdb.Carton.carton,
                                      targetdb.Carton.program,
                                      targetdb.Mapper.label.alias('mapper'),
@@ -120,6 +129,7 @@ def get_targets(carton=None, version=None, justcount=False):
               .join(targetdb.CartonToTarget)
               .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
               .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+              .join(targetdb.Magnitude, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
               .join(targetdb.Carton)
               .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
               .join(targetdb.Version).switch(targetdb.Carton)
@@ -134,13 +144,21 @@ def get_targets(carton=None, version=None, justcount=False):
         problems = []
         for indx, t in enumerate(ts):
             for n in tmp_targets.dtype.names:
-                if((n != 'rsid') & (n != 'rsassign')):
+                if((n != 'rsid') & (n != 'rsassign') & (n != 'magnitude')):
                     if(t[n] is not None):
                         tmp_targets[n][indx] = castn[n](t[n])
                     else:
                         if(n not in problems):
                             print("problem with {n}".format(n=n))
                             problems.append(n)
+                elif(n == 'magnitude'):
+                    tmp_targets['magnitude'][indx, 0] = np.float32(t['g'])
+                    tmp_targets['magnitude'][indx, 1] = np.float32(t['r'])
+                    tmp_targets['magnitude'][indx, 2] = np.float32(t['i'])
+                    tmp_targets['magnitude'][indx, 3] = np.float32(t['bp'])
+                    tmp_targets['magnitude'][indx, 4] = np.float32(t['gaia_g'])
+                    tmp_targets['magnitude'][indx, 5] = np.float32(t['rp'])
+                    tmp_targets['magnitude'][indx, 6] = np.float32(t['h'])
 
         tmp_targets['rsid'] = tmp_targets['carton_to_target_pk']
 

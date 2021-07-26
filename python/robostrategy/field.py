@@ -40,6 +40,14 @@ def interlist(list1, list2):
 # Type for targets array
 targets_dtype = np.dtype([('ra', np.float64),
                           ('dec', np.float64),
+                          ('epoch', np.float32),
+                          ('pmra', np.float32),
+                          ('pmdec', np.float32),
+                          ('parallax', np.float32),
+                          ('lambda_eff', np.float32),
+                          ('delta_ra', np.float64),
+                          ('delta_dec', np.float64),
+                          ('magnitude', np.float32, 7),
                           ('x', np.float64),
                           ('y', np.float64),
                           ('within', np.int32),
@@ -141,6 +149,9 @@ class Field(object):
     field_cadence : Cadence object
         cadence associated with field
 
+    design_mode : list of str
+        keys to DesignModeDict for each exposure
+
     collisionBuffer : float
         collision buffer for kaiju (in mm)
 
@@ -167,7 +178,7 @@ class Field(object):
           'robotID', 'rsflags', 'fiberType'
         for each target; set to None prior to definition of field_cadence
 
-    designMode : dict of DesignMode objects
+    designModeDict : dict of DesignMode objects
         possible design modes
 
     required_calibrations : OrderedDict
@@ -246,10 +257,10 @@ class Field(object):
             self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
             self.collisionBuffer = collisionBuffer
             self.mastergrid = self._robotGrid()
-            self.designModes = mugatu.designmode.allDesignModes() 
-            if(self.designModes is None):
+            self.designModeDict = mugatu.designmode.allDesignModes() 
+            if(self.designModeDict is None):
                 default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                              'etc',
+                                              'data',
                                               'default_designmodes.fits')
                 mugatu.designmode.allDesignModes(filename=default_dm_file)
             if(self.nocalib is False):
@@ -279,7 +290,7 @@ class Field(object):
                           delta_min=[-1.],
                           delta_max=[-1.],
                           nexp=[1],
-													max_length=[9999999.])
+                          max_length=[9999999.])
         clist.add_cadence(name='_field_single_12x1',
                           nepochs=12,
                           instrument='BOSS',
@@ -288,7 +299,7 @@ class Field(object):
                           delta_min=[-1.] * 12,
                           delta_max=[-1.] * 12,
                           nexp=[1] * 12,
-													max_length=[9999999.] * 12)
+                          max_length=[9999999.] * 12)
         return
 
     def fromfits(self, filename=None):
@@ -329,13 +340,13 @@ class Field(object):
         except:
             assignments = None
         try:
-            self.designModes = mugatu.designmode.allDesignModes(filename,
-                                                                ext='DESMODE')
+            self.designModeDict = mugatu.designmode.allDesignModes(filename,
+                                                                   ext='DESMODE')
         except:
             default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                          'etc',
+                                          'data',
                                           'default_designmodes.fits')
-            self.designModes = mugatu.designmode.allDesignModes(default_dm_file)
+            self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
         if(assignments is not None):
             if(self.field_cadence.nexp_total == 1):
                 iassigned = np.where(assignments['robotID'])
@@ -511,13 +522,13 @@ class Field(object):
             if(self.nocalib is False):
                 for c in self.required_calibrations:
                     if(c == 'standard_boss'):
-                        self.required_calibrations[c] = [self.designModes[d].n_stds_min['BOSS'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModeDict[d].n_stds_min['BOSS'] for d in self.design_mode]
                     elif(c == 'standard_apogee'):
-                        self.required_calibrations[c] = [self.designModes[d].n_stds_min['APOGEE'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModeDict[d].n_stds_min['APOGEE'] for d in self.design_mode]
                     elif(c == 'sky_boss'):
-                        self.required_calibrations[c] = [self.designModes[d].n_skies_min['BOSS'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModeDict[d].n_skies_min['BOSS'] for d in self.design_mode]
                     elif(c == 'sky_apogee'):
-                        self.required_calibrations[c] = [self.designModes[d].n_skies_min['APOGEE'] for d in self.design_mode]
+                        self.required_calibrations[c] = [self.designModeDict[d].n_skies_min['APOGEE'] for d in self.design_mode]
                 for c in self.calibrations:
                     self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                     dtype=np.int32)
@@ -642,6 +653,28 @@ class Field(object):
         self.targets_fromarray(t)
         return
 
+    def _mags_allowed(self, targets=None, designMode=None):
+        fiberTypes = ['BOSS', 'APOGEE']
+        categories = ['science', 'standard']
+        target_category = np.array([x.split('_')[0]
+                                    for x in self.targets['category']])
+        for fiberType in fiberTypes:
+            for category in categories:
+                icurr = np.where((targets['fiberType'] == fiberType) &
+                                 (target_category == category))[0]
+                mags = targets['magnitude'][icurr, :]
+                if(category == 'science'):
+                    limits = designMode.bright_limit_targets[fiberType]
+                if(category == 'standard'):
+                    limits = designMode.stds_mags[fiberType]
+                ok = np.ones(len(icurr), dtype=np.bool)
+                for i in limits.shape[0]:
+                    if(limits[i, 0] != - 999.):
+                        ok = ok & (mags[:, i] > limits[i, 0])
+                    if(limits[i, 1] != - 999.):
+                        ok = ok & (mags[:, i] < limits[i, 1])
+        return
+
     def _targets_to_robotgrid(self, targets=None, robotgrid=None):
         for target in targets:
             if(target['fiberType'] == 'APOGEE'):
@@ -664,6 +697,18 @@ class Field(object):
                 ok, solns = clist.cadence_consistency(target_cadence,
                                                       self.field_cadence.name)
                 targets['incadence'][itarget] = ok
+
+        # Now determine for each epoch if each targets fits in the
+        # design mode
+        self.target_allowed = np.zeros((len(self.targets),
+                                        self.field_cadence.nepochs),
+                                       np.bool)
+        for epoch, mode in enumerate(self.design_mode):
+            dm = self.designMode[mode]
+            instruments = ['BOSS', 'APOGEE']
+            for instrument in instruments:
+                icurr = np.where(self.targets['fiberType'] == instrument)[0]
+                self.target_allowed[icurr, epoch] = self._mags_allowed(instrument=instrument, designMode=dm, targets=self.targets[icurr])
 
         if(self.allgrids):
             for rg in self.robotgrids:
@@ -838,10 +883,10 @@ class Field(object):
         if(self.assignments is not None):
             fitsio.write(filename, self.assignments, extname='ASSIGN')
         dmarr = None
-        for i, d in enumerate(self.designModes):
-            arr = self.designModes[d].toarray()
+        for i, d in enumerate(self.designModeDict):
+            arr = self.designModeDict[d].toarray()
             if(dmarr is None):
-                dmarr = np.zeros(len(self.designModes), dtype=arr.dtype)
+                dmarr = np.zeros(len(self.designModeDict), dtype=arr.dtype)
             dmarr[i] = arr
         fitsio.write(filename, dmarr, extname='DESMODE')
         return
