@@ -122,7 +122,7 @@ def get_targets(carton=None, version=None, justcount=False):
                                      targetdb.Carton.program,
                                      targetdb.Mapper.label.alias('mapper'),
                                      targetdb.Category.label.alias('category'),
-                                     targetdb.Cadence.label.alias('cadence'),
+                                     targetdb.Cadence.label_root.alias('cadence'),
                                      targetdb.Instrument.label.alias('fiberType'),
                                      targetdb.Version.plan,
                                      targetdb.Version.tag)

@@ -8,6 +8,7 @@
 # @Copyright: Michael R. Blanton
 
 
+
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
@@ -36,13 +37,16 @@ def copy_cadence(from_cadence, to_cadence, nepochs=None):
 
     cadencelist.add_cadence(name=to_cadence,
                             nepochs=nepochs,
-                            instrument=cadencelist.cadences[from_cadence].instrument,
                             skybrightness=cadencelist.cadences[from_cadence].skybrightness[0:nepochs],
                             delta=cadencelist.cadences[from_cadence].delta[0:nepochs],
                             delta_min=cadencelist.cadences[from_cadence].delta_min[0:nepochs],
                             delta_max=cadencelist.cadences[from_cadence].delta_max[0:nepochs],
                             nexp=cadencelist.cadences[from_cadence].nexp[0:nepochs],
-                            max_length=cadencelist.cadences[from_cadence].max_length[0:nepochs])
+                            max_length=cadencelist.cadences[from_cadence].max_length[0:nepochs],
+                            min_moon_sep=cadencelist.cadences[from_cadence].min_moon_sep[0:nepochs],
+                            min_deltav_ks91=cadencelist.cadences[from_cadence].min_deltav_ks91[0:nepochs],
+                            min_twilight_ang=cadencelist.cadences[from_cadence].min_twilight_ang[0:nepochs],
+                            max_airmass=cadencelist.cadences[from_cadence].max_airmass[0:nepochs])
     return
 
 
@@ -67,9 +71,17 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
+    version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            version = rsParams.cfg.get('CadenceVersions', 'version')
+
     cadencelist = cadence.CadenceList()
     cadencelist.reset()
-    cadencelist.fromdb()
+    cadencelist.fromdb(version=version)
+
+    for c in cadencelist.cadences:
+        print(c)
 
     cadence_change = dict()
     for c in rsParams.cfg['Cadences']:
@@ -89,8 +101,11 @@ if __name__ == '__main__':
                                         delta=tmpc.delta,
                                         delta_min=tmpc.delta_min,
                                         delta_max=tmpc.delta_max,
-                                        instrument=tmpc.instrument,
-                                        max_length=tmpc.max_length)
+                                        max_length=tmpc.max_length,
+                                        min_moon_sep=tmpc.min_moon_sep,
+                                        min_deltav_ks91=tmpc.min_deltav_ks91,
+                                        min_twilight_ang=tmpc.min_twilight_ang,
+                                        max_airmass=tmpc.max_airmass)
 
     copy_cadence('mixed2_single_99x1', 'mixed2_single_nx1')
     copy_cadence('bright_single_99x1', 'bright_single_nx1')
