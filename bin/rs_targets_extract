@@ -223,14 +223,6 @@ if __name__ == '__main__':
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
-    fiberType = dict()
-    for c in cadencelist.cadences:
-        instrument = cadencelist.cadences[c].instrument
-        if(instrument == roboscheduler.cadence.Instrument.ApogeeInstrument):
-            fiberType[c] = 'APOGEE'
-        if(instrument == roboscheduler.cadence.Instrument.BossInstrument):
-            fiberType[c] = 'BOSS'
-
     c2cfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'etc',
                            'cadence-list-{plan}.cfg'.format(plan=plan))
     if(os.path.exists(c2cfile)):

@@ -328,31 +328,41 @@ class Field(object):
                 if(m is not None):
                     num = 'RCNUM{d}'.format(d=m.group(1))
                     if(num in hdr):
-                        self.required_calibrations[hdr[name]] = np.int32(hdr[num])
+                        if(hdr[num].strip() != ''):
+                            self.required_calibrations[hdr[name]] = np.array([np.int32(x) for x in hdr[num].split()])
+                        else:
+                            self.required_calibrations[hdr[name]] = np.zeros(0, dtype=np.int32)
             self.calibrations = collections.OrderedDict()
             for n in self.required_calibrations:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
         self.set_field_cadence(field_cadence)
-        try:
-            targets = fitsio.read(filename, ext='TARGET')
-        except:
-            targets = fitsio.read(filename, ext=1)
-        self.targets_fromarray(target_array=targets)
-        try:
-            try:
-                assignments = fitsio.read(filename, ext='ASSIGN')
-            except:
-                assignments = fitsio.read(filename, ext=2)
-        except:
-            assignments = None
+        self.designModeDict = mugatu.designmode.allDesignModes(filename,
+                                                               ext='DESMODE')
         try:
             self.designModeDict = mugatu.designmode.allDesignModes(filename,
                                                                    ext='DESMODE')
+            named_ext = True
         except:
             default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                           'data',
                                           'default_designmodes.fits')
             self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
+            named_ext = False
+        if(named_ext):
+            targets = fitsio.read(filename, ext='TARGET')
+        else:
+            targets = fitsio.read(filename, ext=1)
+        self.targets_fromarray(target_array=targets)
+        if(named_ext):
+            try:
+                assignments = fitsio.read(filename, ext='ASSIGN')
+            except:
+                assignments = None
+        else:
+            try:
+                assignments = fitsio.read(filename, ext=2)
+            except:
+                assignments = None
         if(assignments is not None):
             if(self.field_cadence.nexp_total == 1):
                 iassigned = np.where(assignments['robotID'])

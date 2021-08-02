@@ -46,7 +46,8 @@ def copy_cadence(from_cadence, to_cadence, nepochs=None):
                             min_moon_sep=cadencelist.cadences[from_cadence].min_moon_sep[0:nepochs],
                             min_deltav_ks91=cadencelist.cadences[from_cadence].min_deltav_ks91[0:nepochs],
                             min_twilight_ang=cadencelist.cadences[from_cadence].min_twilight_ang[0:nepochs],
-                            max_airmass=cadencelist.cadences[from_cadence].max_airmass[0:nepochs])
+                            max_airmass=cadencelist.cadences[from_cadence].max_airmass[0:nepochs],
+                            obsmode_pk=cadencelist.cadences[from_cadence].obsmode_pk[0:nepochs])
     return
 
 
@@ -105,7 +106,8 @@ if __name__ == '__main__':
                                         min_moon_sep=tmpc.min_moon_sep,
                                         min_deltav_ks91=tmpc.min_deltav_ks91,
                                         min_twilight_ang=tmpc.min_twilight_ang,
-                                        max_airmass=tmpc.max_airmass)
+                                        max_airmass=tmpc.max_airmass,
+                                        obsmode_pk=tmpc.obsmode_pk)
 
     copy_cadence('mixed2_single_99x1', 'mixed2_single_nx1')
     copy_cadence('bright_single_99x1', 'bright_single_nx1')
