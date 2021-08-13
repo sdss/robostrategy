@@ -1,6 +1,7 @@
 # encoding: utf-8
 
 from __future__ import absolute_import, division, print_function, unicode_literals
+from sdsstools import get_package_version
 
 import os
 
@@ -44,4 +45,4 @@ if os.path.exists(custom_config_fn):
         config = merge(yaml.load(open(custom_config_fn), config))
 
 
-__version__ = 'kaiju'
+__version__ = '1.0.0.dev'

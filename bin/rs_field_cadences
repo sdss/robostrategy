@@ -22,6 +22,8 @@ import astropy.coordinates as coords
 import astropy.units as u
 import fitsio
 import sdss_access.path
+import roboscheduler
+import robostrategy
 import robostrategy.field as field
 import robostrategy.params as params
 
@@ -167,6 +169,8 @@ if __name__ == '__main__':
             cadence_mask[indx, icad] = 1
 
     hdr = dict()
+    hdr['STRATVER'] = robostrategy.__version__
+    hdr['SCHEDVER'] = roboscheduler.__version__
     hdr['NCAD'] = len(unique_cadences)
     for indx, cad in zip(np.arange(len(unique_cadences)), unique_cadences):
         hdr['CAD{indx}'.format(indx=indx)] = cad

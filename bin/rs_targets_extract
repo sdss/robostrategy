@@ -278,4 +278,7 @@ if __name__ == '__main__':
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
-    fitsio.write(targets_file, targets, clobber=True)
+
+    hd = dict()
+    hd['STRATVER'] = robostrategy.__version__
+    fitsio.write(targets_file, targets, header=hd, clobber=True)
