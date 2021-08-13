@@ -516,7 +516,8 @@ class Field(object):
                 else:
                     self.design_mode = np.array([obsmode_pk])
             else:
-                self.design_mode = [''] * self.field_cadence.nexp_total
+                self.design_mode = np.array([''] *
+                                            self.field_cadence.nexp_total)
                 for iexp in np.arange(self.field_cadence.nexp_total):
                     epoch = self.field_cadence.epochs[iexp]
                     if(self.field_cadence.skybrightness[epoch] >= 0.5):
@@ -891,6 +892,8 @@ class Field(object):
         hdr['PA'] = self.pa
         if(self.field_cadence is not None):
             hdr['FCADENCE'] = self.field_cadence.name
+            hdr['NEXP'] = self.field_cadence.nexp_total
+            hdr['DESMODE'] = ' '.join(list(self.design_mode[self.field_cadence.epochs]))
         else:
             hdr['FCADENCE'] = 'none'
         hdr['CBUFFER'] = self.collisionBuffer
