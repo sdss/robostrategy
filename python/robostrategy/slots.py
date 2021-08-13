@@ -11,6 +11,8 @@ from __future__ import unicode_literals
 
 import numpy as np
 import fitsio
+import robostrategy
+import roboscheduler
 import roboscheduler.scheduler
 
 
@@ -157,6 +159,8 @@ class Slots(object):
 
 """
         hdr = dict()
+        hdr['STRATVER'] = robostrategy.__version__
+        hdr['SCHEDVER'] = roboscheduler.__version__
         hdr['NLST'] = self.nlst
         hdr['DURATION'] = self.duration
         hdr['FCLEAR'] = self.fclear

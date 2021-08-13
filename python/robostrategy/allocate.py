@@ -597,7 +597,12 @@ class AllocateLST(object):
 
         Writes all array attributes as a binary table.
 """
-        fitsio.write(filename, self.field_array, clobber=True)
+        hdr = dict()
+        hdr['STRATVER'] = robostrategy.__version__
+        hdr['SCHEDVER'] = roboscheduler.__version__
+        hdr['KAIJUVER'] = kaiju.__version__
+        fitsio.write(filename, self.field_array, header=hdr,
+                     clobber=True)
         self.slots.tofits(filename=filename, clobber=False)
         fitsio.write(filename, self.fields, clobber=False)
         fitsio.write(filename, self.field_slots, clobber=False)

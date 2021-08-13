@@ -255,7 +255,8 @@ if __name__ == '__main__':
     fields_south_file = sdss_path.full('rsFields', plan=plan,
                                        observatory='lco')
 
-    hd = {'RSTVER': robostrategy.__version__}
+    hd = dict()
+    hd['STRATVER'] = robostrategy.__version__
     fitsio.write(fields_north_file, fields_north_array,
                  header=hd, clobber=True)
     fitsio.write(fields_south_file, fields_south_array,

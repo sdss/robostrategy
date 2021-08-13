@@ -13,9 +13,11 @@ import collections
 import scipy.optimize as optimize
 import matplotlib.pyplot as plt
 import ortools.sat.python.cp_model as cp_model
+import roboscheduler
 import roboscheduler.cadence
 import kaiju
 import kaiju.robotGrid
+import robostrategy
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
@@ -275,7 +277,6 @@ class Field(object):
     def _add_dummy_cadences(self): 
         clist.add_cadence(name='_field_single_1x1',
                           nepochs=1,
-                          instrument='BOSS',
                           skybrightness=[1.],
                           delta=[-1.],
                           delta_min=[-1.],
@@ -284,7 +285,6 @@ class Field(object):
 													max_length=[9999999.])
         clist.add_cadence(name='_field_single_12x1',
                           nepochs=12,
-                          instrument='BOSS',
                           skybrightness=[1.] * 12,
                           delta=[-1.] * 12,
                           delta_min=[-1.] * 12,
@@ -741,13 +741,22 @@ class Field(object):
         return
 
     def _set_holeid(self):
-        self.assignments['holeID'][:, :] = ''
+        if(self.field_cadence.nexp_total == 1):
+            self.assignments['holeID'][:] = ' '
+        else:
+            self.assignments['holeID'][:, :] = ' '
         for i, assignment in enumerate(self.assignments):
-            iexps = np.where(assignment['robotID'] >= 1)[0]
-            for iexp in iexps:
-                robotID = assignment['robotID'][iexp]
-                holeID = self.mastergrid.robotDict[robotID].holeID
-                self.assignments['holeID'][i, iexp] = holeID
+            if(self.field_cadence.nexp_total == 1):
+                if(assignment['robotID'][0] >= 1):
+                    robotID = assignment['robotID'][0]
+                    holeID = self.mastergrid.robotDict[robotID].holeID
+                    self.assignments['holeID'][i] = holeID
+            else:
+                iexps = np.where(assignment['robotID'] >= 1)[0]
+                for iexp in iexps:
+                    robotID = assignment['robotID'][iexp]
+                    holeID = self.mastergrid.robotDict[robotID].holeID
+                    self.assignments['holeID'][i, iexp] = holeID
         return
 
     def tofits(self, filename=None):
@@ -776,6 +785,9 @@ class Field(object):
         HDU1 has assignments array
 """
         hdr = dict()
+        hdr['STRATVER'] = robostrategy.__version__
+        hdr['SCHEDVER'] = roboscheduler.__version__
+        hdr['KAIJUVER'] = kaiju.__version__
         hdr['RACEN'] = self.racen
         hdr['DECCEN'] = self.deccen
         hdr['OBS'] = self.observatory
@@ -1639,28 +1651,30 @@ class Field(object):
         -----
 
         'satisfied' means that the exposures obtained for this catalog ID satisfy
-        the cadence for an rsid.
+        the cadence for an rsid and the right instrument.
 """
         if(catalogids is None):
             catalogids = self._unique_catalogids
 
+        fiberTypes = ['APOGEE', 'BOSS']
         for catalogid in catalogids:
-            # Check for other instances of this catalogid, and whether
-            # assignments have satisfied their cadence
-            icats = np.where((self.targets['catalogid'] == catalogid) &
-                             (self.targets['incadence']))[0]
-            if(len(icats) > 0):
-                gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
-                iexp = np.where(gotexp > 0)[0]
-                self.assignments['satisfied'][icats] = 0
-                for icat in icats:
-                    other_cadence_name = self.targets['cadence'][icat]
-
-                    fits = clist.exposure_consistency(other_cadence_name,
-                                                      self.field_cadence.name,
-                                                      iexp)
-                    if(fits):
-                        self.assignments['satisfied'][icat] = 1
+            for fiberType in fiberTypes:
+                # Check for other instances of this catalogid, and whether
+                # assignments have satisfied their cadence
+                icats = np.where((self.targets['catalogid'] == catalogid) &
+                                 (self.targets['fiberType'] == fiberType) &
+                                 (self.targets['incadence']))[0]
+                if(len(icats) > 0):
+                    gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
+                    iexp = np.where(gotexp > 0)[0]
+                    self.assignments['satisfied'][icats] = 0
+                    for icat in icats:
+                        other_cadence_name = self.targets['cadence'][icat]
+                        
+                        fits = clist.exposure_consistency(other_cadence_name,
+                                                          self.field_cadence.name, iexp)
+                        if(fits):
+                            self.assignments['satisfied'][icat] = 1
 
         return
 

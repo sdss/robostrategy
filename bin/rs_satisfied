@@ -12,15 +12,17 @@ import os
 import sys
 import numpy as np
 import fitsio
+import kaiju
+import roboscheduler
 import roboscheduler.cadence as cadence
+import robostrategy
 import robostrategy.field as field
 import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5',
+                                  preserve_envvars=True)
 
 
 if __name__ == '__main__':
@@ -109,4 +111,9 @@ if __name__ == '__main__':
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
     satisfied_file = assigned_file.replace('rsAssignments', 'rsSatisfied')
-    fitsio.write(satisfied_file, satisfied, clobber=True)
+    hdr = dict()
+    hdr['STRATVER'] = robostrategy.__version__
+    hdr['SCHEDVER'] = roboscheduler.__version__
+    hdr['KAIJUVER'] = kaiju.__version__
+    fitsio.write(satisfied_file, satisfied, header=hdr,
+                 clobber=True)

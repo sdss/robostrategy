@@ -20,6 +20,9 @@ import numpy as np
 import healpy
 import fitsio
 import sdss_access.path
+import robostrategy
+import roboscheduler
+import kaiju
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -170,6 +173,9 @@ if __name__ == '__main__':
             fgot = np.float32(-1.)
 
         hdr = dict()
+        hdr['STRATVER'] = robostrategy.__version__
+        hdr['SCHEDVER'] = roboscheduler.__version__
+        hdr['KAIJUVER'] = kaiju.__version__
         hdr['CARTON'] = unique_carton
         hdr['NTARGETS'] = ntargets
         hdr['NGOT'] = ngot
