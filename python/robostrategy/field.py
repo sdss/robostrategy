@@ -12,9 +12,11 @@ import fitsio
 import collections
 import matplotlib.pyplot as plt
 import ortools.sat.python.cp_model as cp_model
+import roboscheduler
 import roboscheduler.cadence
 import kaiju
 import kaiju.robotGrid
+import robostrategy
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
@@ -27,6 +29,9 @@ _betaLen = 15
 onetrue = np.ones(1, dtype=np.bool)
 onefalse = np.zeros(1, dtype=np.bool)
 
+# Default collision buffer
+defaultCollisionBuffer = 2.
+
 
 # intersection of lists
 def interlist(list1, list2):
@@ -36,6 +41,14 @@ def interlist(list1, list2):
 # Type for targets array
 targets_dtype = np.dtype([('ra', np.float64),
                           ('dec', np.float64),
+                          ('epoch', np.float32),
+                          ('pmra', np.float32),
+                          ('pmdec', np.float32),
+                          ('parallax', np.float32),
+                          ('lambda_eff', np.float32),
+                          ('delta_ra', np.float64),
+                          ('delta_dec', np.float64),
+                          ('magnitude', np.float32, 7),
                           ('x', np.float64),
                           ('y', np.float64),
                           ('within', np.int32),
@@ -187,6 +200,7 @@ class Field(object):
     
     collisionBuffer : float or np.float32
         collision buffer to send to kaiju in mm (default 2)
+        (if set, will override setting in rsFieldTargets)
 
     field_cadence : str
         field cadence (default 'none')
@@ -334,7 +348,7 @@ class Field(object):
 
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
-                 observatory='apo', field_cadence='none', collisionBuffer=2.,
+                 observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  verbose=False):
         self.verbose = verbose
@@ -342,6 +356,7 @@ class Field(object):
         self.nocalib = nocalib
         self.nocollide = nocollide
         self.allgrids = allgrids
+        self.collisionBuffer = collisionBuffer
         if(self.allgrids is False):
             self.nocollide = True
         if(self.nocollide):
@@ -369,7 +384,8 @@ class Field(object):
             self.observatory = observatory
             self._ot = obstime.ObsTime(observatory=self.observatory)
             self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
-            self.collisionBuffer = collisionBuffer
+            if(self.collisionBuffer is None):
+                self.collisionBuffer = defaultCollisionBuffer
             self.mastergrid = self._robotGrid()
             if(self.nocalib is False):
                 self.required_calibrations = collections.OrderedDict()
@@ -465,7 +481,8 @@ class Field(object):
         self.deccen = np.float64(hdr['DECCEN'])
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
-        self.collisionBuffer = hdr['CBUFFER']
+        if(self.collisionBuffer is None):
+            self.collisionBuffer = hdr['CBUFFER']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
             self.nocalib = np.bool(hdr['NOCALIB'])
         self.mastergrid = self._robotGrid()
@@ -655,6 +672,7 @@ class Field(object):
                                                ('satisfied', np.int32),
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
+                                               ('holeID', np.dtype("|U15"), self.field_cadence.nexp_total),
                                                ('target_skybrightness', np.float32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('field_skybrightness', np.float32,
@@ -932,6 +950,25 @@ class Field(object):
 
         return
 
+    def _set_holeid(self):
+        if(self.field_cadence.nexp_total == 1):
+            self.assignments['holeID'][:] = ' '
+        else:
+            self.assignments['holeID'][:, :] = ' '
+        for i, assignment in enumerate(self.assignments):
+            if(self.field_cadence.nexp_total == 1):
+                if(assignment['robotID'][0] >= 1):
+                    robotID = assignment['robotID'][0]
+                    holeID = self.mastergrid.robotDict[robotID].holeID
+                    self.assignments['holeID'][i] = holeID
+            else:
+                iexps = np.where(assignment['robotID'] >= 1)[0]
+                for iexp in iexps:
+                    robotID = assignment['robotID'][iexp]
+                    holeID = self.mastergrid.robotDict[robotID].holeID
+                    self.assignments['holeID'][i, iexp] = holeID
+        return
+
     def tofits(self, filename=None):
         """Write field and assignments to FITS file
 
@@ -958,6 +995,9 @@ class Field(object):
         HDU1 has assignments array
 """
         hdr = dict()
+        hdr['STRATVER'] = robostrategy.__version__
+        hdr['SCHEDVER'] = roboscheduler.__version__
+        hdr['KAIJUVER'] = kaiju.__version__
         hdr['RACEN'] = self.racen
         hdr['DECCEN'] = self.deccen
         hdr['OBS'] = self.observatory
@@ -982,6 +1022,7 @@ class Field(object):
         fitsio.write(filename, None, header=hdr, clobber=True)
         fitsio.write(filename, self.targets)
         if(self.assignments is not None):
+            self._set_holeid()
             fitsio.write(filename, self.assignments)
         return
 
@@ -1829,28 +1870,30 @@ class Field(object):
         -----
 
         'satisfied' means that the exposures obtained for this catalog ID satisfy
-        the cadence for an rsid.
+        the cadence for an rsid and the right instrument.
 """
         if(catalogids is None):
             catalogids = self._unique_catalogids
 
+        fiberTypes = ['APOGEE', 'BOSS']
         for catalogid in catalogids:
-            # Check for other instances of this catalogid, and whether
-            # assignments have satisfied their cadence
-            icats = np.where((self.targets['catalogid'] == catalogid) &
-                             (self.targets['incadence']))[0]
-            if(len(icats) > 0):
-                gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
-                iexp = np.where(gotexp > 0)[0]
-                self.assignments['satisfied'][icats] = 0
-                for icat in icats:
-                    other_cadence_name = self.targets['cadence'][icat]
-
-                    fits = clist.exposure_consistency(other_cadence_name,
-                                                      self.field_cadence.name,
-                                                      iexp)
-                    if(fits):
-                        self.assignments['satisfied'][icat] = 1
+            for fiberType in fiberTypes:
+                # Check for other instances of this catalogid, and whether
+                # assignments have satisfied their cadence
+                icats = np.where((self.targets['catalogid'] == catalogid) &
+                                 (self.targets['fiberType'] == fiberType) &
+                                 (self.targets['incadence']))[0]
+                if(len(icats) > 0):
+                    gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
+                    iexp = np.where(gotexp > 0)[0]
+                    self.assignments['satisfied'][icats] = 0
+                    for icat in icats:
+                        other_cadence_name = self.targets['cadence'][icat]
+                        
+                        fits = clist.exposure_consistency(other_cadence_name,
+                                                          self.field_cadence.name, iexp)
+                        if(fits):
+                            self.assignments['satisfied'][icat] = 1
 
         return
 

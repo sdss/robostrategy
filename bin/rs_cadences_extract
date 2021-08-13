@@ -36,7 +36,6 @@ def copy_cadence(from_cadence, to_cadence, nepochs=None):
 
     cadencelist.add_cadence(name=to_cadence,
                             nepochs=nepochs,
-                            instrument=cadencelist.cadences[from_cadence].instrument,
                             skybrightness=cadencelist.cadences[from_cadence].skybrightness[0:nepochs],
                             delta=cadencelist.cadences[from_cadence].delta[0:nepochs],
                             delta_min=cadencelist.cadences[from_cadence].delta_min[0:nepochs],
@@ -89,7 +88,6 @@ if __name__ == '__main__':
                                         delta=tmpc.delta,
                                         delta_min=tmpc.delta_min,
                                         delta_max=tmpc.delta_max,
-                                        instrument=tmpc.instrument,
                                         max_length=tmpc.max_length)
 
     copy_cadence('mixed2_single_99x1', 'mixed2_single_nx1')

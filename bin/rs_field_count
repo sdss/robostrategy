@@ -18,6 +18,8 @@ import os
 import sys
 import numpy as np
 import fitsio
+import robostrategy
+import roboscheduler
 import robostrategy.field as field
 import roboscheduler.cadence as cadence
 import robostrategy.params as params
@@ -135,7 +137,12 @@ if __name__ == '__main__':
     cfilebase = 'rsFieldCount-{plan}-{obs}.fits'.format(plan=plan,
                                                         obs=observatory)
     count_file = os.path.join(outdir, cfilebase)
-    fitsio.write(count_file, count_array, clobber=True)
+
+    hdr = dict()
+    hdr['STRATVER'] = robostrategy.__version__
+    hdr['SCHEDVER'] = roboscheduler.__version__
+    fitsio.write(count_file, count_array, header=hdr,
+                 clobber=True)
 
     cadence_dtype = [('cadence', np.unicode_, 30)]
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
