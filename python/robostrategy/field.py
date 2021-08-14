@@ -1169,7 +1169,7 @@ class Field(object):
                 free = free | spare
 
         # Check allowability
-        free = free & (self.assignments['allowed'][self.field_cadence.epochs])
+        free = free & (self.assignments['allowed'][self.rsid2indx[rsid], self.field_cadence.epochs])
 
         # Now (if there is an actual target under consideration) check for collisions.
         for ifree in np.where(free)[0]:
