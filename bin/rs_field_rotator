@@ -37,6 +37,7 @@ import os
 import sys
 import argparse
 
+import robostrategy
 import robostrategy.params as params
 import sdss_access.path
 user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
