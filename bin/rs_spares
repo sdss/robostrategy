@@ -16,6 +16,7 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import multiprocessing
 import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -23,10 +24,99 @@ import robostrategy.allocate
 import sdss_access.path
 import fitsio
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
+
+def count_spares(indx):
+    fieldid = allocate.field_array['fieldid'][indx]
+    if((fieldid % 1) == 0):
+        print(fieldid, flush=True)
+
+    spare = np.zeros(1, dtype=spares_dtype)
+
+    field_target_file = sdss_path.full('rsFieldAssignments',
+                                       plan=plan, observatory=observatory,
+                                       fieldid=fieldid)
+    f = field.Field(filename=field_target_file, allgrids=False,
+                    verbose=True)
+
+    print('Counting spare in field', flush=True)
+    spare['fieldid'] = fieldid
+    spare['racen'] = allocate.fields['racen'][indx]
+    spare['deccen'] = allocate.fields['deccen'][indx]
+    hasApogee = np.array([f.mastergrid.robotDict[x].hasApogee
+                          for x in range(500)])
+    iapogee = np.where(hasApogee)[0]
+    if(f.assignments is not None):
+        ina_apogee = np.where(f._robot2indx[iapogee, :] < 0)[0]
+        ina_boss = np.where(f._robot2indx[:, :] < 0)[0]
+        nun_apogee = len(ina_apogee)
+        nun_boss = len(ina_boss)
+        
+        nsp_apogee_standard = (f.calibrations['standard_apogee'] -
+                               f.required_calibrations['standard_apogee'])
+        iz = np.where(nsp_apogee_standard < 0)[0]
+        nsp_apogee_standard[iz] = 0
+
+        nsp_apogee_sky = (f.calibrations['sky_apogee'] -
+                          f.required_calibrations['sky_apogee'])
+        iz = np.where(nsp_apogee_sky < 0)[0]
+        nsp_apogee_sky[iz] = 0
+
+        nsp_boss_standard = (f.calibrations['standard_boss'] -
+                             f.required_calibrations['standard_boss'])
+        iz = np.where(nsp_boss_standard < 0)[0]
+        nsp_boss_standard[iz] = 0
+        nsp_boss_standard_wapogee = np.zeros(f.field_cadence.nexp_total,
+                                             dtype=np.int32)
+        for iexp in np.arange(f.field_cadence.nexp_total,
+                              dtype=np.int32):
+            ia = np.where((f._robot2indx[:, iexp] >= 0) &
+                          hasApogee)[0]
+            if(len(ia) > 0):
+                ic = np.where(f.targets['category'][ia] == 'boss_standard')[0]
+                nc = len(ic)
+            else:
+                nc = 0
+            if(nc < nsp_boss_standard[iexp]):
+                nsp_boss_standard_wapogee[iexp] = nc
+            else:
+                nsp_boss_standard_wapogee[iexp] = nsp_boss_standard[iexp]
+
+        nsp_boss_sky = (f.calibrations['sky_boss'] -
+                        f.required_calibrations['sky_boss'])
+        iz = np.where(nsp_boss_sky < 0)[0]
+        nsp_boss_sky[iz] = 0
+        nsp_boss_sky_wapogee = np.zeros(f.field_cadence.nexp_total,
+                                        dtype=np.int32)
+        for iexp in np.arange(f.field_cadence.nexp_total,
+                              dtype=np.int32):
+            ia = np.where((f._robot2indx[:, iexp] >= 0) &
+                          hasApogee)[0]
+            if(len(ia) > 0):
+                ic = np.where(f.targets['category'][ia] == 'boss_sky')[0]
+                nc = len(ic)
+            else:
+                nc = 0
+            if(nc < nsp_boss_sky[iexp]):
+                nsp_boss_sky_wapogee[iexp] = nc
+            else:
+                nsp_boss_sky_wapogee[iexp] = nsp_boss_sky[iexp]
+
+        # The below is correct because every APOGEE robot is
+        # also potentially a BOSS robot, but not vice-versa.
+        spare['nboss_spare'] = (nun_boss +
+                                nsp_boss_standard.sum() +
+                                nsp_boss_sky.sum() +
+                                nsp_apogee_standard.sum() +
+                                nsp_apogee_sky.sum())
+        spare['napogee_spare'] = (nun_apogee +
+                                  nsp_apogee_standard.sum() +
+                                  nsp_apogee_sky.sum() + 
+                                  nsp_boss_standard_wapogee.sum() +
+                                  nsp_boss_sky_wapogee.sum())
+
+        fitsio.write('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid), spare, clobber=True)
 
 if __name__ == '__main__':
 
@@ -47,7 +137,7 @@ if __name__ == '__main__':
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    cadencelist.fromfits(filename=cadences_file)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
@@ -59,32 +149,16 @@ if __name__ == '__main__':
                     ('deccen', np.float64),
                     ('nboss_spare', np.int32),
                     ('napogee_spare', np.int32)]
+
+    indxs = np.arange(len(allocate.field_array))
+    with multiprocessing.Pool() as pool:
+        pool.map(count_spares, indxs)
+
     spares = np.zeros(len(allocate.field_array), dtype=spares_dtype)
 
-    for indx in np.arange(len(allocate.field_array)):
+    for indx in indxs:
         fieldid = allocate.field_array['fieldid'][indx]
-        if((fieldid % 1) == 0):
-            print(fieldid)
-
-        f = field.Field(racen=allocate.fields['racen'][indx],
-                        deccen=allocate.fields['deccen'][indx],
-                        observatory=observatory)
-
-        field_target_file = sdss_path.full('rsFieldAssignments',
-                                           plan=plan, observatory=observatory,
-                                           fieldid=fieldid)
-        f.fromfits(field_target_file)
-
-        spares['fieldid'][indx] = fieldid
-        spares['racen'][indx] = allocate.fields['racen'][indx]
-        spares['deccen'][indx] = allocate.fields['deccen'][indx]
-        if(f.assignments is not None):
-            iapogee = np.where(f.robot.apogee)[0]
-            iboss = np.where(f.robot.boss)[0]
-            ina_apogee = np.where(f.assignments[iapogee, :] == -1)[0]
-            ina_boss = np.where(f.assignments[iboss, :] == -1)[0]
-            spares['nboss_spare'][indx] = len(ina_boss)
-            spares['napogee_spare'][indx] = len(ina_apogee)
-
+        spares[indx] = fitsio.read('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid))
     fitsio.write('rsSpares-{o}-{p}.fits'.format(o=observatory,
-                                                p=plan), spares)
+                                                p=plan), spares,
+                 clobber=True)

@@ -312,7 +312,7 @@ class Field(object):
             assignments = None
         if(assignments is not None):
             if(self.field_cadence.nexp_total == 1):
-                iassigned = np.where(assignments['robotID'])
+                iassigned = np.where(assignments['robotID'] >= 0)
                 for itarget in iassigned[0]:
                     self.assign_robot_exposure(robotID=assignments['robotID'][itarget],
                                                rsid=targets['rsid'][itarget],
