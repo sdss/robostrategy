@@ -338,13 +338,12 @@ class Field(object):
                     num = 'RCNUM{d}'.format(d=m.group(1))
                     if(num in hdr):
                         if(hdr[num].strip() != ''):
-                            self.required_calibrations[hdr[name]] = np.array([np.int32(x) for x in hdr[num].split()])
+                            self.required_calibrations[hdr[name]] = np.array([np.int32(np.float32(x)) for x in hdr[num].split()], dtype=np.int32)
                         else:
                             self.required_calibrations[hdr[name]] = np.zeros(0, dtype=np.int32)
             self.calibrations = collections.OrderedDict()
             for n in self.required_calibrations:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
-        self.set_field_cadence(field_cadence)
         self.designModeDict = mugatu.designmode.allDesignModes(filename,
                                                                ext='DESMODE')
         try:
@@ -357,6 +356,7 @@ class Field(object):
                                           'default_designmodes.fits')
             self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
             named_ext = False
+        self.set_field_cadence(field_cadence)
         if(named_ext):
             targets = fitsio.read(filename, ext='TARGET')
         else:
@@ -383,6 +383,7 @@ class Field(object):
             else:
                 iassigned = np.where(assignments['robotID'] >= 1)
                 for itarget, iexp in zip(iassigned[0], iassigned[1]):
+                    print(iexp)
                     self.assign_robot_exposure(robotID=assignments['robotID'][itarget, iexp],
                                                rsid=targets['rsid'][itarget],
                                                iexp=iexp,
@@ -523,12 +524,16 @@ class Field(object):
                 obsmode_pk = np.array([''] * self.field_cadence.nexp_total)
 
             if(obsmode_pk[0] != ''):
+                if(self.verbose):
+                    print("obsmode_pk has been set", flush=True)
                 if((type(obsmode_pk) == list) |
                    (type(obsmode_pk) == np.ndarray)):
                     self.design_mode = np.array(obsmode_pk)
                 else:
                     self.design_mode = np.array([obsmode_pk])
             else:
+                if(self.verbose):
+                    print("Using heuristics for obsmode_pk", flush=True)
                 self.design_mode = np.array([''] *
                                             self.field_cadence.nexp_total)
                 for iexp in np.arange(self.field_cadence.nexp_total):
@@ -812,15 +817,21 @@ class Field(object):
             targets['rsassign'] = 1
 
         # Convert ra/dec to x/y
+        if(self.verbose):
+            print("Convert targets coords to x/y", flush=True)
         targets['x'], targets['y'] = self.radec2xy(ra=targets['ra'],
                                                    dec=targets['dec'],
                                                    fiberType=targets['fiberType'])
 
         # Add targets to robotGrids
+        if(self.verbose):
+            print("Assign targets to robot grid", flush=True)
         self._targets_to_robotgrid(targets=targets,
                                    robotgrid=self.mastergrid)
 
         # Determine if within
+        if(self.verbose):
+            print("Check whether targets are within grid", flush=True)
         self.masterTargetDict = self.mastergrid.targetDict
         for itarget, rsid in enumerate(targets['rsid']):
             t = self.masterTargetDict[rsid]
@@ -938,7 +949,7 @@ class Field(object):
                 name = 'RCNAME{indx}'.format(indx=indx)
                 num = 'RCNUM{indx}'.format(indx=indx)
                 hdr[name] = rc
-                hdr[num] = ' '.join([str(n) for n in self.required_calibrations[rc]])
+                hdr[num] = ' '.join([str(int(n)) for n in self.required_calibrations[rc]])
         fitsio.write(filename, None, header=hdr, clobber=True)
         fitsio.write(filename, self.targets, extname='TARGET')
         if(self.assignments is not None):
@@ -2398,6 +2409,23 @@ class Field(object):
                             (self._is_calibration == False))[0]
             perepoch[epoch] = len(rids)
             out = out + " {p}".format(p=perepoch[epoch])
+        out = out + "\n"
+        out = out + "\n"
+
+        out = out + "Robots used:\n"
+        hasApogee = np.array([self.mastergrid.robotDict[x + 1].hasApogee
+                              for x in range(500)], dtype=np.bool)
+        out = out + " BOSS-only:"
+        for iexp in range(self.field_cadence.nexp_total):
+            iused_boss = np.where((self._robot2indx[:, iexp] >= 0) &
+                                  (hasApogee == False))[0]
+            out = out + " {p}".format(p=len(iused_boss))
+        out = out + "\n"
+        out = out + " APOGEE-BOSS:"
+        for iexp in range(self.field_cadence.nexp_total):
+            iused_apogee = np.where((self._robot2indx[:, iexp] >= 0) &
+                                    (hasApogee == True))[0]
+            out = out + " {p}".format(p=len(iused_apogee))
         out = out + "\n"
 
         out = out + "\nCarton completion:\n"
