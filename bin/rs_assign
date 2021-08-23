@@ -159,7 +159,7 @@ def field_options(ifield):
         if(n_field_cadence):
             print("n_field_cadence", flush=True)
             assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
-            for indx in np.arange(19, ncadence + 1, dtype=np.int32):
+            for indx in np.arange(21, ncadence + 1, dtype=np.int32):
                 print("indx={indx}".format(indx=indx), flush=True)
                 fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
                                                  n=indx)
@@ -169,17 +169,17 @@ def field_options(ifield):
                                                  nfield=True)
                 assign_entries[indx - minn] = assign_entry
 
-            # Up to 18x1, do them individually; this is necessary 
+            # Up to 20x1, do them individually; this is necessary 
             # because if there is a cadenced observation of (say) 9x1,
             # which is HIGH priority, it can get favored in the 99x1 
             # case, but then you lose it for (say) 6x1. This here
             # assumes our longest cadenced nx1 case is 18x1
-            for indx in np.arange(minn, 19, dtype=np.int32):
+            for indx in np.arange(minn, 21, dtype=np.int32):
                 print("indx={indx}".format(indx=indx), flush=True)
                 f.clear_field_cadence()
                 fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
                                                  n=indx)
-                f.set_field_cadence(field_cadence)
+                f.set_field_cadence(fcadence)
                 f.assign_science()
                 f.decollide_unassigned()
                 assign_entry = make_assign_entry(f, fields_entry,
