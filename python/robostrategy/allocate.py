@@ -1079,3 +1079,61 @@ class AllocateLSTCostE(AllocateLST):
         xfactor = (fdark * airmass**exponent_dark +
                    (1 - fdark) * airmass**exponent_bright)
         return(xfactor)
+
+
+class AllocateLSTCostF(AllocateLST):
+    """LST allocation object for robostrategy, with cost model F
+
+    This class is exactly like AllocateLSTCostE, but for dark_1x3 we 
+    rescale the cost to assume a fourth exposure is necessary.
+"""
+    def xfactor(self, racen=None, deccen=None, skybrightness=None, lst=None,
+                cadence=None):
+        """Exposure time cost factor relative to nominal
+
+        Parameters:
+        ----------
+
+        racen : np.float64
+            RA center of field, degrees
+
+        deccen : np.float64
+            Dec center of field, degrees
+
+        cadence : str
+            cadence name
+
+        skybrightness : np.float32
+            maximum sky brightness of observation
+
+        lst : np.float32
+            LST of observation, hours
+
+        Returns:
+        -------
+
+        xfactor : np.float64
+            length of exposure relative to nominal
+
+        Comments:
+        --------
+
+        If the sky brightness requirement of an epoch is <= 0.4,
+        then it assumes you are working in the optical and care about blue
+        throughput, and it scales exposure time with airmass^1. If not, it
+        scales the cost as airmass^0.05. For mixed cadences, it only scales
+        the dark fraction as airmass^1.
+"""
+        ha = self.observer.ralst2ha(ra=racen, lst=lst * 15.)
+        (alt, az) = self.observer.hadec2altaz(ha=ha, dec=deccen,
+                                              lat=self.observer.latitude)
+        airmass = self.observer.alt2airmass(alt=alt)
+        exponent_bright = 0.05
+        exponent_dark = 1.0
+        idark = np.where(self.cadencelist.cadences[cadence].skybrightness < 0.4)[0]
+        fdark = np.float32(len(idark)) / np.float32(self.cadencelist.cadences[cadence].nepochs)
+        xfactor = (fdark * airmass**exponent_dark +
+                   (1 - fdark) * airmass**exponent_bright)
+        if(cadence == 'dark_1x3'):
+            xfactor = xfactor * 4. / 3.
+        return(xfactor)
