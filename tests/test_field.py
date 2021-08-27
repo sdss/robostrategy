@@ -35,39 +35,39 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
     return
 
 
+def add_cadence_single_nxm(n=1, m=1):
+    clist = cadence.CadenceList()
+    clist.add_cadence(name='single_{n}x{m}'.format(n=n, m=m),
+                      nepochs=n,
+                      skybrightness=[1.] * n,
+                      delta=[-1.] * n,
+                      delta_min=[-1.] * n,
+                      delta_max=[-1.] * n,
+                      nexp=[m] * n,
+                      max_length=[0.] * n,
+                      min_moon_sep=[15.] * n,
+                      min_deltav_ks91=[-2.5] * n,
+                      min_twilight_ang=[8] * n,
+                      max_airmass=[2.] * n,
+                      obsmode_pk=['bright_time'] * n)
+    return
+
 def test_field_init():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=0.)
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=1)
+    add_cadence_single_nxm(n=2, m=2)
+
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
     assert f.field_cadence.nepochs == 1
 
-    clist.add_cadence(name='single_2x1', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[1] * 2,
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x1')
     assert f.field_cadence.nepochs == 2
 
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1., -1.],
-                      delta_min=[-1., -1.],
-                      delta_max=[-1., -1.],
-                      nexp=[2, 2],
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                           field_cadence='single_2x2')
     assert f.field_cadence.nepochs == 2
@@ -86,13 +86,7 @@ def test_radec():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
     x, y = f.radec2xy(ra=180.5, dec=0.5, fiberType='APOGEE')
@@ -105,13 +99,7 @@ def test_target_fromarray():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
     targets(f)
@@ -121,13 +109,7 @@ def test_flags():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
 
@@ -143,21 +125,9 @@ def test_assign_robot_epoch():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
 
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[2] * 2,
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
     targets(f, nt=500)
@@ -201,21 +171,8 @@ def test_available_epochs():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
-
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[2, 2],
-                      max_length=[0.] * 2)
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
@@ -258,21 +215,9 @@ def test_assign_epochs():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
 
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[2, 2],
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
     targets(f, nt=500, seed=102)
@@ -309,21 +254,9 @@ def test_clear_assignments():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
 
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[2, 2],
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
     targets(f, nt=500, seed=102)
@@ -347,21 +280,9 @@ def test_append_targets():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
 
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[2] * 2,
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
@@ -381,21 +302,9 @@ def test_append_targets_after_assign():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
 
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[2] * 2,
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
@@ -421,21 +330,9 @@ def test_collisions():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
 
-    clist.add_cadence(name='single_2x2', nepochs=2,
-                      skybrightness=[1.] * 2,
-                      delta=[-1.] * 2,
-                      delta_min=[-1.] * 2,
-                      delta_max=[-1.] * 2,
-                      nexp=[2] * 2,
-                      max_length=[0.] * 2)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
@@ -462,13 +359,7 @@ def test_assign_science():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -488,13 +379,7 @@ def test_assign():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -524,21 +409,8 @@ def test_available_exposures():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
-
-    clist.add_cadence(name='single_3x1', nepochs=3,
-                      skybrightness=[1.] * 3,
-                      delta=[-1.] * 3,
-                      delta_min=[-1.] * 3,
-                      delta_max=[-1.] * 3,
-                      nexp=[1] * 3,
-                      max_length=[0.] * 3)
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=3, m=1)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_3x1')
@@ -593,13 +465,7 @@ def test_assign_noallgrids():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1', allgrids=False)
@@ -629,13 +495,7 @@ def test_clear():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -685,13 +545,7 @@ def test_assign_apogee():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
@@ -711,13 +565,7 @@ def test_assign_cp_model():
     clist = cadence.CadenceList()
     clist.reset()
 
-    clist.add_cadence(name='single_1x1', nepochs=1,
-                      skybrightness=[1.],
-                      delta=[-1.],
-                      delta_min=[-1.],
-                      delta_max=[-1.],
-                      nexp=[1],
-                      max_length=[0.])
+    add_cadence_single_nxm(n=1, m=1)
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')

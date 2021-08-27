@@ -152,6 +152,7 @@ if __name__ == '__main__':
     extra = rsParams.cfg.get('Allocation', 'ExtraTimeFactor')
     slots.slots = slots.slots * np.float32(extra)
 
+    allocate_class = None
     if('Cost' in rsParams.cfg['Allocation']):
         if(rsParams.cfg.get('Allocation', 'Cost') == 'A'):
             print("Use cost model A")
@@ -168,9 +169,15 @@ if __name__ == '__main__':
         if(rsParams.cfg.get('Allocation', 'Cost') == 'E'):
             print("Use cost model E")
             allocate_class = robostrategy.allocate.AllocateLSTCostE
+        if(rsParams.cfg.get('Allocation', 'Cost') == 'F'):
+            print("Use cost model F")
+            allocate_class = robostrategy.allocate.AllocateLSTCostF
+        if(allocate_class is None):
+            print("Must specify valid cost model.")
+            sys.exit(1)
     else:
-        print("Use default cost model")
-        allocate_class = robostrategy.allocate.AllocateLST
+        print("Must specify cost model.")
+        sys.exit(1)
     allocate = allocate_class(slots=slots,
                               field_options=field_options,
                               field_slots=field_slots,
