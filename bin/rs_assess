@@ -1,0 +1,58 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_spares
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import roboscheduler.cadence as cadence
+import robostrategy.field as field
+import sdss_access.path
+import fitsio
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final assignment based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-f', '--fieldid', dest='fieldid',
+                        type=int, help='fieldid number',
+                        required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    fieldid = args.fieldid
+
+    cadencelist = cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=False)
+
+    field_target_file = sdss_path.full('rsFieldAssignments',
+                                       plan=plan, observatory=observatory,
+                                       fieldid=fieldid)
+    f = field.Field(filename=field_target_file)
+
+    print(f.assess())

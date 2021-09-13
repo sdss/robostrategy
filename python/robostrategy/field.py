@@ -383,7 +383,6 @@ class Field(object):
             else:
                 iassigned = np.where(assignments['robotID'] >= 1)
                 for itarget, iexp in zip(iassigned[0], iassigned[1]):
-                    print(iexp)
                     self.assign_robot_exposure(robotID=assignments['robotID'][itarget, iexp],
                                                rsid=targets['rsid'][itarget],
                                                iexp=iexp,
