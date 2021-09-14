@@ -6,7 +6,7 @@ import roboscheduler.cadence as cadence
 
 
 def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
-            category='science', fiberType='BOSS'):
+            category='science', fiberType='BOSS', cadence='single_1x1'):
     t_dtype = np.dtype([('ra', np.float64),
                         ('dec', np.float64),
                         ('priority', np.int32),
@@ -27,7 +27,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
         t['dec'] = dec
     t['priority'] = 1
     t['category'] = category
-    t['cadence'] = 'single_1x1'
+    t['cadence'] = cadence
     t['fiberType'] = fiberType
     t['catalogid'] = np.arange(nt, dtype=np.int64)
     t['rsid'] = np.arange(nt, dtype=np.int64) + rsid_start
@@ -565,6 +565,56 @@ def test_assign_apogee():
         if(f.robotgrids[0].robotDict[r].assignedTargetID >= 0):
             assert f.robotgrids[0].robotDict[r].hasApogee
 
+
+def test_count():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=1)
+    add_cadence_single_nxm(n=2, m=2)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x1')
+    ntot = 400
+    targets(f, nt=ntot, seed=101, fiberType='APOGEE')
+    targets(f, nt=ntot, seed=102, fiberType='BOSS', rsid_start=ntot)
+
+    f.assign_science()
+    f.decollide_unassigned()
+    for itarget, target in enumerate(f.targets):
+        igot = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
+        if(target['fiberType'] == 'APOGEE'):
+            assert len(igot) == f.assignments['nexps_apogee'][itarget]
+            assert len(igot) == f.assignments['nepochs_apogee'][itarget]
+        if(target['fiberType'] == 'BOSS'):
+            assert len(igot) == f.assignments['nexps_boss'][itarget]
+            assert len(igot) == f.assignments['nepochs_boss'][itarget]
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+    ntot = 400
+    targets(f, nt=ntot, seed=101, fiberType='APOGEE',
+            cadence='single_2x1')
+    targets(f, nt=ntot, seed=102, fiberType='BOSS', rsid_start=ntot,
+            cadence='single_2x1')
+
+    f.assign_science()
+    f.decollide_unassigned()
+    for itarget, target in enumerate(f.targets):
+        igot = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
+        epochs = set()
+        for cgot in igot:
+            epochs.add(f.field_cadence.epochs[cgot])
+        nepochs = len(epochs)
+        if(target['fiberType'] == 'APOGEE'):
+            assert len(igot) == f.assignments['nexps_apogee'][itarget]
+            assert nepochs == f.assignments['nepochs_apogee'][itarget]
+        if(target['fiberType'] == 'BOSS'):
+            assert len(igot) == f.assignments['nexps_boss'][itarget]
+            assert nepochs == f.assignments['nepochs_boss'][itarget]
+            
+    return
 
 def test_assign_cp_model():
     clist = cadence.CadenceList()

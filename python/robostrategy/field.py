@@ -387,9 +387,11 @@ class Field(object):
                                                rsid=targets['rsid'][itarget],
                                                iexp=iexp,
                                                reset_satisfied=False,
-                                               reset_has_spare=False)
+                                               reset_has_spare=False,
+                                               reset_count=False)
             self._set_has_spare_calib()
             self._set_satisfied()
+            self._set_count()
             self.decollide_unassigned()
         return
 
@@ -504,6 +506,10 @@ class Field(object):
                 self._robotnexp_max[:, i] = n
             self.assignments_dtype = np.dtype([('assigned', np.int32),
                                                ('satisfied', np.int32),
+                                               ('nexps_apogee', np.int32),
+                                               ('nexps_boss', np.int32),
+                                               ('nepochs_apogee', np.int32),
+                                               ('nepochs_boss', np.int32),
                                                ('allowed', np.int32,
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
@@ -880,6 +886,7 @@ class Field(object):
         if(assignments is not None):
             self.assignments = np.append(self.assignments, assignments, axis=0)
             self._set_satisfied()
+            self._set_count()
 
         return
 
@@ -1195,7 +1202,7 @@ class Field(object):
 
     def assign_robot_epoch(self, rsid=None, robotID=None, epoch=None, nexp=None,
                            reset_satisfied=True, reset_has_spare=True,
-                           free=None):
+                           reset_count=True, free=None):
         """Assign an rsid to a particular robot-epoch
 
         Parameters:
@@ -1222,6 +1229,10 @@ class Field(object):
 
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix based on this assignment
+            (default True)
+
+        reset_count : bool
+            if True, reset the exposure and epoch counts
             (default True)
 
         Returns:
@@ -1285,6 +1296,11 @@ class Field(object):
             catalogid = self.targets['catalogid'][indx]
             self._set_satisfied(catalogids=[catalogid])
 
+        if(reset_count):
+            indx = self.rsid2indx[rsid]
+            catalogid = self.targets['catalogid'][indx]
+            self._set_count(catalogids=[catalogid])
+
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
 
@@ -1311,7 +1327,8 @@ class Field(object):
         return
 
     def assign_robot_exposure(self, robotID=None, rsid=None, iexp=None,
-                              reset_satisfied=True, reset_has_spare=True):
+                              reset_satisfied=True, reset_has_spare=True,
+                              reset_count=True):
         """Assign an rsid to a particular robot-exposure
 
         Parameters:
@@ -1332,6 +1349,10 @@ class Field(object):
 
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix
+            (default True)
+
+        reset_count : bool
+            if True, reset the 'nexp' and 'nepochs' columns
             (default True)
 
         Returns:
@@ -1376,6 +1397,11 @@ class Field(object):
             catalogid = self.targets['catalogid'][indx]
             self._set_satisfied(catalogids=[catalogid])
 
+        if(reset_count):
+            indx = self.rsid2indx[rsid]
+            catalogid = self.targets['catalogid'][indx]
+            self._set_count(catalogids=[catalogid])
+
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
 
@@ -1388,7 +1414,8 @@ class Field(object):
         return
 
     def unassign_exposure(self, rsid=None, iexp=None, reset_assigned=True,
-                          reset_satisfied=True, reset_has_spare=True):
+                          reset_satisfied=True, reset_has_spare=True,
+                          reset_count=True):
         """Unassign an rsid from a particular exposure
 
         Parameters:
@@ -1406,6 +1433,10 @@ class Field(object):
 
         reset_satisfied : bool
             if True, reset the 'satisfied' flag after unassignment
+            (default True)
+
+        reset_count : bool
+            if True, reset the exposures and epochs count
             (default True)
 
         reset_has_spare : bool
@@ -1436,13 +1467,18 @@ class Field(object):
             catalogid = self.targets['catalogid'][itarget]
             self._set_satisfied(catalogids=[catalogid])
 
+        if(reset_count):
+            catalogid = self.targets['catalogid'][itarget]
+            self._set_count(catalogids=[catalogid])
+
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
 
         return
 
     def unassign_epoch(self, rsid=None, epoch=None, reset_assigned=True,
-                       reset_satisfied=True, reset_has_spare=True):
+                       reset_satisfied=True, reset_has_spare=True,
+                       reset_count=True):
         """Unassign an rsid from a particular epoch
 
         Parameters:
@@ -1460,6 +1496,10 @@ class Field(object):
 
         reset_satisfied : bool
             if True, reset the 'satisfied' flag after unassignment
+            (default True)
+
+        reset_count : bool
+            if True, reset the epoch and exposure counts
             (default True)
 
         reset_has_spare : bool
@@ -1486,13 +1526,18 @@ class Field(object):
             catalogid = self.targets['catalogid'][itarget]
             self._set_satisfied(catalogids=[catalogid])
 
+        if(reset_count):
+            itarget = self.rsid2indx[rsid]
+            catalogid = self.targets['catalogid'][itarget]
+            self._set_count(catalogids=[catalogid])
+
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
 
         return 0
 
     def unassign(self, rsid=None, reset_assigned=True, reset_satisfied=True,
-                 reset_has_spare=True):
+                 reset_has_spare=True, reset_count=True):
         """Unassign an rsid entirely
 
         Parameters:
@@ -1505,7 +1550,10 @@ class Field(object):
             if True, resets assigned flag for this rsid (default True)
 
         reset_satisfied : bool
-            if True, resets satified flag for this rsid (default True)
+            if True, resets satified flag for this catalogid (default True)
+
+        reset_satisfied : bool
+            if True, resets exposure and epoch count (default True)
 
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix after unassignment
@@ -1522,6 +1570,11 @@ class Field(object):
             itarget = self.rsid2indx[rsid]
             catalogid = self.targets['catalogid'][itarget]
             self._set_satisfied(catalogids=[catalogid])
+
+        if(reset_count):
+            itarget = self.rsid2indx[rsid]
+            catalogid = self.targets['catalogid'][itarget]
+            self._set_count(catalogids=[catalogid])
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1744,11 +1797,13 @@ class Field(object):
             self.assign_robot_epoch(rsid=rsid, robotID=robotID, epoch=epoch,
                                     nexp=nexp, free=free,
                                     reset_satisfied=False,
-                                    reset_has_spare=False)
+                                    reset_has_spare=False,
+                                    reset_count=False)
 
         indx = self.rsid2indx[rsid]
         catalogid = self.targets['catalogid'][indx]
         self._set_satisfied(catalogids=[catalogid])
+        self._set_count(catalogids=[catalogid])
         if(self.nocalib is False):
             self._set_has_spare_calib()
 
@@ -1845,6 +1900,45 @@ class Field(object):
                                                           self.field_cadence.name, iexp)
                         if(fits):
                             self.assignments['satisfied'][icat] = 1
+
+        return
+
+    def _set_count(self, catalogids=None):
+        """Set exposure and epochs based on assignments
+
+        Parameters:
+        ----------
+
+        catalogids : ndarray of np.int64
+            catalogids to set (defaults to apply to all targets)
+
+        Notes:
+        -----
+
+        These counts are for the catalogid associated with 
+        each entry.
+"""
+        if(catalogids is None):
+            catalogids = self._unique_catalogids
+
+        fiberTypes = ['APOGEE', 'BOSS']
+        for fiberType in fiberTypes:
+            nexpsname = 'nexps_' + fiberType.lower()
+            nepochsname = 'nepochs_' + fiberType.lower()
+            for catalogid in catalogids:
+                nexps = 0
+                nepochs = 0
+                icats = np.where((self.targets['catalogid'] == catalogid) &
+                                 (self.targets['fiberType'] == fiberType))[0]
+                if(len(icats) > 0):
+                    gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
+                    iexp = np.where(gotexp > 0)[0]
+                    nexps = len(iexp)
+                    if(nexps > 0):
+                        epochs = np.unique(self.field_cadence.epochs[iexp])
+                        nepochs = len(epochs)
+                self.assignments[nexpsname][icats] = nexps
+                self.assignments[nepochsname][icats] = nepochs
 
         return
 
@@ -2358,6 +2452,7 @@ class Field(object):
         for itarget in np.arange(len(self.assignments), dtype=np.int32):
             self._set_assigned(itarget=itarget)
         self._set_satisfied()
+        self._set_count()
         return
 
     def assess(self):
@@ -3044,6 +3139,7 @@ class FieldSpeedy(Field):
                                                        reset_has_spare=False)
                             icurr = icurr + 1
                         self._set_satisfied(catalogids=[self.targets['catalogid'][indx]])
+                        self._set_count(catalogids=[self.targets['catalogid'][indx]])
                         rsids.remove(curr_rsid)
                     irsid = irsid + 1
 
