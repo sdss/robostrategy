@@ -74,7 +74,11 @@ if __name__ == '__main__':
                                 ('dec', np.float64),
                                 ('cadence', np.unicode_, 30),
                                 ('satisfied', np.int32),
-                                ('assigned', np.int32)])
+                                ('assigned', np.int32),
+                                ('nexps_apogee', np.int32),
+                                ('nexps_boss', np.int32),
+                                ('nepochs_apogee', np.int32),
+                                ('nepochs_boss', np.int32)])
     satisfied = np.zeros(len(full_targets), dtype=satisfied_dtype)
 
     xferlist = ['carton_to_target_pk', 'rsid', 'catalogid', 'ra', 'dec', 'cadence']
@@ -107,6 +111,14 @@ if __name__ == '__main__':
                                             assignments['satisfied'])
             satisfied['assigned'][isat] = (satisfied['assigned'][isat] +
                                            assignments['assigned'])
+            satisfied['nexps_apogee'][isat] = (satisfied['nexps_apogee'][isat] +
+                                               assignments['nexps_apogee'])
+            satisfied['nexps_boss'][isat] = (satisfied['nexps_boss'][isat] +
+                                             assignments['nexps_boss'])
+            satisfied['nepochs_apogee'][isat] = (satisfied['nepochs_apogee'][isat] +
+                                                 assignments['nepochs_apogee'])
+            satisfied['nepochs_boss'][isat] = (satisfied['nepochs_boss'][isat] +
+                                               assignments['nepochs_boss'])
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
