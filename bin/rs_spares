@@ -191,7 +191,10 @@ if __name__ == '__main__':
         fieldid = allocate.field_array['fieldid'][indx]
         cspares = fitsio.read('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid))
 
-        nexp = len(cspares['nboss_spare'][0, :])
+        try:
+            nexp = len(cspares['nboss_spare'][0, :])
+        except IndexError:
+            nexp = 1
         spares_exp['fieldid'][ispares_exp:ispares_exp + nexp] = fieldid
         spares_exp['iexp'][ispares_exp:ispares_exp + nexp] = np.arange(nexp, dtype=np.int32)
         spares_exp['racen'][ispares_exp:ispares_exp + nexp] = cspares['racen'][0]
