@@ -331,6 +331,39 @@ def test_append_targets_after_assign():
 
     for i in np.arange(50):
         assert f.assignments['satisfied'][i] == f.assignments['satisfied'][i + 50]
+    return
+
+
+def test_equiv():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+
+    targets(f, nt=150)
+    targets(f, nt=150, rsid_start=150, ra=f.targets['ra'],
+            dec=f.targets['dec'])
+
+    f.assign_science()
+    f.decollide_unassigned()
+    
+    igot = np.where(f.assignments['robotID'] >= 0)
+    ibad = np.where(f.assignments['robotID'][igot] !=
+                    f.assignments['equivRobotID'][igot])[0]
+    assert len(ibad) == 0
+    
+    for i in np.arange(150):
+        for iexp in np.arange(4):
+            if(f.assignments['robotID'][i, iexp] >= 0):
+                assert f.assignments['robotID'][i, iexp] == f.assignments['equivRobotID'][i + 150, iexp]
+            if(f.assignments['robotID'][i + 150, iexp] >= 0):
+                assert f.assignments['robotID'][i + 150, iexp] == f.assignments['equivRobotID'][i, iexp]
+        
+    return
 
 def test_collisions():
     clist = cadence.CadenceList()

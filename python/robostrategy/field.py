@@ -392,7 +392,7 @@ class Field(object):
                                                reset_count=False)
             self._set_has_spare_calib()
             self._set_satisfied()
-            self._set_count()
+            self._set_count(reset_equiv=False)
             self.decollide_unassigned()
         return
 
@@ -516,6 +516,8 @@ class Field(object):
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('holeID', np.dtype("|U15"), self.field_cadence.nexp_total),
+                                               ('equivRobotID', np.int32,
+                                                (self.field_cadence.nexp_total,)),
                                                ('target_skybrightness', np.float32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('field_skybrightness', np.float32,
@@ -786,10 +788,12 @@ class Field(object):
         if(assignment_array is None):
             assignments['fiberType'] = targets['fiberType']
             assignments['robotID'] = -1
+            assignments['equivRobotID'] = -1
             assignments['target_skybrightness'] = -1.
         else:
             for n in self.assignments_dtype.names:
-                listns = ['robotID', 'target_skybrightness', 'field_skybrightness']
+                listns = ['robotID', 'equivRobotID', 'target_skybrightness',
+                          'field_skybrightness']
                 if((n in listns) & (self.field_cadence.nexp_total == 1)):
                     assignments[n][:, 0] = assignment_array[n]
                 else:
@@ -884,10 +888,26 @@ class Field(object):
 
         self._unique_catalogids = np.unique(self.targets['catalogid'])
 
+        # Set up lists of equivalent observation conditions, meaning
+        # that for each target we can look up all of the other targets
+        # whose catalog, fiberType, lambda_eff, delta_ra, delta_dec 
+        # are the same
+        self._equivindx = collections.OrderedDict()
+        self._equivkey = collections.OrderedDict()
+        for itarget, target in enumerate(self.targets):
+            ekey = (target['catalogid'], target['fiberType'],
+                    target['lambda_eff'], target['delta_ra'],
+                    target['delta_dec'])
+            if(ekey not in self._equivindx):
+                self._equivindx[ekey] = np.zeros(0, dtype=np.int32)
+            self._equivindx[ekey] = np.append(self._equivindx[ekey],
+                                              np.array([itarget]))
+            self._equivkey[itarget] = ekey
+
         if(assignments is not None):
             self.assignments = np.append(self.assignments, assignments, axis=0)
             self._set_satisfied()
-            self._set_count()
+            self._set_count(reset_equiv=False)
 
         return
 
@@ -991,10 +1011,22 @@ class Field(object):
 
         collide : bool
             True if it causes a collision, False if not
+
+        Notes:
+        -----
+
+        If there is no RobotGrid to check collisions and/or nocollide
+        is set for this object, it doesn't actually check collisions.
+        
+        However, it does report a collision if any OTHER equivalent 
+        target.
 """
         if((not self.allgrids) |
            (self.nocollide)):
-            return False
+            indx = self.rsid2indx[rsid]
+            allindxs = set(self._equivindx[self._equivkey[indx]])
+            allindxs.discard(indx)
+            
         rg = self.robotgrids[iexp]
         return rg.wouldCollideWithAssigned(robotID, rsid)[0]
 
@@ -1292,15 +1324,14 @@ class Field(object):
                                        reset_satisfied=False,
                                        reset_has_spare=False)
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            indx = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][indx]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
 
         if(reset_count):
-            indx = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][indx]
-            self._set_count(catalogids=[catalogid])
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1393,15 +1424,14 @@ class Field(object):
             rg = self.robotgrids[iexp]
             rg.assignRobot2Target(robotID, rsid)
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            indx = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][indx]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
 
         if(reset_count):
-            indx = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][indx]
-            self._set_count(catalogids=[catalogid])
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1464,13 +1494,14 @@ class Field(object):
         if(reset_assigned == True):
             self._set_assigned(itarget=itarget)
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
 
         if(reset_count):
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_count(catalogids=[catalogid])
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1522,15 +1553,14 @@ class Field(object):
         if(reset_assigned):
             self._set_assigned(itarget=self.rsid2indx[rsid])
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            itarget = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
 
         if(reset_count):
-            itarget = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_count(catalogids=[catalogid])
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1567,15 +1597,14 @@ class Field(object):
         if(reset_assigned):
             self._set_assigned(itarget=self.rsid2indx[rsid])
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            itarget = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
 
         if(reset_count):
-            itarget = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_count(catalogids=[catalogid])
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1801,10 +1830,8 @@ class Field(object):
                                     reset_has_spare=False,
                                     reset_count=False)
 
-        indx = self.rsid2indx[rsid]
-        catalogid = self.targets['catalogid'][indx]
-        self._set_satisfied(catalogids=[catalogid])
-        self._set_count(catalogids=[catalogid])
+        self._set_satisfied(rsids=[rsid])
+        self._set_count(rsids=[rsid], reset_equiv=False)
         if(self.nocalib is False):
             self._set_has_spare_calib()
 
@@ -1864,82 +1891,128 @@ class Field(object):
                 
         return False
 
-    def _set_satisfied(self, catalogids=None):
+    def _set_equiv(self, rsids=None):
+        """Set equivRobotID to reflect any compatible observations with this rsid
+
+        Parameters:
+        ----------
+
+        rsids : ndarray of int64
+            rsids to update (default all currently assigned)
+
+        Notes:
+        -----
+
+        This finds ALL entries with the same:
+
+            catalogid
+            fiberType
+            lambda_eff
+            delta_ra
+            delta_dec
+
+        and sets the robotIDs for all of them.
+"""
+        if(rsids is None):
+            iassigned = np.where(self.assignments['assigned'])[0]
+            rsids = self.targets['rsid'][iassigned]
+
+        for rsid in rsids:
+            indx = self.rsid2indx[rsid]
+            allindxs = self._equivindx[self._equivkey[indx]]
+
+            for iexp in np.arange(self.field_cadence.nexp_total, dtype=int):
+                robotIDs = self.assignments['robotID'][allindxs, iexp]
+                robotIDs = robotIDs[robotIDs >= 0]
+                if(len(robotIDs) > 0):
+                    if(len(robotIDs) > 1):
+                        print("Inconsistency: multiple equivalent rsids with robots assigned")
+                        return
+                    self.assignments['equivRobotID'][allindxs, iexp] = robotIDs[0]
+
+        return
+            
+    def _set_satisfied(self, rsids=None, reset_equiv=True):
         """Set satisfied flag based on assignments
 
         Parameters:
         ----------
 
-        catalogids : ndarray of np.int64
-            catalogids to set (defaults to apply to all targets)
+        rsids : ndarray of np.int64
+            rsids to set (defaults to apply to all targets)
+
+        reset_equiv : bool
+            whether to reset equivRobotID before assessing (default True)
 
         Notes:
         -----
 
-        'satisfied' means that the exposures obtained for this catalog ID satisfy
+        'satisfied' means that the exposures obtained satisfy
         the cadence for an rsid and the right instrument.
-"""
-        if(catalogids is None):
-            catalogids = self._unique_catalogids
 
-        fiberTypes = ['APOGEE', 'BOSS']
-        for catalogid in catalogids:
-            for fiberType in fiberTypes:
-                # Check for other instances of this catalogid, and whether
-                # assignments have satisfied their cadence
-                icats = np.where((self.targets['catalogid'] == catalogid) &
-                                 (self.targets['fiberType'] == fiberType) &
-                                 (self.targets['incadence']))[0]
-                if(len(icats) > 0):
-                    gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
-                    iexp = np.where(gotexp > 0)[0]
-                    self.assignments['satisfied'][icats] = 0
-                    for icat in icats:
-                        other_cadence_name = self.targets['cadence'][icat]
-                        
-                        fits = clist.exposure_consistency(other_cadence_name,
-                                                          self.field_cadence.name, iexp)
-                        if(fits):
-                            self.assignments['satisfied'][icat] = 1
+        Uses equivRobotID to assess whether the conditions are
+        satisfied.
+
+        Only set reset_equiv=False if you have already just run
+        _set_equiv() for these rsids (or all of them). Doing so 
+        will save doing that twice.
+"""
+        if(reset_equiv):
+            self._set_equiv(rsids=rsids)
+
+        if(rsids is None):
+            rsids = self.targets['rsid']
+
+        for rsid in rsids:
+            indx = self.rsid2indx[rsid]
+            iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
+            sat = clist.exposure_consistency(self.targets['cadence'][indx],
+                                             self.field_cadence.name, iexp)
+            self.assignments['satisfied'][indx] = sat
 
         return
 
-    def _set_count(self, catalogids=None):
+    def _set_count(self, rsids=None, reset_equiv=True):
         """Set exposure and epochs based on assignments
 
         Parameters:
         ----------
 
-        catalogids : ndarray of np.int64
-            catalogids to set (defaults to apply to all targets)
+        rsids : ndarray of np.int64
+            rsids to set (defaults to apply to all targets)
+
+        reset_equiv : bool
+            whether to reset equivRobotID before assessing (default True)
 
         Notes:
         -----
 
-        These counts are for the catalogid associated with 
-        each entry.
+        Sets nexps_apogee, nexps_boss, nepochs_apogee, and nepochs_boss
+        for each target, based on equivRobotID.
+
+        Only set reset_equiv=False if you have already just run
+        _set_equiv() for these rsids (or all of them). Doing so 
+        will save doing that twice.
 """
-        if(catalogids is None):
-            catalogids = self._unique_catalogids
+        if(reset_equiv):
+            self._set_equiv(rsids=rsids)
+
+        if(rsids is None):
+            indxs = np.arange(len(self.targets), dtype=int)
+        else:
+            indxs = np.array([self.rsid2indx[x] for x in rsids], dtype=int)
 
         fiberTypes = ['APOGEE', 'BOSS']
         for fiberType in fiberTypes:
             nexpsname = 'nexps_' + fiberType.lower()
             nepochsname = 'nepochs_' + fiberType.lower()
-            for catalogid in catalogids:
-                nexps = 0
-                nepochs = 0
-                icats = np.where((self.targets['catalogid'] == catalogid) &
-                                 (self.targets['fiberType'] == fiberType))[0]
-                if(len(icats) > 0):
-                    gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
-                    iexp = np.where(gotexp > 0)[0]
-                    nexps = len(iexp)
-                    if(nexps > 0):
-                        epochs = np.unique(self.field_cadence.epochs[iexp])
-                        nepochs = len(epochs)
-                self.assignments[nexpsname][icats] = nexps
-                self.assignments[nepochsname][icats] = nepochs
+            self.assignments[nexpsname][indxs] = (self.assignments['equivRobotID'][indxs, :] >= 0).sum()
+            self.assignments[nepochsname][indxs] = 0
+            icheck = np.where(self.assignments[nexpsname][indxs] > 0)
+            for indx in indxs[icheck]:
+                iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
+                epochs = np.unique(self.field_cadence.epochs[iexp])
+                self.assignments[nepochsname][indx] = len(epochs)
 
         return
 
@@ -2453,7 +2526,7 @@ class Field(object):
         for itarget in np.arange(len(self.assignments), dtype=np.int32):
             self._set_assigned(itarget=itarget)
         self._set_satisfied()
-        self._set_count()
+        self._set_count(reset_equiv=False)
         return
 
     def assess(self):
@@ -3139,8 +3212,8 @@ class FieldSpeedy(Field):
                                                        reset_satisfied=False,
                                                        reset_has_spare=False)
                             icurr = icurr + 1
-                        self._set_satisfied(catalogids=[self.targets['catalogid'][indx]])
-                        self._set_count(catalogids=[self.targets['catalogid'][indx]])
+                        self._set_satisfied(rsids=[curr_rsid])
+                        self._set_count(rsids=[curr_rsid], reset_equiv=False)
                         rsids.remove(curr_rsid)
                     irsid = irsid + 1
 
