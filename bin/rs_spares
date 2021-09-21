@@ -154,7 +154,7 @@ if __name__ == '__main__':
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    cadencelist.fromfits(filename=cadences_file, unpickle=False)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
