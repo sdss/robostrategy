@@ -138,20 +138,33 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    start = args.start
+    end = args.end
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    cadencelist.fromfits(filename=cadences_file, unpickle=True)
+    cadencelist.fromfits(filename=cadences_file, unpickle=False)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
+
+    if(end < 0):
+        end = allocate.field_array['fieldid'].max()
+    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
+                     (allocate.field_array['fieldid'] <= end))[0]
 
     spares_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
@@ -166,20 +179,19 @@ if __name__ == '__main__':
                         ('nboss_spare', np.int32),
                         ('napogee_spare', np.int32)]
 
-    indxs = np.arange(len(allocate.field_array))
     with multiprocessing.Pool() as pool:
-        pool.map(count_spares, indxs)
+        pool.map(count_spares, ikeep)
 
     spares = np.zeros(len(allocate.field_array), dtype=spares_dtype)
     spares_exp = np.zeros(allocate.field_array['nfilled'].sum(),
                           dtype=spares_exp_dtype)
 
     ispares_exp = 0
-    for indx in indxs:
+    for indx in ikeep:
         fieldid = allocate.field_array['fieldid'][indx]
         cspares = fitsio.read('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid))
 
-        nexp = len(cspares['nboss_spare'][0])
+        nexp = len(cspares['nboss_spare'][0, :])
         spares_exp['fieldid'][ispares_exp:ispares_exp + nexp] = fieldid
         spares_exp['iexp'][ispares_exp:ispares_exp + nexp] = np.arange(nexp, dtype=np.int32)
         spares_exp['racen'][ispares_exp:ispares_exp + nexp] = cspares['racen'][0]
