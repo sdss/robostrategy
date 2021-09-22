@@ -1017,16 +1017,23 @@ class Field(object):
 
         If there is no RobotGrid to check collisions and/or nocollide
         is set for this object, it doesn't actually check collisions.
-        
         However, it does report a collision if any OTHER equivalent 
-        target.
+        target was assigned.
 """
         if((not self.allgrids) |
            (self.nocollide)):
             indx = self.rsid2indx[rsid]
             allindxs = set(self._equivindx[self._equivkey[indx]])
-            allindxs.discard(indx)
-            
+            if(len(allindxs) > 1):
+                allindxs.discard(indx)
+                allindxs = np.array(list(allindxs), dtype=np.int32)
+                if(self.assignments['robotID'][allindxs, iexp].max() >= 0):
+                    return(True)
+                else:
+                    return(False)
+            else:
+                return(False)
+
         rg = self.robotgrids[iexp]
         return rg.wouldCollideWithAssigned(robotID, rsid)[0]
 
@@ -1929,6 +1936,8 @@ class Field(object):
                         print("Inconsistency: multiple equivalent rsids with robots assigned")
                         return
                     self.assignments['equivRobotID'][allindxs, iexp] = robotIDs[0]
+                else:
+                    self.assignments['equivRobotID'][allindxs, iexp] = -1
 
         return
             
@@ -1961,9 +1970,16 @@ class Field(object):
             self._set_equiv(rsids=rsids)
 
         if(rsids is None):
-            rsids = self.targets['rsid']
+            set_rsids = self.targets['rsid']
+        else:
+            set_rsids = set(rsids)
+            for rsid in rsids:
+                indx = self.rsid2indx[rsid]
+                for eindx in self._equivindx[self._equivkey[indx]]:
+                    set_rsids.add(self.targets['rsid'][eindx])
+            set_rsids = np.array(list(set_rsids), dtype=np.int64)
 
-        for rsid in rsids:
+        for rsid in set_rsids:
             indx = self.rsid2indx[rsid]
             iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
             sat = clist.exposure_consistency(self.targets['cadence'][indx],
