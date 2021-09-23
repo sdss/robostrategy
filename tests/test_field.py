@@ -6,9 +6,12 @@ import roboscheduler.cadence as cadence
 
 
 def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
+            delta_ra=0., delta_dec=0., 
             category='science', fiberType='BOSS', cadence='single_1x1'):
     t_dtype = np.dtype([('ra', np.float64),
                         ('dec', np.float64),
+                        ('delta_ra', np.float64),
+                        ('delta_dec', np.float64),
                         ('priority', np.int32),
                         ('category', np.unicode_, 30),
                         ('cadence', np.unicode_, 30),
@@ -25,6 +28,8 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
         t['dec'] = 0. - 1.5 + 3.0 * np.random.random(nt)
     else:
         t['dec'] = dec
+    t['delta_ra'] = delta_ra
+    t['delta_dec'] = delta_dec
     t['priority'] = 1
     t['category'] = category
     t['cadence'] = cadence
@@ -93,6 +98,7 @@ def test_radec():
     ra, dec = f.xy2radec(x=x, y=y)
     assert np.abs(ra - 180.5) < 1.e-7
     assert np.abs(dec - 0.5) < 1.e-7
+    return
 
 
 def test_target_fromarray():
@@ -103,7 +109,32 @@ def test_target_fromarray():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
     targets(f)
+    return
 
+
+def test_target_offset():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    f = field.Field(racen=180., deccen=0., pa=0., observatory='apo',
+                    field_cadence='single_1x1')
+    targets(f, nt=50)
+    targets(f, delta_ra=10., delta_dec=10., nt=50, rsid_start=50)
+    
+    xoff = f.targets['x'][0:50] - f.targets['x'][50:100]
+    yoff = f.targets['y'][0:50] - f.targets['y'][50:100]
+
+    xoffarcsec = xoff / 217.736 * 3600.
+    yoffarcsec = yoff / 217.736 * 3600.
+
+    ibad = np.where((xoffarcsec - 10.) > 0.1)[0]
+    assert len(ibad) == 0
+
+    ibad = np.where((yoffarcsec - 10.) > 0.1)[0]
+    assert len(ibad) == 0
+
+    return
 
 def test_flags():
     clist = cadence.CadenceList()
