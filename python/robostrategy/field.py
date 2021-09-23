@@ -654,14 +654,76 @@ class Field(object):
                 flagnames.append(fn)
         return(flagnames)
 
+    def _offset_radec(self, ra=None, dec=None, delta_ra=0., delta_dec=0.):
+        """Offsets ra and dec according to specified amount
+        
+        Parameters:
+        ----------
+
+        ra : np.float64 or ndarray of np.float64
+        right ascension, deg
+
+        dec : np.float64 or ndarray of np.float64
+            declination, deg
+
+        delta_ra : np.float64 or ndarray of np.float64
+            right ascension direction offset, arcsec
+
+        delta_dec : np.float64 or ndarray of np.float64
+            declination direction offset, arcsec
+
+        Returns:
+        -------
+
+        offset_ra : np.float64 or ndarray of np.float64
+            offset right ascension, deg
+
+        offset_dec : np.float64 or ndarray of np.float64
+            offset declination, deg
+
+        Notes:
+        -----
+
+        Assumes that delta_ra, delta_dec are in proper coordinates; i.e.
+        an offset of delta_ra=1 arcsec represents the same angular separation 
+        on the sky at any declination.
+
+        Carefully offsets in the local directions of ra, dec based on
+        the local tangent plane (i.e. does not just scale delta_ra by
+        1/cos(dec))
+"""
+        deg2rad = np.pi / 180.
+        arcsec2rad = np.pi / 180. / 3600.
+        x = np.cos(dec * deg2rad) * np.cos(ra * deg2rad)
+        y = np.cos(dec * deg2rad) * np.sin(ra * deg2rad)
+        z = np.sin(dec * deg2rad)
+        ra_x = - np.sin(ra * deg2rad)
+        ra_y = np.cos(ra * deg2rad)
+        ra_z = 0.
+        dec_x = - np.sin(dec * deg2rad) * np.cos(ra * deg2rad)
+        dec_y = - np.sin(dec * deg2rad) * np.sin(ra * deg2rad)
+        dec_z = np.cos(dec * deg2rad)
+        xoff = x + (ra_x * delta_ra + dec_x * delta_dec) * arcsec2rad
+        yoff = y + (ra_y * delta_ra + dec_y * delta_dec) * arcsec2rad
+        zoff = z + (ra_z * delta_ra + dec_z * delta_dec) * arcsec2rad
+        offnorm = np.sqrt(xoff**2 + yoff**2 + zoff**2)
+        xoff = xoff / offnorm
+        yoff = yoff / offnorm
+        zoff = zoff / offnorm
+        decoff = np.arcsin(zoff) / deg2rad
+        raoff = ((np.arctan2(yoff, xoff) / deg2rad) + 360.) % 360.
+        return(raoff, decoff)
+
     def radec2xy(self, ra=None, dec=None, epoch=None, pmra=None,
-                 pmdec=None, fiberType=None):
+                 pmdec=None, delta_ra=0., delta_dec=0., fiberType=None):
         if(isinstance(fiberType, str)):
             wavename = fiberType.capitalize()
         else:
             wavename = np.array([x.capitalize() for x in fiberType])
         epoch = self.obstime.jd
-        x, y, warn, ha, pa = coordio.utils.radec2wokxy(ra, dec, epoch,
+        raoff, decoff = self._offset_radec(ra=ra, dec=dec, delta_ra=delta_ra,
+                                           delta_dec=delta_dec)
+        x, y, warn, ha, pa = coordio.utils.radec2wokxy(raoff, decoff, epoch,
                                                        wavename,
                                                        self.racen, self.deccen,
                                                        self.pa,
@@ -672,6 +734,7 @@ class Field(object):
         return(x, y)
 
     def xy2radec(self, x=None, y=None, fiberType=None):
+        """X and Y back to RA, Dec, without proper motions or deltas"""
         if(isinstance(fiberType, str)):
             wavename = fiberType.capitalize()
         else:
@@ -831,6 +894,8 @@ class Field(object):
             print("Convert targets coords to x/y", flush=True)
         targets['x'], targets['y'] = self.radec2xy(ra=targets['ra'],
                                                    dec=targets['dec'],
+                                                   delta_ra=targets['delta_ra'],
+                                                   delta_dec=targets['delta_dec'],
                                                    fiberType=targets['fiberType'])
 
         # Add targets to robotGrids
