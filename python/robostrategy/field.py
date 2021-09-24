@@ -507,10 +507,8 @@ class Field(object):
                 self._robotnexp_max[:, i] = n
             self.assignments_dtype = np.dtype([('assigned', np.int32),
                                                ('satisfied', np.int32),
-                                               ('nexps_apogee', np.int32),
-                                               ('nexps_boss', np.int32),
-                                               ('nepochs_apogee', np.int32),
-                                               ('nepochs_boss', np.int32),
+                                               ('nexps', np.int32),
+                                               ('nepochs', np.int32),
                                                ('allowed', np.int32,
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
@@ -2071,8 +2069,7 @@ class Field(object):
         Notes:
         -----
 
-        Sets nexps_apogee, nexps_boss, nepochs_apogee, and nepochs_boss
-        for each target, based on equivRobotID.
+        Sets nexps, nepochs for each target, based on equivRobotID.
 
         Only set reset_equiv=False if you have already just run
         _set_equiv() for these rsids (or all of them). Doing so 
@@ -2082,21 +2079,24 @@ class Field(object):
             self._set_equiv(rsids=rsids)
 
         if(rsids is None):
+            set_rsids = self.targets['rsid']
             indxs = np.arange(len(self.targets), dtype=int)
         else:
-            indxs = np.array([self.rsid2indx[x] for x in rsids], dtype=int)
+            set_rsids = set(rsids)
+            for rsid in rsids:
+                indx = self.rsid2indx[rsid]
+                for eindx in self._equivindx[self._equivkey[indx]]:
+                    set_rsids.add(self.targets['rsid'][eindx])
+            set_rsids = np.array(list(set_rsids), dtype=np.int64)
+            indxs = np.array([self.rsid2indx[x] for x in set_rsids], dtype=int)
 
-        fiberTypes = ['APOGEE', 'BOSS']
-        for fiberType in fiberTypes:
-            nexpsname = 'nexps_' + fiberType.lower()
-            nepochsname = 'nepochs_' + fiberType.lower()
-            self.assignments[nexpsname][indxs] = (self.assignments['equivRobotID'][indxs, :] >= 0).sum()
-            self.assignments[nepochsname][indxs] = 0
-            icheck = np.where(self.assignments[nexpsname][indxs] > 0)
-            for indx in indxs[icheck]:
-                iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
-                epochs = np.unique(self.field_cadence.epochs[iexp])
-                self.assignments[nepochsname][indx] = len(epochs)
+        self.assignments['nexps'][indxs] = (self.assignments['equivRobotID'][indxs, :] >= 0).sum(axis=1)
+        self.assignments['nepochs'][indxs] = 0
+        icheck = np.where(self.assignments['nexps'][indxs] > 0)
+        for indx in indxs[icheck]:
+            iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
+            epochs = np.unique(self.field_cadence.epochs[iexp])
+            self.assignments['nepochs'][indx] = len(epochs)
 
         return
 
