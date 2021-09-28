@@ -19,6 +19,7 @@ import roboscheduler.cadence
 import kaiju
 import kaiju.robotGrid
 import robostrategy
+import robostrategy.targets
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
@@ -43,33 +44,11 @@ def interlist(list1, list2):
 
 
 # Type for targets array
-targets_dtype = np.dtype([('ra', np.float64),
-                          ('dec', np.float64),
-                          ('epoch', np.float32),
-                          ('pmra', np.float32),
-                          ('pmdec', np.float32),
-                          ('parallax', np.float32),
-                          ('lambda_eff', np.float32),
-                          ('delta_ra', np.float64),
-                          ('delta_dec', np.float64),
-                          ('magnitude', np.float32, 7),
-                          ('x', np.float64),
-                          ('y', np.float64),
-                          ('within', np.int32),
-                          ('incadence', np.int32),
-                          ('priority', np.int32),
-                          ('value', np.float32),
-                          ('program', np.unicode_, 30),
-                          ('carton', np.unicode_, 50),
-                          ('carton_pk', np.int32),
-                          ('category', np.unicode_, 30),
-                          ('cadence', np.unicode_, 30),
-                          ('fiberType', np.unicode_, 10),
-                          ('catalogid', np.int64),
-                          ('carton_to_target_pk', np.int64),
-                          ('rsid', np.int64),
-                          ('target_pk', np.int64),
-                          ('rsassign', np.int32)])
+targets_dtype = robostrategy.targets.target_dtype
+targets_dtype = targets_dtype + [('x', np.float64),
+                                 ('y', np.float64),
+                                 ('within', np.int32),
+                                 ('incadence', np.int32)]
 
 # Dictionary defining meaning of flags
 _flagdict = {'CADENCE_INCONSISTENT': 1,
@@ -2546,14 +2525,20 @@ class Field(object):
             print("fieldid {fid}:   (done assigning calibrations)".format(fid=self.fieldid), flush=True)
         return
 
-    def assign_science(self):
+    def assign_science(self, rsassign=1):
         """Assign all science targets
+        
+        Parameters:
+        ----------
+
+        rsassign : int, np.int32
+            value of rsassign for selecting targets (default 1)
 
         Notes
         -----
 
         This assigns all targets with 'category' set to 'science'
-        and with 'rsassign' set to 1.
+        and with 'rsassign' set to selected value
 
         It calls assign_cadences(), which will assign the targets
         in order of their priority value. The order of assignment is
@@ -2566,7 +2551,7 @@ class Field(object):
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
-                            (self.targets['rsassign'] != 0))[0]
+                            (self.targets['rsassign'] == rsassign))[0]
         np.random.seed(self.fieldid)
         random.seed(self.fieldid)
         np.random.shuffle(iscience)

@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: rs_assign_ggsp
+# @Filename: rs_field_open
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Create field-level target files')
+        description='Create field-level target files for open targets')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
@@ -80,6 +80,7 @@ if __name__ == '__main__':
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
+    targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
     targets_all = fitsio.read(targets_file)
 
     targets_covered_dtype = [('rsid', np.int64),
@@ -160,10 +161,10 @@ if __name__ == '__main__':
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
-        print(field_target_file)
+        field_target_file = field_target_file.replace('rsFieldTargets', 'rsFieldTargetsOpen')
         f.tofits(field_target_file)
 
-    targets_covered_base = 'rsTargetsCovered-{plan}-{obs}.fits'
+    targets_covered_base = 'rsTargetsOpenCovered-{plan}-{obs}.fits'
     targets_covered_base = targets_covered_base.format(plan=plan,
                                                        obs=observatory)
     targets_covered_file = os.path.join(os.path.dirname(targets_file),

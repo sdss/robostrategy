@@ -39,11 +39,16 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--fieldid', dest='fieldid',
                         type=int, help='fieldid number',
                         required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=True, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     fieldid = args.fieldid
+    opentargets = args.opentargets
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -53,6 +58,9 @@ if __name__ == '__main__':
     field_target_file = sdss_path.full('rsFieldAssignments',
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
+    if(opentargets):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsOpen')
     f = field.Field(filename=field_target_file)
 
     print(f.assess())
