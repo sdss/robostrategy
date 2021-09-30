@@ -66,6 +66,12 @@ if __name__ == '__main__':
         nt = nt + robostrategy.targets.get_targets(carton, version,
                                                    justcount=True, c2c=c2c)
 
+    adjust = dict()
+    if('CartonsOpenPriorityAdjust' in rsParams.cfg):
+        for carton in rsParams.cfg['CartonsOpenPriorityAdjust']:
+            adjust[carton] = rsParams.cfg.get('CartonsOpenPriorityAdjust',
+                                              carton)
+
     targets = np.zeros(nt, dtype=robostrategy.targets.target_dtype)
 
     nt = 0
@@ -73,7 +79,10 @@ if __name__ == '__main__':
         version = rsParams.cfg['CartonsOpen'][carton]
         tmp_targets = robostrategy.targets.get_targets(carton, version, c2c=c2c)
         if(tmp_targets is not None):
-            tmp_targets['rsassign'] = 1
+            tmp_targets['rsassign'] = 2
+            if(carton in adjust):
+                tmp_targets['priority'] = (tmp_targets['priority'] +
+                                           adjust[carton])
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
@@ -84,6 +93,8 @@ if __name__ == '__main__':
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
     open_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
+
+    targets['category'] = 'science'
 
     hd = dict()
     hd['STRATVER'] = robostrategy.__version__

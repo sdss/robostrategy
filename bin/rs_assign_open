@@ -54,10 +54,6 @@ def assign_field(indx):
 
     print("fieldid={f}: Add open targets".format(f=fieldid), flush=True)
     opentargets = fitsio.read(field_open_file, ext='TARGET')
-    opentargets['rsassign'] = 2
-    opentargets['category'] = 'science'
-    ifix = np.where(opentargets['cadence'] == '')[0]
-    opentargets['cadence'][ifix] = 'dark_1x1'
     f.targets_fromarray(opentargets)
 
     print("fieldid={f}: Assign open targets".format(f=fieldid), flush=True)
