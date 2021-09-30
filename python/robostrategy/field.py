@@ -486,10 +486,8 @@ class Field(object):
                 self._robotnexp_max[:, i] = n
             self.assignments_dtype = np.dtype([('assigned', np.int32),
                                                ('satisfied', np.int32),
-                                               ('nexps_apogee', np.int32),
-                                               ('nexps_boss', np.int32),
-                                               ('nepochs_apogee', np.int32),
-                                               ('nepochs_boss', np.int32),
+                                               ('nexps', np.int32),
+                                               ('nepochs', np.int32),
                                                ('allowed', np.int32,
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
@@ -2026,9 +2024,12 @@ class Field(object):
         for rsid in set_rsids:
             indx = self.rsid2indx[rsid]
             iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
-            sat = clist.exposure_consistency(self.targets['cadence'][indx],
-                                             self.field_cadence.name, iexp)
-            self.assignments['satisfied'][indx] = sat
+            if(self.targets['cadence'][indx] != ''):
+                sat = clist.exposure_consistency(self.targets['cadence'][indx],
+                                                 self.field_cadence.name, iexp)
+                self.assignments['satisfied'][indx] = sat
+            else:
+                self.assignments['satisfied'][indx] = 0
 
         return
 
@@ -2047,8 +2048,7 @@ class Field(object):
         Notes:
         -----
 
-        Sets nexps_apogee, nexps_boss, nepochs_apogee, and nepochs_boss
-        for each target, based on equivRobotID.
+        Sets nexps, nepochs for each target, based on equivRobotID.
 
         Only set reset_equiv=False if you have already just run
         _set_equiv() for these rsids (or all of them). Doing so 
@@ -2058,21 +2058,24 @@ class Field(object):
             self._set_equiv(rsids=rsids)
 
         if(rsids is None):
+            set_rsids = self.targets['rsid']
             indxs = np.arange(len(self.targets), dtype=int)
         else:
-            indxs = np.array([self.rsid2indx[x] for x in rsids], dtype=int)
+            set_rsids = set(rsids)
+            for rsid in rsids:
+                indx = self.rsid2indx[rsid]
+                for eindx in self._equivindx[self._equivkey[indx]]:
+                    set_rsids.add(self.targets['rsid'][eindx])
+            set_rsids = np.array(list(set_rsids), dtype=np.int64)
+            indxs = np.array([self.rsid2indx[x] for x in set_rsids], dtype=int)
 
-        fiberTypes = ['APOGEE', 'BOSS']
-        for fiberType in fiberTypes:
-            nexpsname = 'nexps_' + fiberType.lower()
-            nepochsname = 'nepochs_' + fiberType.lower()
-            self.assignments[nexpsname][indxs] = (self.assignments['equivRobotID'][indxs, :] >= 0).sum()
-            self.assignments[nepochsname][indxs] = 0
-            icheck = np.where(self.assignments[nexpsname][indxs] > 0)
-            for indx in indxs[icheck]:
-                iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
-                epochs = np.unique(self.field_cadence.epochs[iexp])
-                self.assignments[nepochsname][indx] = len(epochs)
+        self.assignments['nexps'][indxs] = (self.assignments['equivRobotID'][indxs, :] >= 0).sum(axis=1)
+        self.assignments['nepochs'][indxs] = 0
+        icheck = np.where(self.assignments['nexps'][indxs] > 0)
+        for indx in indxs[icheck]:
+            iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
+            epochs = np.unique(self.field_cadence.epochs[iexp])
+            self.assignments['nepochs'][indx] = len(epochs)
 
         return
 
@@ -3182,105 +3185,3 @@ class FieldSpeedy(Field):
             self._competing_targets = None
 
         return(success)
-
-    def _assign_singlebright(self, indxs=None):
-        """Assigns 1x1 bright targets en masse
-
-        Parameters
-        ----------
-
-        indxs : ndarray of np.int32
-            indices into self.targets of targets to assign
-
-        Notes
-        -----
-
-        First, uniquifies on catalogid so as not to repeat itself.
-
-        Second, loops through robots, and assigns its unused exposures to
-        singlebrights.
-
-        Ignores collisions!
-"""
-        inindx = np.zeros(len(self.targets), dtype=np.bool)
-        inindx[indxs] = 1
-
-        # Find unique set of catalogid and create index into
-        catalogids, iunique = np.unique(self.targets['catalogid'][indxs],
-                                        return_index=True)
-        indxs = indxs[iunique]
-        rsids = set(self.targets['rsid'][indxs])
-
-        for robotID in self.mastergrid.robotDict:
-            r = self.mastergrid.robotDict[robotID]
-            robot_rsids = set(r.validTargetIDs)
-            curr_rsids = np.array(list(robot_rsids.intersection(rsids)),
-                                  dtype=np.int64)
-            if(len(curr_rsids) > 0):
-                np.random.shuffle(curr_rsids)
-                ifree = np.where(self._robot2indx[robotID - 1, :] < 0)[0]
-                if(len(ifree) >= len(curr_rsids)):
-                    ifree = ifree[0:len(curr_rsids)]
-                for icurr, iexp in enumerate(ifree):
-                    self.assign_robot_exposure(robotID=robotID,
-                                               rsid=curr_rsids[icurr],
-                                               iexp=iexp,
-                                               reset_satisfied=False,
-                                               reset_has_spare=False)
-                    indx = self.rsid2indx[curr_rsids[icurr]]
-                    icat = np.where((self.targets['catalogid'] == 
-                                     self.targets['catalogid'][indx])
-                                    & (inindx))[0]
-                    self.assignments['satisfied'][icat] = 1
-                    rsids.remove(curr_rsids[icurr])
-
-        self.decollide_unassigned()
-
-    def _assign_multibright(self, indxs=None):
-        """Assigns nx1 bright targets (no constraints) en masse
-
-        Parameters
-        ----------
-
-        indxs : ndarray of np.int32
-            indices into self.targets of targets to assign
-
-        Notes
-        -----
-
-        Loops through robots, and assigns its unused exposures to
-        multibrights (does not take advantage of using different 
-        robots at different epochs).
-
-        Ignores collisions! Doesn't account for spare calib fibers.
-"""
-        rsids = set(self.targets['rsid'][indxs])
-
-        for robotID in self.mastergrid.robotDict:
-            r = self.mastergrid.robotDict[robotID]
-            robot_rsids = set(r.validTargetIDs)
-            curr_rsids = np.array(list(robot_rsids.intersection(rsids)),
-                                  dtype=np.int64)
-            if(len(curr_rsids) > 0):
-                np.random.shuffle(curr_rsids)
-                ifree = np.where(self._robot2indx[robotID - 1, :] < 0)[0]
-                icurr = 0
-                irsid = 0
-                while((icurr < len(ifree)) & (irsid < len(curr_rsids))):
-                    curr_rsid = curr_rsids[irsid]
-                    indx = self.rsid2indx[curr_rsid]
-                    nexp = clist.cadences[self.targets['cadence'][indx]].nepochs
-                    if(icurr + nexp < len(ifree)):
-                        for i in np.arange(nexp, dtype=np.int32):
-                            self.assign_robot_exposure(robotID=robotID,
-                                                       rsid=curr_rsid,
-                                                       iexp=ifree[icurr],
-                                                       reset_satisfied=False,
-                                                       reset_has_spare=False)
-                            icurr = icurr + 1
-                        self._set_satisfied(rsids=[curr_rsid])
-                        self._set_count(rsids=[curr_rsid], reset_equiv=False)
-                        rsids.remove(curr_rsid)
-                    irsid = irsid + 1
-
-        self.decollide_unassigned()

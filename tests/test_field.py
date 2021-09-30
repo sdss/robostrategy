@@ -899,42 +899,36 @@ def test_count():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x1')
     ntot = 400
-    targets(f, nt=ntot, seed=101, fiberType='APOGEE')
-    targets(f, nt=ntot, seed=102, fiberType='BOSS', rsid_start=ntot)
+    targets(f, nt=ntot, seed=101)
+    targets(f, nt=ntot, seed=101, rsid_start=ntot)
 
     f.assign_science()
     f.decollide_unassigned()
-    for itarget, target in enumerate(f.targets):
-        igot = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
-        if(target['fiberType'] == 'APOGEE'):
-            assert len(igot) == f.assignments['nexps_apogee'][itarget]
-            assert len(igot) == f.assignments['nepochs_apogee'][itarget]
-        if(target['fiberType'] == 'BOSS'):
-            assert len(igot) == f.assignments['nexps_boss'][itarget]
-            assert len(igot) == f.assignments['nepochs_boss'][itarget]
+    for itarget, target in enumerate(f.targets[0:ntot]):
+        igot1 = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
+        igot2 = np.where(f.assignments['robotID'][itarget + ntot, :] >= 0)[0]
+        assert len(igot1) + len(igot2) == f.assignments['nexps'][itarget]
+        assert len(igot1) + len(igot2) == f.assignments['nepochs'][itarget]
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
     ntot = 400
-    targets(f, nt=ntot, seed=101, fiberType='APOGEE',
-            cadence='single_2x1')
-    targets(f, nt=ntot, seed=102, fiberType='BOSS', rsid_start=ntot,
-            cadence='single_2x1')
+    targets(f, nt=ntot, seed=101, cadence='single_2x1')
+    targets(f, nt=ntot, seed=101, rsid_start=ntot, cadence='single_2x1')
 
     f.assign_science()
     f.decollide_unassigned()
-    for itarget, target in enumerate(f.targets):
-        igot = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
+    for itarget, target in enumerate(f.targets[0:ntot]):
+        igot1 = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
+        igot2 = np.where(f.assignments['robotID'][itarget + ntot, :] >= 0)[0]
         epochs = set()
-        for cgot in igot:
+        for cgot in igot1:
+            epochs.add(f.field_cadence.epochs[cgot])
+        for cgot in igot2:
             epochs.add(f.field_cadence.epochs[cgot])
         nepochs = len(epochs)
-        if(target['fiberType'] == 'APOGEE'):
-            assert len(igot) == f.assignments['nexps_apogee'][itarget]
-            assert nepochs == f.assignments['nepochs_apogee'][itarget]
-        if(target['fiberType'] == 'BOSS'):
-            assert len(igot) == f.assignments['nexps_boss'][itarget]
-            assert nepochs == f.assignments['nepochs_boss'][itarget]
+        assert len(igot1) + len(igot2) == f.assignments['nexps'][itarget]
+        assert nepochs == f.assignments['nepochs'][itarget]
             
     return
 
