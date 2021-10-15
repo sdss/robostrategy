@@ -3,7 +3,7 @@
 #
 # @Author: Joleen K. Carlberg
 # @Date: Sept 15, 2021
-# @Filename: rs_test_reassign_spares
+# @Filename: rs_reassign_spares
 # @License: BSD 3-Clause
 # @Copyright: Joleen K. Carlberg and Michael R. Blanton
 
@@ -31,18 +31,12 @@ import time
 
 sdss_path = sdss_access.path.Path(release='sdss5',preserve_envvars=True)
 
-# For testing, use ROBOREASSIGN_DATA envvar as the place to output it, when ready to integrage to robostrategy
-# This will be updated in the code to use the regular ROBOSTRATEGY_DATA location (which I do not have access to write in)
-out_dir = os.environ['ROBOREASSIGN_DATA']
-
-
-# Modeling after rs_assign_final. A bunch of def's I don't need -> Ask Mike
+# Modeling after rs_assign_final.
 
 def assign_spares(fieldid):
     '''
-    Read in a field, make the reassignments. If anything changes, write out the new result to a fits file.
-    Eventually will probably want to rewrite outputs no matter what, but at this stage just see how many
-    new files I get.
+    Read in an rsFieldAssignments file, make the reassignments,
+    and write out an rsFieldReassignments file
     '''
 
     print(time.ctime(time.time()))
@@ -52,22 +46,18 @@ def assign_spares(fieldid):
                                           plan=plan,
                                           observatory=observatory,
                                           fieldid=fieldid)
-    field_reassigned_file = os.path.join(out_dir,plan,
-                            os.path.basename(field_assigned_file).replace('Assignments','Reassignments'))
+    field_reassigned_file = field_assigned_file.replace('Assignments','Reassignments'))
 
     f = extra_Field(filename=field_assigned_file)
     if f.fieldid != fieldid:
         f.fieldid = fieldid
     else:
-        print(f'{fieldid} properly set. Can probably erase ths code')
+        print(f'{fieldid} properly set. Can probably erase ths code') # Check on this
 
     any_extra = f.assign_spares()
     f.tofits(filename=field_reassigned_file)
     if any_extra:
         print(f'Writing new field {fieldid} assignments')
-    #    f.tofits(filename=field_reassigned_file)
-#    else:
-#        print(f'No new assignments for field {fieldid}')
 
 if __name__ == '__main__':
 
@@ -126,6 +116,6 @@ if __name__ == '__main__':
                 pool.map(assign_spares,field_ids)
         else:
             print(field_ids)
-            assign_spares(field_ids[0]) # Keep this just for testing code before sending to multiprocessor
+            assign_spares(field_ids[0]) # Good for testing code before sending to multiprocessor
     print('DONE: rs_test_assign_spares')
     print(time.ctime(time.time()))
