@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Joleen K. Carlberg
+# @Date: Sept 15, 2021
+# @Filename: rs_test_reassign_spares
+# @License: BSD 3-Clause
+# @Copyright: Joleen K. Carlberg and Michael R. Blanton
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import datetime
+import numpy as np
+import roboscheduler.cadence as cadence
+from robostrategy.extra_field import extra_Field
+import robostrategy.field as field
+import robostrategy.allocate
+import sdss_access.path
+import pdb
+import fitsio
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5',preserve_envvars=True)
+
+# For testing, use ROBOREASSIGN_DATA envvar as the place to output it, when ready to integrage to robostrategy
+# This will be updated in the code to use the regular ROBOSTRATEGY_DATA location (which I do not have access to write in)
+out_dir = os.environ['ROBOREASSIGN_DATA']
+
+
+# Modeling after rs_assign_final. A bunch of def's I don't need -> Ask Mike
+
+def assign_spares(fieldid):
+    '''
+    Read in a field, make the reassignments. If anything changes, write out the new result to a fits file.
+    Eventually will probably want to rewrite outputs no matter what, but at this stage just see how many
+    new files I get.
+    '''
+
+    print(time.ctime(time.time()))
+    print(f'Working on field {fieldid}')
+
+    field_assigned_file = sdss_path.full('rsFieldAssignments',
+                                          plan=plan,
+                                          observatory=observatory,
+                                          fieldid=fieldid)
+    field_reassigned_file = os.path.join(out_dir,plan,
+                            os.path.basename(field_assigned_file).replace('Assignments','Reassignments'))
+
+    f = extra_Field(filename=field_assigned_file)
+    if f.fieldid != fieldid:
+        f.fieldid = fieldid
+    else:
+        print(f'{fieldid} properly set. Can probably erase ths code')
+
+    any_extra = f.assign_spares()
+    f.tofits(filename=field_reassigned_file)
+    if any_extra:
+        print(f'Writing new field {fieldid} assignments')
+    #    f.tofits(filename=field_reassigned_file)
+#    else:
+#        print(f'No new assignments for field {fieldid}')
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Reassign extra epochs to some MWM targets if available')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                         type=str, help='name of plan',required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                         type=str, help='apo or lco',
+                         choices=['apo','lco'],required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                         type=np.int32, help='field to start',
+                         required=False,default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                         type=np.int32, help='field to end',
+                         required=False, default=-1)
+    parser.add_argument('-c', '--coordinate', dest='coordinate',
+                         default=False, action='store_true',
+                         help='coordinate target overlap')
+#    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+#                         default=False, help='do not clobber',
+#                         action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    coordinate = args.coordinate
+#    noclobber = args.noclobber
+    print(time.ctime(time.time()))
+
+    cadencelist = cadence.CadenceList()
+    cadence_file = sdss_path.full('rsCadences',plan=plan,
+                                  observatory=observatory)
+    cadencelist.fromfits(filename=cadence_file, unpickle=True)
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,observatory=observatory)
+    if(end < 0):
+        end = allocate.field_array['fieldid'].max()
+    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
+                      (allocate.field_array['fieldid'] <= end))[0]
+    field_ids = allocate.field_array['fieldid'][ikeep]
+
+    if coordinate:
+        print("Still need to code this up")
+
+    else:
+        np.random.shuffle(field_ids)
+        if len(field_ids) > 1:
+            with multiprocessing.Pool() as pool:
+                pool.map(assign_spares,field_ids)
+        else:
+            print(field_ids)
+            assign_spares(field_ids[0]) # Keep this just for testing code before sending to multiprocessor
+    print('DONE: rs_test_assign_spares')
+    print(time.ctime(time.time()))
