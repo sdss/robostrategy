@@ -892,6 +892,9 @@ class Field(object):
             print("Convert targets coords to x/y", flush=True)
         targets['x'], targets['y'] = self.radec2xy(ra=targets['ra'],
                                                    dec=targets['dec'],
+                                                   epoch=targets['epoch'],
+                                                   pmra=targets['pmra'],
+                                                   pmdec=targets['pmdec'],
                                                    delta_ra=targets['delta_ra'],
                                                    delta_dec=targets['delta_dec'],
                                                    fiberType=targets['fiberType'])
