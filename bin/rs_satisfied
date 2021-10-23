@@ -95,8 +95,8 @@ if __name__ == '__main__':
                                              fieldid=fieldid)
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
-            targets = fitsio.read(field_assigned_file, ext=1)
-            assignments = fitsio.read(field_assigned_file, ext=2)
+            targets = fitsio.read(field_assigned_file, ext='TARGET')
+            assignments = fitsio.read(field_assigned_file, ext='ASSIGN')
         except:
             header = None
             targets = None

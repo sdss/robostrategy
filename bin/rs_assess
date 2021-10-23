@@ -41,7 +41,7 @@ if __name__ == '__main__':
                         required=True)
     parser.add_argument('-O', '--open', dest='opentargets',
                         help='set to read open target results',
-                        default=True, required=False,
+                        default=False, required=False,
                         action='store_true')
 
     args = parser.parse_args()

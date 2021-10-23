@@ -135,7 +135,7 @@ class Field(object):
     field_cadence : Cadence object
         cadence associated with field
 
-    design_mode : list of str
+    design_mode : np.array of str
         keys to DesignModeDict for each exposure
 
     collisionBuffer : float
@@ -1031,6 +1031,49 @@ class Field(object):
                 dmarr = np.zeros(len(self.designModeDict), dtype=arr.dtype)
             dmarr[i] = arr
         fitsio.write(filename, dmarr, extname='DESMODE')
+
+        if(self.assignments is not None):
+            robots_dtype = [('robotID', np.int32),
+                            ('holeID', np.dtype("|U15")),
+                            ('hasBoss', np.bool),
+                            ('hasApogee', np.bool),
+                            ('rsid', np.int64, self.field_cadence.nexp_total),
+                            ('itarget', np.int32, self.field_cadence.nexp_total),
+                            ('catalogid', np.int64, self.field_cadence.nexp_total),
+                            ('fiberType', np.dtype("|U6"),
+                             self.field_cadence.nexp_total)]
+            robotIDs = np.sort(np.array([r for r in self.mastergrid.robotDict],
+                                        dtype=np.int32))
+            robots = np.zeros(len(robotIDs), dtype=robots_dtype) 
+            for indx, robotID in enumerate(robotIDs):
+                robots['robotID'][indx] = robotID
+                robots['holeID'][indx] = self.mastergrid.robotDict[robotID].holeID
+                robots['hasBoss'][indx] = self.mastergrid.robotDict[robotID].hasBoss
+                robots['hasApogee'][indx] = self.mastergrid.robotDict[robotID].hasApogee
+                if(self.field_cadence.nexp_total == 1):
+                    robots['rsid'][indx] = self.robotgrids[0].robotDict[robotID].assignedTargetID
+                    if(robots['rsid'][indx] == -1):
+                        robots['itarget'][indx] = -1
+                        robots['catalogid'][indx] = -1
+                        robots['fiberType'][indx] = ''
+                    else:
+                        robots['itarget'][indx] = self.rsid2indx[robots['rsid'][indx]]
+                        robots['catalogid'][indx] = self.targets['catalogid'][robots['itarget'][indx]]
+                        robots['fiberType'][indx] = self.targets['fiberType'][robots['itarget'][indx]]
+                else:
+                    for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+                        robots['rsid'][indx, iexp] = self.robotgrids[iexp].robotDict[robotID].assignedTargetID
+                        if(robots['rsid'][indx, iexp] == -1):
+                            robots['itarget'][indx, iexp] = -1
+                            robots['catalogid'][indx, iexp] = -1
+                            robots['fiberType'][indx, iexp] = ''
+                        else:
+                            robots['itarget'][indx, iexp] = self.rsid2indx[robots['rsid'][indx, iexp]]
+                            robots['catalogid'][indx, iexp] = self.targets['catalogid'][robots['itarget'][indx, iexp]]
+                            robots['fiberType'][indx, iexp] = self.targets['fiberType'][robots['itarget'][indx, iexp]]
+
+            fitsio.write(filename, robots, extname='ROBOTS')
+                    
         return
 
     def collide_robot_exposure(self, rsid=None, robotID=None, iexp=None):
@@ -2240,12 +2283,17 @@ class Field(object):
 
         tdict = self.mastergrid.targetDict
 
+        hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                              for x in np.arange(500) + 1], dtype=bool)
+
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
             robotIDs = np.array(tdict[rsid].validRobotIDs)
 
             if((len(robotIDs) > 0) &
                (self.assignments['satisfied'][indx] == 0)):
+
+                robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
                 gotem = False
                 for epoch, iexp in zip(epochs, iexps):
@@ -2290,10 +2338,14 @@ class Field(object):
 
         tdict = self.mastergrid.targetDict
 
+        hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                              for x in np.arange(500) + 1], dtype=bool)
+
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
             nexp = clist.cadences[self.targets['cadence'][indx]].nexp_total
             robotIDs = np.array(tdict[rsid].validRobotIDs)
+            robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
             if((len(robotIDs) > 0) &
                (self.assignments['satisfied'][indx] == 0)):

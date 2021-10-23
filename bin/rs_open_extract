@@ -69,8 +69,8 @@ if __name__ == '__main__':
     adjust = dict()
     if('CartonsOpenPriorityAdjust' in rsParams.cfg):
         for carton in rsParams.cfg['CartonsOpenPriorityAdjust']:
-            adjust[carton] = rsParams.cfg.get('CartonsOpenPriorityAdjust',
-                                              carton)
+            adjust[carton] = np.float32(rsParams.cfg.get('CartonsOpenPriorityAdjust',
+                                                         carton))
 
     targets = np.zeros(nt, dtype=robostrategy.targets.target_dtype)
 

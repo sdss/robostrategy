@@ -41,12 +41,17 @@ def assign_field(indx):
         print(fieldid, flush=True)
 
     print("Reading target file", flush=True)
-    field_assigned_file = sdss_path.full('rsFieldAssignments',
-                                         plan=plan,
-                                         observatory=observatory,
-                                         fieldid=fieldid)
-    field_open_file = field_assigned_file.replace('rsFieldAssignments',
-                                                  'rsFieldTargetsOpen')
+    field_assigned_file_orig = sdss_path.full('rsFieldAssignments',
+                                              plan=plan,
+                                              observatory=observatory,
+                                              fieldid=fieldid)
+    field_open_file = field_assigned_file_orig.replace('rsFieldAssignments',
+                                                       'rsFieldTargetsOpen')
+    if(fromreassign):
+        field_assigned_file = field_assigned_file_orig.replace('targets/rsFieldAssignments',
+                                                               'reassign/rsFieldReassignments')
+    else:
+        field_assigned_file = field_assigned_file_orig
 
     print("fieldid={f}: Read in field".format(f=fieldid), flush=True)
     f = field.Field(filename=field_assigned_file, verbose=True,
@@ -60,8 +65,8 @@ def assign_field(indx):
     f.assign_science(rsassign=2)
 
     print("fieldid={f}: Write assignments".format(f=fieldid), flush=True)
-    field_out_file = field_assigned_file.replace('rsFieldAssignments',
-                                                  'rsFieldAssignmentsOpen')
+    field_out_file = field_assigned_file_orig.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsOpen')
     f.tofits(field_out_file)
 
     print("Done fieldid={f}".format(f=fieldid), flush=True)
@@ -87,6 +92,9 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-f', '--from-reassign', dest='fromreassign',
+                        help='base on reassign', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -94,6 +102,7 @@ if __name__ == '__main__':
     start = args.start
     end = args.end
     noclobber = args.noclobber
+    fromreassign = args.fromreassign
 
     rsParams = params.RobostrategyParams(plan=plan)
     if('Rotate' in rsParams.cfg['Fields']):
