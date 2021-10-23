@@ -1,0 +1,107 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: May 19, 2020
+# @Filename: rs_priorities
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import jinja2
+import configparser
+import numpy as np
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Gather numbers per carton both sites')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    opentargets = args.opentargets
+
+    description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
+                                    'carton_description.cfg')
+    if(os.path.exists(description_file)):
+        description_cfg = configparser.ConfigParser(allow_no_value=True)
+        description_cfg.optionxform = str
+        description_cfg.read(description_file)
+        if(opentargets):
+            carton_description = description_cfg['Open']
+        else:
+            carton_description = description_cfg['Mapper']
+    else:
+        carton_description = dict()
+
+    targets_file = sdss_path.full('rsTargets', plan=plan,
+                                  observatory='apo')
+    if(opentargets):
+        targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
+    targets = fitsio.read(targets_file)
+
+    priorities = np.unique(targets['priority'])
+    combos = []
+    for priority in priorities:
+        ip = np.where(targets['priority'] == priority)[0]
+        cartons = np.unique(targets['carton'][ip])
+        first_priority = True
+        for carton in cartons:
+            ic = np.where(targets['carton'][ip] == carton)[0]
+            cadences = np.unique(targets['cadence'][ip[ic]])
+            first_carton = True
+            for cadence in cadences:
+                first_cadence = True
+                tmp_combo = dict()
+                tmp_combo['cadence'] = cadence
+                tmp_combo['carton'] = carton
+                tmp_combo['priority'] = priority
+                tmp_combo['first_cadence'] = first_cadence
+                tmp_combo['first_carton'] = first_carton
+                tmp_combo['first_priority'] = first_priority
+                first_priority = False
+                first_cadence = False
+                first_carton = False
+                combos.append(tmp_combo)
+
+    html_path = os.path.dirname(sdss_path.full('rsCompleteness', plan=plan,
+                                               observatory='apo'))
+    if(opentargets):
+        html_file = os.path.join(html_path, 'rs-open-priorities.html')
+    else:
+        html_file = os.path.join(html_path, 'rs-priorities.html')
+
+    env = jinja2.Environment(
+        loader=jinja2.PackageLoader("robostrategy"),
+        autoescape=jinja2.select_autoescape()
+    )
+
+    rsinfo = dict()
+    rsinfo['combos'] = combos
+
+    template = env.get_template('rs-priorities-template.html')
+    page = template.render(rsinfo)
+
+    fp = open(html_file, 'w')
+    fp.write(page)
+    fp.close()
