@@ -8,6 +8,7 @@
 import os
 import re
 import random
+import datetime
 import numpy as np
 import fitsio
 import collections
@@ -92,7 +93,7 @@ Dependencies:
 """
 
 # Establish access to the CadenceList singleton
-clist = roboscheduler.cadence.CadenceList()
+clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 class Field(object):
     """Field class
@@ -137,6 +138,9 @@ class Field(object):
 
     verbose : bool
         if True, issue a lot of output statements
+
+    veryverbose : bool
+        if True, really issue a lot of output statements
 
     Attributes:
     ----------
@@ -222,6 +226,9 @@ class Field(object):
     verbose : bool
         if True, issue a lot of output statements
 
+    veryverbose : bool
+        if True, really issue a lot of output statements
+
     Notes:
     -----
 
@@ -230,8 +237,9 @@ class Field(object):
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
-                 verbose=False):
+                 verbose=False, veryverbose=False):
         self.verbose = verbose
+        self.veryverbose = veryverbose
         self.fieldid = fieldid
         self.nocalib = nocalib
         self.nocollide = nocollide
@@ -718,17 +726,33 @@ class Field(object):
             wavename = fiberType.capitalize()
         else:
             wavename = np.array([x.capitalize() for x in fiberType])
-        epoch = self.obstime.jd
+        if(epoch is not None):
+            epoch_jd = np.zeros(len(epoch), dtype=np.float64)
+            oneday = datetime.timedelta(days=1)
+            for i, e in enumerate(epoch):
+                epoch_year = int(e)
+                epoch_frac = e - int(e)
+                epoch_year_dt = datetime.datetime(epoch_year, 1, 1)
+                epoch_dt = epoch_year_dt + oneday * epoch_frac * 365.25
+                epoch_jd[i] = coordio.time.Time(epoch_dt).jd
+        else:
+            epoch_jd = None
         raoff, decoff = self._offset_radec(ra=ra, dec=dec, delta_ra=delta_ra,
                                            delta_dec=delta_dec)
-        x, y, warn, ha, pa = coordio.utils.radec2wokxy(raoff, decoff, epoch,
+        pmra = np.zeros(len(raoff), dtype=np.float64) # BECAUSE PM FAILS!!
+        pmdec = np.zeros(len(raoff), dtype=np.float64)
+        radVel = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
+        parallax = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
+        x, y, warn, ha, pa = coordio.utils.radec2wokxy(raoff, decoff, epoch_jd,
                                                        wavename,
                                                        self.racen, self.deccen,
                                                        self.pa,
                                                        self.observatory.upper(),
                                                        self.obstime.jd,
                                                        pmra=pmra,
-                                                       pmdec=pmdec)
+                                                       pmdec=pmdec,
+                                                       parallax=parallax,
+                                                       radVel=radVel)
         return(x, y)
 
     def xy2radec(self, x=None, y=None, fiberType=None):
@@ -777,14 +801,6 @@ class Field(object):
                     limits = designMode.stds_mags[fiberType]
                 ok = np.ones(len(icurr), dtype=np.bool)
                 for i in np.arange(limits.shape[0], dtype=np.int32):
-                    #if((limits[i, 0] != - 999.) |
-                    #   (limits[i, 1] != - 999.)):
-                        #ok = ok & ((np.isnan(mags[:, i]) == False) &
-                        #           (mags[:, i] != 0.) &
-                        #           (mags[:, i] != 99.9) &
-                        #           (mags[:, i] != 999.) &
-                        #           (mags[:, i] != - 999.) &
-                        #           (mags[:, i] != - 9999.))
                     icheck = np.where((np.isnan(mags[:, i]) == False) &
                                       (mags[:, i] != 0.) &
                                       (mags[:, i] != 99.9) &
@@ -1884,6 +1900,8 @@ class Field(object):
         # Check if there are robots available
         nRobotIDs = np.array([len(x) for x in availableRobotIDs])
         if(nRobotIDs.min() < 1):
+            if(self.veryverbose):
+                print("rsid={r}: no robots available".format(r=rsid))
             return False
 
         # Assign to each epoch
@@ -1896,6 +1914,10 @@ class Field(object):
             robotID = currRobotIDs[irobot]
             free = freeExposures[iepoch][irobot]
             nexp = nexps[iepoch]
+
+            if(self.veryverbose):
+                print("rsid={r}: assigning robotID {robotID}".format(r=rsid,
+                                                                     robotID=robotID))
 
             self.assign_robot_epoch(rsid=rsid, robotID=robotID, epoch=epoch,
                                     nexp=nexp, free=free,
@@ -1937,6 +1959,8 @@ class Field(object):
                                                                 merge_epochs=True)
 
         if(ok == False):
+            if(self.veryverbose):
+                print("rsid={r} does not fit field cadence".format(r=rsid))
             return False
 
         # Check for all potential epochs whether they can accomodate at
@@ -1955,12 +1979,20 @@ class Field(object):
         ibad = np.where(available['nAvailableRobotIDs'] == 0)[0]
         epoch_bad = np.zeros(self.field_cadence.nepochs, dtype=np.bool)
         epoch_bad[epochs[ibad]] = True
+
+        if(self.veryverbose):
+            print("rsid={r}: note epoch_bad=".format(r=rsid) + str(epoch_bad)) 
         
         for indx, epochs in enumerate(epochs_list):
             if(epoch_bad[epochs].max() == False):
+                if(self.veryverbose):
+                    print("rsid={r}: trying epochs: ".format(r=rsid) + str(epochs))
                 nexps = nexps_list[indx]
                 if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
                     return True
+
+        if(self.veryverbose):
+            print("rsid={r}: no epochs worked".format(r=rsid))
                 
         return False
 
