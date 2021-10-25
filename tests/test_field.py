@@ -6,9 +6,12 @@ import roboscheduler.cadence as cadence
 
 
 def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
-            category='science', fiberType='BOSS'):
+            delta_ra=0., delta_dec=0., 
+            category='science', fiberType='BOSS', cadence='single_1x1'):
     t_dtype = np.dtype([('ra', np.float64),
                         ('dec', np.float64),
+                        ('delta_ra', np.float64),
+                        ('delta_dec', np.float64),
                         ('priority', np.int32),
                         ('category', np.unicode_, 30),
                         ('cadence', np.unicode_, 30),
@@ -25,9 +28,11 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
         t['dec'] = 0. - 1.5 + 3.0 * np.random.random(nt)
     else:
         t['dec'] = dec
+    t['delta_ra'] = delta_ra
+    t['delta_dec'] = delta_dec
     t['priority'] = 1
     t['category'] = category
-    t['cadence'] = 'single_1x1'
+    t['cadence'] = cadence
     t['fiberType'] = fiberType
     t['catalogid'] = np.arange(nt, dtype=np.int64)
     t['rsid'] = np.arange(nt, dtype=np.int64) + rsid_start
@@ -93,6 +98,7 @@ def test_radec():
     ra, dec = f.xy2radec(x=x, y=y)
     assert np.abs(ra - 180.5) < 1.e-7
     assert np.abs(dec - 0.5) < 1.e-7
+    return
 
 
 def test_target_fromarray():
@@ -103,7 +109,32 @@ def test_target_fromarray():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
     targets(f)
+    return
 
+
+def test_target_offset():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    f = field.Field(racen=180., deccen=0., pa=0., observatory='apo',
+                    field_cadence='single_1x1')
+    targets(f, nt=50)
+    targets(f, delta_ra=10., delta_dec=10., nt=50, rsid_start=50)
+    
+    xoff = f.targets['x'][0:50] - f.targets['x'][50:100]
+    yoff = f.targets['y'][0:50] - f.targets['y'][50:100]
+
+    xoffarcsec = xoff / 217.736 * 3600.
+    yoffarcsec = yoff / 217.736 * 3600.
+
+    ibad = np.where((xoffarcsec - 10.) > 0.1)[0]
+    assert len(ibad) == 0
+
+    ibad = np.where((yoffarcsec - 10.) > 0.1)[0]
+    assert len(ibad) == 0
+
+    return
 
 def test_flags():
     clist = cadence.CadenceList()
@@ -325,6 +356,297 @@ def test_append_targets_after_assign():
 
     for i in np.arange(50):
         assert f.assignments['satisfied'][i] == f.assignments['satisfied'][i + 50]
+    return
+
+
+def test_equiv():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=2)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+
+    targets(f, nt=150)
+    targets(f, nt=150, rsid_start=150, ra=f.targets['ra'],
+            dec=f.targets['dec'])
+
+    f.assign_science()
+    f.decollide_unassigned()
+    
+    igot = np.where(f.assignments['robotID'] >= 0)
+    ibad = np.where(f.assignments['robotID'][igot] !=
+                    f.assignments['equivRobotID'][igot])[0]
+    assert len(ibad) == 0
+    
+    for i in np.arange(150):
+        for iexp in np.arange(4):
+            if(f.assignments['robotID'][i, iexp] >= 0):
+                assert f.assignments['robotID'][i, iexp] == f.assignments['equivRobotID'][i + 150, iexp]
+            if(f.assignments['robotID'][i + 150, iexp] >= 0):
+                assert f.assignments['robotID'][i + 150, iexp] == f.assignments['equivRobotID'][i, iexp]
+        
+    return
+
+def test_satisfied_1():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=1)
+    add_cadence_single_nxm(n=1, m=2)
+    add_cadence_single_nxm(n=2, m=2)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+
+    targets(f, nt=1)
+    targets(f, nt=1, rsid_start=1, ra=f.targets['ra'][0:1], dec=f.targets['dec'][0:1])
+    targets(f, nt=1, rsid_start=2, ra=f.targets['ra'][0:1], dec=f.targets['dec'][0:1])
+    targets(f, nt=1, rsid_start=3, ra=f.targets['ra'][0:1], dec=f.targets['dec'][0:1])
+
+    # Should be [109, 110, 127]
+    rids = f.mastergrid.targetDict[0].validRobotIDs
+
+    rid = rids[0]
+    f.assign_robot_exposure(rsid=0, robotID=rid, iexp=0)
+
+    assert f.assignments['robotID'][0, 0] == rid
+    assert f.assignments['equivRobotID'][0, 0] == rid
+    assert f.assignments['equivRobotID'][1, 0] == rid
+    assert f.assignments['equivRobotID'][2, 0] == rid
+    assert f.assignments['equivRobotID'][3, 0] == rid
+    
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] > 0
+
+    f.unassign(rsid=0)
+
+    assert f.assignments['robotID'][0, 0] == -1
+    assert f.assignments['equivRobotID'][0, 0] == -1
+    assert f.assignments['equivRobotID'][1, 0] == -1
+    assert f.assignments['equivRobotID'][2, 0] == -1
+    assert f.assignments['equivRobotID'][3, 0] == -1
+
+    assert f.assignments['satisfied'][0] == 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.assign_robot_exposure(rsid=2, robotID=rid, iexp=0)
+
+    assert f.assignments['robotID'][2, 0] == rid
+    assert f.assignments['equivRobotID'][0, 0] == rid
+    assert f.assignments['equivRobotID'][1, 0] == rid
+    assert f.assignments['equivRobotID'][2, 0] == rid
+    assert f.assignments['equivRobotID'][3, 0] == rid
+    
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] > 0
+
+    f.unassign(rsid=2)
+
+    assert f.assignments['robotID'][0, 0] == -1
+    assert f.assignments['equivRobotID'][0, 0] == -1
+    assert f.assignments['equivRobotID'][1, 0] == -1
+    assert f.assignments['equivRobotID'][2, 0] == -1
+    assert f.assignments['equivRobotID'][3, 0] == -1
+
+    assert f.assignments['satisfied'][0] == 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    return
+
+def test_satisfied_2():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=1, m=2)
+    add_cadence_single_nxm(n=2, m=1)
+    clist.cadences['single_2x1'].delta = [0., 30.]
+    clist.cadences['single_2x1'].delta_min = [0., 20.]
+    clist.cadences['single_2x1'].delta_max = [0., 40.]
+    add_cadence_single_nxm(n=2, m=2)
+    clist.cadences['single_2x2'].delta = [0., 30.]
+    clist.cadences['single_2x2'].delta_min = [0., 20.]
+    clist.cadences['single_2x2'].delta_max = [0., 40.]
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+
+    targets(f, nt=1, cadence='single_1x1')
+    targets(f, nt=1, rsid_start=1, ra=f.targets['ra'][0:1],
+            dec=f.targets['dec'][0:1], cadence='single_1x2')
+    targets(f, nt=1, rsid_start=2, ra=f.targets['ra'][0:1],
+            dec=f.targets['dec'][0:1], cadence='single_2x1')
+    targets(f, nt=1, rsid_start=3, ra=f.targets['ra'][0:1],
+            dec=f.targets['dec'][0:1], cadence='single_2x2')
+
+    # Should be [109, 110, 127]
+    rids = f.mastergrid.targetDict[0].validRobotIDs
+
+    rid = rids[0]
+    f.assign_robot_exposure(rsid=1, robotID=rid, iexp=0)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.assign_robot_exposure(rsid=2, robotID=rid, iexp=1)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.assign_robot_exposure(rsid=3, robotID=rid, iexp=2)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.assign_robot_exposure(rsid=0, robotID=rid, iexp=3)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] > 0
+
+    assert f.validate() == 0
+
+    f.unassign(rsid=1)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.unassign(rsid=2)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.unassign(rsid=3)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.unassign(rsid=0)
+
+    assert f.assignments['satisfied'][0] == 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    assert f.validate() == 0
+
+    return
+
+def test_satisfied_3():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=1, m=2)
+    add_cadence_single_nxm(n=2, m=1)
+    clist.cadences['single_2x1'].delta = [0., 30.]
+    clist.cadences['single_2x1'].delta_min = [0., 20.]
+    clist.cadences['single_2x1'].delta_max = [0., 40.]
+    add_cadence_single_nxm(n=2, m=2)
+    clist.cadences['single_2x2'].delta = [0., 30.]
+    clist.cadences['single_2x2'].delta_min = [0., 20.]
+    clist.cadences['single_2x2'].delta_max = [0., 40.]
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+
+    targets(f, nt=1, cadence='single_1x1')
+    targets(f, nt=1, rsid_start=1, ra=f.targets['ra'][0:1],
+            dec=f.targets['dec'][0:1], cadence='single_1x2')
+    targets(f, nt=1, rsid_start=2, ra=f.targets['ra'][0:1],
+            dec=f.targets['dec'][0:1], cadence='single_2x1')
+    targets(f, nt=1, rsid_start=3, ra=f.targets['ra'][0:1],
+            dec=f.targets['dec'][0:1], cadence='single_2x2')
+
+    # Should be [109, 110, 127]
+    rids = f.mastergrid.targetDict[0].validRobotIDs
+
+    f.assign_robot_exposure(rsid=1, robotID=rids[0], iexp=0)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.assign_robot_exposure(rsid=2, robotID=rids[2], iexp=1)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.assign_robot_exposure(rsid=3, robotID=rids[1], iexp=2)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.assign_robot_exposure(rsid=0, robotID=rids[2], iexp=3)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] > 0
+
+    assert f.validate() == 0
+
+    f.unassign(rsid=1)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.unassign(rsid=2)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] > 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.unassign(rsid=3)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    f.unassign(rsid=0)
+
+    assert f.assignments['satisfied'][0] == 0
+    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] == 0
+    assert f.assignments['satisfied'][3] == 0
+
+    assert f.validate() == 0
+
+    return
 
 def test_collisions():
     clist = cadence.CadenceList()
@@ -560,6 +882,50 @@ def test_assign_apogee():
         if(f.robotgrids[0].robotDict[r].assignedTargetID >= 0):
             assert f.robotgrids[0].robotDict[r].hasApogee
 
+
+def test_count():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=2, m=1)
+    add_cadence_single_nxm(n=2, m=2)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x1')
+    ntot = 400
+    targets(f, nt=ntot, seed=101)
+    targets(f, nt=ntot, seed=101, rsid_start=ntot)
+
+    f.assign_science()
+    f.decollide_unassigned()
+    for itarget, target in enumerate(f.targets[0:ntot]):
+        igot1 = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
+        igot2 = np.where(f.assignments['robotID'][itarget + ntot, :] >= 0)[0]
+        assert len(igot1) + len(igot2) == f.assignments['nexps'][itarget]
+        assert len(igot1) + len(igot2) == f.assignments['nepochs'][itarget]
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_2x2')
+    ntot = 400
+    targets(f, nt=ntot, seed=101, cadence='single_2x1')
+    targets(f, nt=ntot, seed=101, rsid_start=ntot, cadence='single_2x1')
+
+    f.assign_science()
+    f.decollide_unassigned()
+    for itarget, target in enumerate(f.targets[0:ntot]):
+        igot1 = np.where(f.assignments['robotID'][itarget, :] >= 0)[0]
+        igot2 = np.where(f.assignments['robotID'][itarget + ntot, :] >= 0)[0]
+        epochs = set()
+        for cgot in igot1:
+            epochs.add(f.field_cadence.epochs[cgot])
+        for cgot in igot2:
+            epochs.add(f.field_cadence.epochs[cgot])
+        nepochs = len(epochs)
+        assert len(igot1) + len(igot2) == f.assignments['nexps'][itarget]
+        assert nepochs == f.assignments['nepochs'][itarget]
+            
+    return
 
 def test_assign_cp_model():
     clist = cadence.CadenceList()

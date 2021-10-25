@@ -8,6 +8,7 @@
 import os
 import re
 import random
+import datetime
 import numpy as np
 import fitsio
 import collections
@@ -18,6 +19,7 @@ import roboscheduler.cadence
 import kaiju
 import kaiju.robotGrid
 import robostrategy
+import robostrategy.targets
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
@@ -42,32 +44,11 @@ def interlist(list1, list2):
 
 
 # Type for targets array
-targets_dtype = np.dtype([('ra', np.float64),
-                          ('dec', np.float64),
-                          ('epoch', np.float32),
-                          ('pmra', np.float32),
-                          ('pmdec', np.float32),
-                          ('parallax', np.float32),
-                          ('lambda_eff', np.float32),
-                          ('delta_ra', np.float64),
-                          ('delta_dec', np.float64),
-                          ('magnitude', np.float32, 7),
-                          ('x', np.float64),
-                          ('y', np.float64),
-                          ('within', np.int32),
-                          ('incadence', np.int32),
-                          ('priority', np.int32),
-                          ('value', np.float32),
-                          ('program', np.unicode_, 30),
-                          ('carton', np.unicode_, 50),
-                          ('category', np.unicode_, 30),
-                          ('cadence', np.unicode_, 30),
-                          ('fiberType', np.unicode_, 10),
-                          ('catalogid', np.int64),
-                          ('carton_to_target_pk', np.int64),
-                          ('rsid', np.int64),
-                          ('target_pk', np.int64),
-                          ('rsassign', np.int32)])
+targets_dtype = robostrategy.targets.target_dtype
+targets_dtype = targets_dtype + [('x', np.float64),
+                                 ('y', np.float64),
+                                 ('within', np.int32),
+                                 ('incadence', np.int32)]
 
 # Dictionary defining meaning of flags
 _flagdict = {'CADENCE_INCONSISTENT': 1,
@@ -90,7 +71,7 @@ Dependencies:
 """
 
 # Establish access to the CadenceList singleton
-clist = roboscheduler.cadence.CadenceList()
+clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
 class AssignmentStatus(object):
@@ -221,6 +202,9 @@ class Field(object):
     verbose : bool
         if True, issue a lot of output statements
 
+    veryverbose : bool
+        if True, really issue a lot of output statements
+
     Attributes:
     ----------
 
@@ -239,7 +223,7 @@ class Field(object):
     field_cadence : Cadence object
         cadence associated with field
 
-    design_mode : list of str
+    design_mode : np.array of str
         keys to DesignModeDict for each exposure
 
     collisionBuffer : float
@@ -310,6 +294,9 @@ class Field(object):
     verbose : bool
         if True, issue a lot of output statements
 
+    veryverbose : bool
+        if True, really issue a lot of output statements
+
     _robot2indx : ndarray of int32 or None
         [nrobots, nexp_total] array of indices into targets from robots
 
@@ -359,8 +346,9 @@ class Field(object):
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
-                 verbose=False):
+                 verbose=False, veryverbose=False):
         self.verbose = verbose
+        self.veryverbose = veryverbose
         self.fieldid = fieldid
         self.nocalib = nocalib
         self.nocollide = nocollide
@@ -581,14 +569,15 @@ class Field(object):
             else:
                 iassigned = np.where(assignments['robotID'] >= 1)
                 for itarget, iexp in zip(iassigned[0], iassigned[1]):
-                    print(iexp)
                     self.assign_robot_exposure(robotID=assignments['robotID'][itarget, iexp],
                                                rsid=targets['rsid'][itarget],
                                                iexp=iexp,
                                                reset_satisfied=False,
-                                               reset_has_spare=False)
+                                               reset_has_spare=False,
+                                               reset_count=False)
             self._set_has_spare_calib()
             self._set_satisfied()
+            self._set_count(reset_equiv=False)
             self.decollide_unassigned()
         return
 
@@ -722,11 +711,15 @@ class Field(object):
                 self._robotnexp_max[:, i] = n
             self.assignments_dtype = np.dtype([('assigned', np.int32),
                                                ('satisfied', np.int32),
+                                               ('nexps', np.int32),
+                                               ('nepochs', np.int32),
                                                ('allowed', np.int32,
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('holeID', np.dtype("|U15"), self.field_cadence.nexp_total),
+                                               ('equivRobotID', np.int32,
+                                                (self.field_cadence.nexp_total,)),
                                                ('target_skybrightness', np.float32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('field_skybrightness', np.float32,
@@ -865,24 +858,103 @@ class Field(object):
                 flagnames.append(fn)
         return(flagnames)
 
+    def _offset_radec(self, ra=None, dec=None, delta_ra=0., delta_dec=0.):
+        """Offsets ra and dec according to specified amount
+        
+        Parameters:
+        ----------
+
+        ra : np.float64 or ndarray of np.float64
+        right ascension, deg
+
+        dec : np.float64 or ndarray of np.float64
+            declination, deg
+
+        delta_ra : np.float64 or ndarray of np.float64
+            right ascension direction offset, arcsec
+
+        delta_dec : np.float64 or ndarray of np.float64
+            declination direction offset, arcsec
+
+        Returns:
+        -------
+
+        offset_ra : np.float64 or ndarray of np.float64
+            offset right ascension, deg
+
+        offset_dec : np.float64 or ndarray of np.float64
+            offset declination, deg
+
+        Notes:
+        -----
+
+        Assumes that delta_ra, delta_dec are in proper coordinates; i.e.
+        an offset of delta_ra=1 arcsec represents the same angular separation 
+        on the sky at any declination.
+
+        Carefully offsets in the local directions of ra, dec based on
+        the local tangent plane (i.e. does not just scale delta_ra by
+        1/cos(dec))
+"""
+        deg2rad = np.pi / 180.
+        arcsec2rad = np.pi / 180. / 3600.
+        x = np.cos(dec * deg2rad) * np.cos(ra * deg2rad)
+        y = np.cos(dec * deg2rad) * np.sin(ra * deg2rad)
+        z = np.sin(dec * deg2rad)
+        ra_x = - np.sin(ra * deg2rad)
+        ra_y = np.cos(ra * deg2rad)
+        ra_z = 0.
+        dec_x = - np.sin(dec * deg2rad) * np.cos(ra * deg2rad)
+        dec_y = - np.sin(dec * deg2rad) * np.sin(ra * deg2rad)
+        dec_z = np.cos(dec * deg2rad)
+        xoff = x + (ra_x * delta_ra + dec_x * delta_dec) * arcsec2rad
+        yoff = y + (ra_y * delta_ra + dec_y * delta_dec) * arcsec2rad
+        zoff = z + (ra_z * delta_ra + dec_z * delta_dec) * arcsec2rad
+        offnorm = np.sqrt(xoff**2 + yoff**2 + zoff**2)
+        xoff = xoff / offnorm
+        yoff = yoff / offnorm
+        zoff = zoff / offnorm
+        decoff = np.arcsin(zoff) / deg2rad
+        raoff = ((np.arctan2(yoff, xoff) / deg2rad) + 360.) % 360.
+        return(raoff, decoff)
+
     def radec2xy(self, ra=None, dec=None, epoch=None, pmra=None,
-                 pmdec=None, fiberType=None):
+                 pmdec=None, delta_ra=0., delta_dec=0., fiberType=None):
         if(isinstance(fiberType, str)):
             wavename = fiberType.capitalize()
         else:
             wavename = np.array([x.capitalize() for x in fiberType])
-        epoch = self.obstime.jd
-        x, y, warn, ha, pa = coordio.utils.radec2wokxy(ra, dec, epoch,
+        if(epoch is not None):
+            epoch_jd = np.zeros(len(epoch), dtype=np.float64)
+            oneday = datetime.timedelta(days=1)
+            for i, e in enumerate(epoch):
+                epoch_year = int(e)
+                epoch_frac = e - int(e)
+                epoch_year_dt = datetime.datetime(epoch_year, 1, 1)
+                epoch_dt = epoch_year_dt + oneday * epoch_frac * 365.25
+                epoch_jd[i] = coordio.time.Time(epoch_dt).jd
+        else:
+            epoch_jd = None
+        raoff, decoff = self._offset_radec(ra=ra, dec=dec, delta_ra=delta_ra,
+                                           delta_dec=delta_dec)
+        pmra = np.zeros(len(raoff), dtype=np.float64) # BECAUSE PM FAILS!!
+        pmdec = np.zeros(len(raoff), dtype=np.float64)
+        radVel = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
+        parallax = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
+        x, y, warn, ha, pa = coordio.utils.radec2wokxy(raoff, decoff, epoch_jd,
                                                        wavename,
                                                        self.racen, self.deccen,
                                                        self.pa,
                                                        self.observatory.upper(),
                                                        self.obstime.jd,
                                                        pmra=pmra,
-                                                       pmdec=pmdec)
+                                                       pmdec=pmdec,
+                                                       parallax=parallax,
+                                                       radVel=radVel)
         return(x, y)
 
     def xy2radec(self, x=None, y=None, fiberType=None):
+        """X and Y back to RA, Dec, without proper motions or deltas"""
         if(isinstance(fiberType, str)):
             wavename = fiberType.capitalize()
         else:
@@ -927,14 +999,6 @@ class Field(object):
                     limits = designMode.stds_mags[fiberType]
                 ok = np.ones(len(icurr), dtype=np.bool)
                 for i in np.arange(limits.shape[0], dtype=np.int32):
-                    #if((limits[i, 0] != - 999.) |
-                    #   (limits[i, 1] != - 999.)):
-                        #ok = ok & ((np.isnan(mags[:, i]) == False) &
-                        #           (mags[:, i] != 0.) &
-                        #           (mags[:, i] != 99.9) &
-                        #           (mags[:, i] != 999.) &
-                        #           (mags[:, i] != - 999.) &
-                        #           (mags[:, i] != - 9999.))
                     icheck = np.where((np.isnan(mags[:, i]) == False) &
                                       (mags[:, i] != 0.) &
                                       (mags[:, i] != 99.9) &
@@ -999,10 +1063,12 @@ class Field(object):
         if(assignment_array is None):
             assignments['fiberType'] = targets['fiberType']
             assignments['robotID'] = -1
+            assignments['equivRobotID'] = -1
             assignments['target_skybrightness'] = -1.
         else:
             for n in self.assignments_dtype.names:
-                listns = ['robotID', 'target_skybrightness', 'field_skybrightness']
+                listns = ['robotID', 'equivRobotID', 'target_skybrightness',
+                          'field_skybrightness']
                 if((n in listns) & (self.field_cadence.nexp_total == 1)):
                     assignments[n][:, 0] = assignment_array[n]
                 else:
@@ -1040,6 +1106,11 @@ class Field(object):
             print("Convert targets coords to x/y", flush=True)
         targets['x'], targets['y'] = self.radec2xy(ra=targets['ra'],
                                                    dec=targets['dec'],
+                                                   epoch=targets['epoch'],
+                                                   pmra=targets['pmra'],
+                                                   pmdec=targets['pmdec'],
+                                                   delta_ra=targets['delta_ra'],
+                                                   delta_dec=targets['delta_dec'],
                                                    fiberType=targets['fiberType'])
 
         # Add targets to robotGrids
@@ -1097,9 +1168,26 @@ class Field(object):
 
         self._unique_catalogids = np.unique(self.targets['catalogid'])
 
+        # Set up lists of equivalent observation conditions, meaning
+        # that for each target we can look up all of the other targets
+        # whose catalog, fiberType, lambda_eff, delta_ra, delta_dec 
+        # are the same
+        self._equivindx = collections.OrderedDict()
+        self._equivkey = collections.OrderedDict()
+        for itarget, target in enumerate(self.targets):
+            ekey = (target['catalogid'], target['fiberType'],
+                    target['lambda_eff'], target['delta_ra'],
+                    target['delta_dec'])
+            if(ekey not in self._equivindx):
+                self._equivindx[ekey] = np.zeros(0, dtype=np.int32)
+            self._equivindx[ekey] = np.append(self._equivindx[ekey],
+                                              np.array([itarget]))
+            self._equivkey[itarget] = ekey
+
         if(assignments is not None):
             self.assignments = np.append(self.assignments, assignments, axis=0)
             self._set_satisfied()
+            self._set_count(reset_equiv=False)
 
         return
 
@@ -1186,6 +1274,49 @@ class Field(object):
                 dmarr = np.zeros(len(self.designModeDict), dtype=arr.dtype)
             dmarr[i] = arr
         fitsio.write(filename, dmarr, extname='DESMODE')
+
+        if(self.assignments is not None):
+            robots_dtype = [('robotID', np.int32),
+                            ('holeID', np.dtype("|U15")),
+                            ('hasBoss', np.bool),
+                            ('hasApogee', np.bool),
+                            ('rsid', np.int64, self.field_cadence.nexp_total),
+                            ('itarget', np.int32, self.field_cadence.nexp_total),
+                            ('catalogid', np.int64, self.field_cadence.nexp_total),
+                            ('fiberType', np.dtype("|U6"),
+                             self.field_cadence.nexp_total)]
+            robotIDs = np.sort(np.array([r for r in self.mastergrid.robotDict],
+                                        dtype=np.int32))
+            robots = np.zeros(len(robotIDs), dtype=robots_dtype) 
+            for indx, robotID in enumerate(robotIDs):
+                robots['robotID'][indx] = robotID
+                robots['holeID'][indx] = self.mastergrid.robotDict[robotID].holeID
+                robots['hasBoss'][indx] = self.mastergrid.robotDict[robotID].hasBoss
+                robots['hasApogee'][indx] = self.mastergrid.robotDict[robotID].hasApogee
+                if(self.field_cadence.nexp_total == 1):
+                    robots['rsid'][indx] = self.robotgrids[0].robotDict[robotID].assignedTargetID
+                    if(robots['rsid'][indx] == -1):
+                        robots['itarget'][indx] = -1
+                        robots['catalogid'][indx] = -1
+                        robots['fiberType'][indx] = ''
+                    else:
+                        robots['itarget'][indx] = self.rsid2indx[robots['rsid'][indx]]
+                        robots['catalogid'][indx] = self.targets['catalogid'][robots['itarget'][indx]]
+                        robots['fiberType'][indx] = self.targets['fiberType'][robots['itarget'][indx]]
+                else:
+                    for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+                        robots['rsid'][indx, iexp] = self.robotgrids[iexp].robotDict[robotID].assignedTargetID
+                        if(robots['rsid'][indx, iexp] == -1):
+                            robots['itarget'][indx, iexp] = -1
+                            robots['catalogid'][indx, iexp] = -1
+                            robots['fiberType'][indx, iexp] = ''
+                        else:
+                            robots['itarget'][indx, iexp] = self.rsid2indx[robots['rsid'][indx, iexp]]
+                            robots['catalogid'][indx, iexp] = self.targets['catalogid'][robots['itarget'][indx, iexp]]
+                            robots['fiberType'][indx, iexp] = self.targets['fiberType'][robots['itarget'][indx, iexp]]
+
+            fitsio.write(filename, robots, extname='ROBOTS')
+                    
         return
 
     def _set_has_spare_calib(self):
@@ -1283,6 +1414,36 @@ class Field(object):
                                    reset_satisfied=True, reset_has_spare=True)
 
         return
+
+    def collide_robot_exposure(self):
+        """TODO GET THIS BACK
+        collide : bool
+            True if it causes a collision, False if not
+
+        Notes:
+        -----
+
+        If there is no RobotGrid to check collisions and/or nocollide
+        is set for this object, it doesn't actually check collisions.
+        However, it does report a collision if any OTHER equivalent 
+        target was assigned.
+"""
+        if((not self.allgrids) |
+           (self.nocollide)):
+            indx = self.rsid2indx[rsid]
+            allindxs = set(self._equivindx[self._equivkey[indx]])
+            if(len(allindxs) > 1):
+                allindxs.discard(indx)
+                allindxs = np.array(list(allindxs), dtype=np.int32)
+                if(self.assignments['robotID'][allindxs, iexp].max() >= 0):
+                    return(True)
+                else:
+                    return(False)
+            else:
+                return(False)
+
+        rg = self.robotgrids[iexp]
+        return rg.wouldCollideWithAssigned(robotID, rsid)[0]
 
     def available_robot_epoch(self, rsid=None,
                               robotID=None, epoch=None, nexp=None,
@@ -1410,7 +1571,7 @@ class Field(object):
 
     def assign_robot_epoch(self, rsid=None, robotID=None, epoch=None, nexp=None,
                            reset_satisfied=True, reset_has_spare=True,
-                           status=None):
+                           status=None, reset_count=True):
         """Assign an rsid to a particular robot-epoch
 
         Parameters:
@@ -1437,6 +1598,10 @@ class Field(object):
 
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix based on this assignment
+            (default True)
+
+        reset_count : bool
+            if True, reset the exposure and epoch counts
             (default True)
 
         Returns:
@@ -1474,10 +1639,14 @@ class Field(object):
                                        reset_satisfied=False,
                                        reset_has_spare=False)
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            indx = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][indx]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
+
+        if(reset_count):
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1505,7 +1674,8 @@ class Field(object):
         return
 
     def assign_robot_exposure(self, robotID=None, rsid=None, iexp=None,
-                              reset_satisfied=True, reset_has_spare=True):
+                              reset_satisfied=True, reset_has_spare=True,
+                              reset_count=True):
         """Assign an rsid to a particular robot-exposure
 
         Parameters:
@@ -1526,6 +1696,10 @@ class Field(object):
 
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix
+            (default True)
+
+        reset_count : bool
+            if True, reset the 'nexp' and 'nepochs' columns
             (default True)
 
         Returns:
@@ -1565,10 +1739,14 @@ class Field(object):
             rg = self.robotgrids[iexp]
             rg.assignRobot2Target(robotID, rsid)
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            indx = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][indx]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
+
+        if(reset_count):
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1640,7 +1818,8 @@ class Field(object):
         return
 
     def unassign_exposure(self, rsid=None, iexp=None, reset_assigned=True,
-                          reset_satisfied=True, reset_has_spare=True):
+                          reset_satisfied=True, reset_has_spare=True,
+                          reset_count=True):
         """Unassign an rsid from a particular exposure
 
         Parameters:
@@ -1658,6 +1837,10 @@ class Field(object):
 
         reset_satisfied : bool
             if True, reset the 'satisfied' flag after unassignment
+            (default True)
+
+        reset_count : bool
+            if True, reset the exposures and epochs count
             (default True)
 
         reset_has_spare : bool
@@ -1684,9 +1867,14 @@ class Field(object):
         if(reset_assigned == True):
             self._set_assigned(itarget=itarget)
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
+
+        if(reset_count):
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1694,7 +1882,8 @@ class Field(object):
         return
 
     def unassign_epoch(self, rsid=None, epoch=None, reset_assigned=True,
-                       reset_satisfied=True, reset_has_spare=True):
+                       reset_satisfied=True, reset_has_spare=True,
+                       reset_count=True):
         """Unassign an rsid from a particular epoch
 
         Parameters:
@@ -1712,6 +1901,10 @@ class Field(object):
 
         reset_satisfied : bool
             if True, reset the 'satisfied' flag after unassignment
+            (default True)
+
+        reset_count : bool
+            if True, reset the epoch and exposure counts
             (default True)
 
         reset_has_spare : bool
@@ -1733,10 +1926,14 @@ class Field(object):
         if(reset_assigned):
             self._set_assigned(itarget=self.rsid2indx[rsid])
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            itarget = self.rsid2indx[rsid]
-            catalogid = self.targets['catalogid'][itarget]
-            self._set_satisfied(catalogids=[catalogid])
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
+
+        if(reset_count):
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1744,7 +1941,7 @@ class Field(object):
         return 0
 
     def unassign(self, rsids=None, reset_assigned=True, reset_satisfied=True,
-                 reset_has_spare=True):
+                 reset_has_spare=True, reset_count=True):
         """Unassign a set of rsids entirely
 
         Parameters:
@@ -1757,7 +1954,10 @@ class Field(object):
             if True, resets assigned flag for this rsid (default True)
 
         reset_satisfied : bool
-            if True, resets satified flag for this rsid (default True)
+            if True, resets satified flag for this catalogid (default True)
+
+        reset_count : bool
+            if True, resets exposure and epoch count (default True)
 
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix after unassignment
@@ -1775,11 +1975,14 @@ class Field(object):
             for rsid in rsids:
                 self._set_assigned(itarget=self.rsid2indx[rsid])
 
+        if(reset_satisfied | reset_count):
+            self._set_equiv(rsids=[rsid])
+
         if(reset_satisfied):
-            itargets = np.array([self.rsid2indx[rsid] for rsid in rsids],
-                                dtype=np.int64)
-            catalogids = self.targets['catalogid'][itargets]
-            self._set_satisfied(catalogids=catalogids)
+            self._set_satisfied(rsids=[rsid], reset_equiv=False)
+
+        if(reset_count):
+            self._set_count(rsids=[rsid], reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
@@ -1962,6 +2165,8 @@ class Field(object):
         # Check if there are robots available
         nRobotIDs = np.array([len(x) for x in availableRobotIDs])
         if(nRobotIDs.min() < 1):
+            if(self.veryverbose):
+                print("rsid={r}: no robots available".format(r=rsid))
             return False
 
         # Assign to each epoch
@@ -1975,14 +2180,18 @@ class Field(object):
             status = statuses[iepoch][irobot]
             nexp = nexps[iepoch]
 
+            if(self.veryverbose):
+                print("rsid={r}: assigning robotID {robotID}".format(r=rsid,
+                                                                     robotID=robotID))
+
             self.assign_robot_epoch(rsid=rsid, robotID=robotID, epoch=epoch,
                                     nexp=nexp, status=status,
                                     reset_satisfied=False,
-                                    reset_has_spare=False)
+                                    reset_has_spare=False,
+                                    reset_count=False)
 
-        indx = self.rsid2indx[rsid]
-        catalogid = self.targets['catalogid'][indx]
-        self._set_satisfied(catalogids=[catalogid])
+        self._set_satisfied(rsids=[rsid])
+        self._set_count(rsids=[rsid], reset_equiv=False)
         if(self.nocalib is False):
             self._set_has_spare_calib()
 
@@ -2015,6 +2224,8 @@ class Field(object):
                                                                 merge_epochs=True)
 
         if(ok == False):
+            if(self.veryverbose):
+                print("rsid={r} does not fit field cadence".format(r=rsid))
             return False
 
         # Check for all potential epochs whether they can accomodate at
@@ -2033,53 +2244,159 @@ class Field(object):
         ibad = np.where(available['nAvailableRobotIDs'] == 0)[0]
         epoch_bad = np.zeros(self.field_cadence.nepochs, dtype=np.bool)
         epoch_bad[epochs[ibad]] = True
+
+        if(self.veryverbose):
+            print("rsid={r}: note epoch_bad=".format(r=rsid) + str(epoch_bad)) 
         
         for indx, epochs in enumerate(epochs_list):
             if(epoch_bad[epochs].max() == False):
+                if(self.veryverbose):
+                    print("rsid={r}: trying epochs: ".format(r=rsid) + str(epochs))
                 nexps = nexps_list[indx]
                 if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
                     return True
 
+        if(self.veryverbose):
+            print("rsid={r}: no epochs worked".format(r=rsid))
                 
         return False
 
-    def _set_satisfied(self, catalogids=None):
+    def _set_equiv(self, rsids=None):
+        """Set equivRobotID to reflect any compatible observations with this rsid
+
+        Parameters:
+        ----------
+
+        rsids : ndarray of int64
+            rsids to update (default all currently assigned)
+
+        Notes:
+        -----
+
+        This finds ALL entries with the same:
+
+            catalogid
+            fiberType
+            lambda_eff
+            delta_ra
+            delta_dec
+
+        and sets the robotIDs for all of them.
+"""
+        if(rsids is None):
+            iassigned = np.where(self.assignments['assigned'])[0]
+            rsids = self.targets['rsid'][iassigned]
+
+        for rsid in rsids:
+            indx = self.rsid2indx[rsid]
+            allindxs = self._equivindx[self._equivkey[indx]]
+
+            for iexp in np.arange(self.field_cadence.nexp_total, dtype=int):
+                robotIDs = self.assignments['robotID'][allindxs, iexp]
+                robotIDs = robotIDs[robotIDs >= 0]
+                if(len(robotIDs) > 0):
+                    if(len(robotIDs) > 1):
+                        print("Inconsistency: multiple equivalent rsids with robots assigned")
+                        return
+                    self.assignments['equivRobotID'][allindxs, iexp] = robotIDs[0]
+                else:
+                    self.assignments['equivRobotID'][allindxs, iexp] = -1
+
+        return
+            
+    def _set_satisfied(self, rsids=None, reset_equiv=True):
         """Set satisfied flag based on assignments
 
         Parameters:
         ----------
 
-        catalogids : ndarray of np.int64
-            catalogids to set (defaults to apply to all targets)
+        rsids : ndarray of np.int64
+            rsids to set (defaults to apply to all targets)
+
+        reset_equiv : bool
+            whether to reset equivRobotID before assessing (default True)
 
         Notes:
         -----
 
-        'satisfied' means that the exposures obtained for this catalog ID satisfy
+        'satisfied' means that the exposures obtained satisfy
         the cadence for an rsid and the right instrument.
-"""
-        if(catalogids is None):
-            catalogids = self._unique_catalogids
 
-        fiberTypes = ['APOGEE', 'BOSS']
-        for catalogid in catalogids:
-            for fiberType in fiberTypes:
-                # Check for other instances of this catalogid, and whether
-                # assignments have satisfied their cadence
-                icats = np.where((self.targets['catalogid'] == catalogid) &
-                                 (self.targets['fiberType'] == fiberType) &
-                                 (self.targets['incadence']))[0]
-                if(len(icats) > 0):
-                    gotexp = (self.assignments['robotID'][icats, :] >= 0).sum(axis=0)
-                    iexp = np.where(gotexp > 0)[0]
-                    self.assignments['satisfied'][icats] = 0
-                    for icat in icats:
-                        other_cadence_name = self.targets['cadence'][icat]
-                        
-                        fits = clist.exposure_consistency(other_cadence_name,
-                                                          self.field_cadence.name, iexp)
-                        if(fits):
-                            self.assignments['satisfied'][icat] = 1
+        Uses equivRobotID to assess whether the conditions are
+        satisfied.
+
+        Only set reset_equiv=False if you have already just run
+        _set_equiv() for these rsids (or all of them). Doing so 
+        will save doing that twice.
+"""
+        if(reset_equiv):
+            self._set_equiv(rsids=rsids)
+
+        if(rsids is None):
+            set_rsids = self.targets['rsid']
+        else:
+            set_rsids = set(rsids)
+            for rsid in rsids:
+                indx = self.rsid2indx[rsid]
+                for eindx in self._equivindx[self._equivkey[indx]]:
+                    set_rsids.add(self.targets['rsid'][eindx])
+            set_rsids = np.array(list(set_rsids), dtype=np.int64)
+
+        for rsid in set_rsids:
+            indx = self.rsid2indx[rsid]
+            iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
+            if(self.targets['cadence'][indx] != ''):
+                sat = clist.exposure_consistency(self.targets['cadence'][indx],
+                                                 self.field_cadence.name, iexp)
+                self.assignments['satisfied'][indx] = sat
+            else:
+                self.assignments['satisfied'][indx] = 0
+
+        return
+
+    def _set_count(self, rsids=None, reset_equiv=True):
+        """Set exposure and epochs based on assignments
+
+        Parameters:
+        ----------
+
+        rsids : ndarray of np.int64
+            rsids to set (defaults to apply to all targets)
+
+        reset_equiv : bool
+            whether to reset equivRobotID before assessing (default True)
+
+        Notes:
+        -----
+
+        Sets nexps, nepochs for each target, based on equivRobotID.
+
+        Only set reset_equiv=False if you have already just run
+        _set_equiv() for these rsids (or all of them). Doing so 
+        will save doing that twice.
+"""
+        if(reset_equiv):
+            self._set_equiv(rsids=rsids)
+
+        if(rsids is None):
+            set_rsids = self.targets['rsid']
+            indxs = np.arange(len(self.targets), dtype=int)
+        else:
+            set_rsids = set(rsids)
+            for rsid in rsids:
+                indx = self.rsid2indx[rsid]
+                for eindx in self._equivindx[self._equivkey[indx]]:
+                    set_rsids.add(self.targets['rsid'][eindx])
+            set_rsids = np.array(list(set_rsids), dtype=np.int64)
+            indxs = np.array([self.rsid2indx[x] for x in set_rsids], dtype=int)
+
+        self.assignments['nexps'][indxs] = (self.assignments['equivRobotID'][indxs, :] >= 0).sum(axis=1)
+        self.assignments['nepochs'][indxs] = 0
+        icheck = np.where(self.assignments['nexps'][indxs] > 0)
+        for indx in indxs[icheck]:
+            iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
+            epochs = np.unique(self.field_cadence.epochs[iexp])
+            self.assignments['nepochs'][indx] = len(epochs)
 
         return
 
@@ -2245,7 +2562,8 @@ class Field(object):
         tdict = self.mastergrid.targetDict
 
         inotsat = np.where(self.assignments['satisfied'][indxs] == 0)[0]
-        for indx, rsid in zip(indxs[inotsat], rsids[inotsat]):
+        for rsid in rsids[inotsat]:
+            indx = self.rsid2indx[rsid]
             robotIDs = np.array(tdict[rsid].validRobotIDs)
             hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
                                   for x in robotIDs], dtype=np.bool)
@@ -2519,14 +2837,20 @@ class Field(object):
             print("fieldid {fid}:   (done assigning calibrations)".format(fid=self.fieldid), flush=True)
         return
 
-    def assign_science(self):
+    def assign_science(self, rsassign=1):
         """Assign all science targets
+        
+        Parameters:
+        ----------
+
+        rsassign : int, np.int32
+            value of rsassign for selecting targets (default 1)
 
         Notes
         -----
 
         This assigns all targets with 'category' set to 'science'
-        and with 'rsassign' set to 1.
+        and with 'rsassign' set to selected value
 
         It calls assign_cadences(), which will assign the targets
         in order of their priority value. The order of assignment is
@@ -2539,7 +2863,7 @@ class Field(object):
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
-                            (self.targets['rsassign'] != 0))[0]
+                            (self.targets['rsassign'] == rsassign))[0]
         np.random.seed(self.fieldid)
         random.seed(self.fieldid)
         np.random.shuffle(iscience)
@@ -2714,6 +3038,7 @@ class Field(object):
         for itarget in np.arange(len(self.assignments), dtype=np.int32):
             self._set_assigned(itarget=itarget)
         self._set_satisfied()
+        self._set_count(reset_equiv=False)
         return
 
     def assess(self):
@@ -3303,104 +3628,3 @@ class FieldSpeedy(Field):
             self._competing_targets = None
 
         return(success)
-
-    def _assign_singlebright(self, indxs=None):
-        """Assigns 1x1 bright targets en masse
-
-        Parameters
-        ----------
-
-        indxs : ndarray of np.int32
-            indices into self.targets of targets to assign
-
-        Notes
-        -----
-
-        First, uniquifies on catalogid so as not to repeat itself.
-
-        Second, loops through robots, and assigns its unused exposures to
-        singlebrights.
-
-        Ignores collisions!
-"""
-        inindx = np.zeros(len(self.targets), dtype=np.bool)
-        inindx[indxs] = 1
-
-        # Find unique set of catalogid and create index into
-        catalogids, iunique = np.unique(self.targets['catalogid'][indxs],
-                                        return_index=True)
-        indxs = indxs[iunique]
-        rsids = set(self.targets['rsid'][indxs])
-
-        for robotID in self.mastergrid.robotDict:
-            r = self.mastergrid.robotDict[robotID]
-            robot_rsids = set(r.validTargetIDs)
-            curr_rsids = np.array(list(robot_rsids.intersection(rsids)),
-                                  dtype=np.int64)
-            if(len(curr_rsids) > 0):
-                np.random.shuffle(curr_rsids)
-                ifree = np.where(self._robot2indx[robotID - 1, :] < 0)[0]
-                if(len(ifree) >= len(curr_rsids)):
-                    ifree = ifree[0:len(curr_rsids)]
-                for icurr, iexp in enumerate(ifree):
-                    self.assign_robot_exposure(robotID=robotID,
-                                               rsid=curr_rsids[icurr],
-                                               iexp=iexp,
-                                               reset_satisfied=False,
-                                               reset_has_spare=False)
-                    indx = self.rsid2indx[curr_rsids[icurr]]
-                    icat = np.where((self.targets['catalogid'] == 
-                                     self.targets['catalogid'][indx])
-                                    & (inindx))[0]
-                    self.assignments['satisfied'][icat] = 1
-                    rsids.remove(curr_rsids[icurr])
-
-        self.decollide_unassigned()
-
-    def _assign_multibright(self, indxs=None):
-        """Assigns nx1 bright targets (no constraints) en masse
-
-        Parameters
-        ----------
-
-        indxs : ndarray of np.int32
-            indices into self.targets of targets to assign
-
-        Notes
-        -----
-
-        Loops through robots, and assigns its unused exposures to
-        multibrights (does not take advantage of using different 
-        robots at different epochs).
-
-        Ignores collisions! Doesn't account for spare calib fibers.
-"""
-        rsids = set(self.targets['rsid'][indxs])
-
-        for robotID in self.mastergrid.robotDict:
-            r = self.mastergrid.robotDict[robotID]
-            robot_rsids = set(r.validTargetIDs)
-            curr_rsids = np.array(list(robot_rsids.intersection(rsids)),
-                                  dtype=np.int64)
-            if(len(curr_rsids) > 0):
-                np.random.shuffle(curr_rsids)
-                ifree = np.where(self._robot2indx[robotID - 1, :] < 0)[0]
-                icurr = 0
-                irsid = 0
-                while((icurr < len(ifree)) & (irsid < len(curr_rsids))):
-                    curr_rsid = curr_rsids[irsid]
-                    indx = self.rsid2indx[curr_rsid]
-                    nexp = clist.cadences[self.targets['cadence'][indx]].nepochs
-                    if(icurr + nexp < len(ifree)):
-                        for i in np.arange(nexp, dtype=np.int32):
-                            self.assign_robot_exposure(robotID=robotID,
-                                                       rsid=curr_rsid,
-                                                       iexp=ifree[icurr],
-                                                       reset_satisfied=False,
-                                                       reset_has_spare=False)
-                            icurr = icurr + 1
-                        self._set_satisfied(catalogids=[self.targets['catalogid'][indx]])
-                        rsids.remove(curr_rsid)
-                    irsid = irsid + 1
-
-        self.decollide_unassigned()

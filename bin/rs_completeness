@@ -41,6 +41,9 @@ def make_map(hpix=None, got=None):
     return(ntargets_map, ngot_map, fgot_map)
 
     hdr = dict()
+    hdr['STRATVER'] = robostrategy.__version__
+    hdr['SCHEDVER'] = roboscheduler.__version__
+    hdr['KAIJUVER'] = kaiju.__version__
     hdr['NSIDE'] = nside
     fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
     fitsio.write(completeness_file, ngot_map, clobber=False)
@@ -56,32 +59,62 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
-                        type=str, help='apo or lco',
-                        choices=['apo', 'lco'], required=True)
+                        type=str, help='apo or lco or both',
+                        choices=['apo', 'lco', 'both'], required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    if(observatory == 'both'):
+        both = True
+        observatories = ['apo', 'lco']
+    else:
+        both = False
+        observatories = [observatory]
+    opentargets = args.opentargets
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
-                                  observatory=observatory)
+                                  observatory=observatories[0])
+    if(opentargets):
+        targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
     targets = fitsio.read(targets_file)
-    outtargets_dtype = np.dtype(targets.dtype.descr +
-                                np.dtype([('satisfied', np.int32),
-                                          ('assigned', np.int32),
-                                          ('covered', np.int32)]).descr)
+    if(both):
+        outtargets_dtype = np.dtype(targets.dtype.descr +
+                                    np.dtype([('satisfied_lco', np.int32),
+                                              ('assigned_lco', np.int32),
+                                              ('covered_lco', np.int32),
+                                              ('satisfied_apo', np.int32),
+                                              ('assigned_apo', np.int32),
+                                              ('covered_apo', np.int32),
+                                              ('satisfied', np.int32),
+                                              ('assigned', np.int32),
+                                              ('covered', np.int32)]).descr)
+    else:
+        outtargets_dtype = np.dtype(targets.dtype.descr +
+                                    np.dtype([('satisfied', np.int32),
+                                              ('assigned', np.int32),
+                                              ('covered', np.int32)]).descr)
     outtargets = np.zeros(len(targets), dtype=outtargets_dtype)
     for name in targets.dtype.names:
         outtargets[name] = targets[name]
 
-    targets_covered_base = 'rsTargetsCovered-{plan}-{obs}.fits'
-    targets_covered_base = targets_covered_base.format(plan=plan,
-                                                       obs=observatory)
-    targets_covered_file = os.path.join(os.path.dirname(targets_file),
-                                        targets_covered_base)
-    targets_covered = fitsio.read(targets_covered_file)
-    icovered = np.where(targets_covered['within_hex'] > 0)[0]
-    outtargets['covered'][icovered] = 1
+    for obs in observatories:
+        targets_covered_base = 'rsTargetsCovered-{plan}-{obs}.fits'
+        targets_covered_base = targets_covered_base.format(plan=plan,
+                                                           obs=obs)
+        targets_covered_file = os.path.join(os.path.dirname(targets_file),
+                                            targets_covered_base)
+        if(opentargets):
+            targets_covered_file = targets_covered_file.replace('rsTargets', 'rsTargetsOpen')
+        targets_covered = fitsio.read(targets_covered_file)
+        icovered = np.where(targets_covered['within_hex'] > 0)[0]
+        outtargets['covered'][icovered] = outtargets['covered'][icovered] + 1
+        if(both):
+            outtargets['covered_{obs}'.format(obs=obs)] = 1
 
     cadences = targets['cadence']
     base_cadences = np.array([c.split('-')[0] for c in cadences])
@@ -94,13 +127,53 @@ if __name__ == '__main__':
     cartons = targets['carton']
     unique_cartons = np.unique(cartons)
 
-    assigned_file = sdss_path.full('rsAssignments', plan=plan,
-                                   observatory=observatory)
-    satisfied_file = assigned_file.replace('rsAssignments', 'rsSatisfied')
-    satisfied = fitsio.read(satisfied_file)
+    for obs in observatories:
+        assigned_file = sdss_path.full('rsAssignments', plan=plan,
+                                       observatory=obs)
+        satisfied_file = assigned_file.replace('rsAssignments', 'rsSatisfied')
+        if(opentargets):
+            satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                    'rsSatisfiedOpen')
+        satisfied = fitsio.read(satisfied_file)
 
-    outtargets['satisfied'] = satisfied['satisfied']
-    outtargets['assigned'] = satisfied['assigned']
+        outtargets['satisfied'] = (outtargets['satisfied'] +
+                                   satisfied['satisfied'])
+        outtargets['assigned'] = (outtargets['assigned'] +
+                                  satisfied['assigned'])
+
+        if(both):
+            sname = 'satisfied_{obs}'.format(obs=obs)
+            aname = 'assigned_{obs}'.format(obs=obs)
+            outtargets[sname] = (outtargets[sname] +
+                                 satisfied['satisfied'])
+            outtargets[aname] = (outtargets[aname] +
+                                 satisfied['assigned'])
+
+    iboss = np.where((outtargets['fiberType'] == 'BOSS') &
+                     (outtargets['category'] == 'science') &
+                     (outtargets['covered'] > 0))[0]
+    uboss, iuboss = np.unique(outtargets['catalogid'][iboss],
+                              return_inverse=True)
+    nboss = len(uboss)
+    gotboss = np.zeros(nboss, dtype=bool)
+    for indx, cboss in enumerate(iuboss):
+        if((outtargets['satisfied'][iboss[indx]] > 0) |
+           (outtargets['assigned'][iboss[indx]] > 0)):
+            gotboss[cboss] = True
+    ngotboss = np.int32(gotboss.sum())
+
+    iapogee = np.where((outtargets['fiberType'] == 'APOGEE') &
+                       (outtargets['category'] == 'science') &
+                       (outtargets['covered'] > 0))[0]
+    uapogee, iuapogee = np.unique(outtargets['catalogid'][iapogee],
+                                  return_inverse=True)
+    napogee = len(uapogee)
+    gotapogee = np.zeros(napogee, dtype=bool)
+    for indx, capogee in enumerate(iuapogee):
+        if((outtargets['satisfied'][iapogee[indx]] > 0) |
+           (outtargets['assigned'][iapogee[indx]] > 0)):
+            gotapogee[capogee] = True
+    ngotapogee = np.int32(gotapogee.sum())
 
     nside = 32
     hpix = healpy.pixelfunc.ang2pix(nside, targets['ra'],
@@ -108,8 +181,11 @@ if __name__ == '__main__':
 
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
+    if(opentargets):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessOpen')
 
-    icadence = np.where(cadences != "none")[0]
+    icadence = np.where((cadences != "none") & (outtargets['category'] == 'science'))[0]
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
                                                 got=(outtargets['satisfied'][icadence] > 0))
 
@@ -120,17 +196,58 @@ if __name__ == '__main__':
     else:
         fgot = np.float32(-1.)
 
+    if(both):
+        ntargets_apo = len(np.where(outtargets['covered_apo'][icadence])[0])
+        ngot_apo = np.int32((outtargets['satisfied_apo'][icadence] > 0).sum())
+        if(ntargets_apo > 0):
+            fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
+        else:
+            fgot_apo = np.float32(-1.)
+        ntargets_lco = len(np.where(outtargets['covered_lco'][icadence])[0])
+        ngot_lco = np.int32((outtargets['satisfied_lco'][icadence] > 0).sum())
+        if(ntargets_lco > 0):
+            fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
+        else:
+            fgot_lco = np.float32(-1.)
+
     hdr = dict()
+    hdr['STRATVER'] = robostrategy.__version__
+    hdr['SCHEDVER'] = roboscheduler.__version__
+    hdr['KAIJUVER'] = kaiju.__version__
     hdr['NSIDE'] = nside
     hdr['NCADENCE'] = len(unique_base_cadences)
     hdr['NCARTON'] = len(unique_cartons)
     hdr['NTARGETS'] = ntargets
+    hdr['NTBOSS'] = nboss
+    hdr['NTAPOGEE'] = napogee
+    hdr['NGBOSS'] = ngotboss
+    hdr['NGAPOGEE'] = ngotapogee
     hdr['NGOT'] = ngot
     hdr['FGOT'] = fgot
+    if(both):
+        hdr['NTAR_APO'] = ntargets_apo
+        hdr['NGOT_APO'] = ngot_apo
+        hdr['FGOT_APO'] = fgot_apo
+        hdr['NTAR_LCO'] = ntargets_lco
+        hdr['NGOT_LCO'] = ngot_lco
+        hdr['FGOT_LCO'] = fgot_lco
     fitsio.write(completeness_file, outtargets, header=hdr, clobber=True)
     fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=False)
     fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
     fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
+
+    subcompleteness_file = sdss_path.full('rsCompleteness', plan=plan,
+                                          observatory=observatory)
+    subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                        'bycarton/rsCompleteness-{c}'.format(c='science'))
+    if(opentargets):
+        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                            'rsCompletenessOpen')
+    fitsio.write(subcompleteness_file, outtargets[icadence], header=hdr,
+                 clobber=True)
+    fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)
+    fitsio.write(subcompleteness_file, ngot_map, header=hdr, clobber=False)
+    fitsio.write(subcompleteness_file, fgot_map, header=hdr, clobber=False)
 
     for indx in np.arange(len(unique_base_cadences)):
         unique_base_cadence = unique_base_cadences[indx]
@@ -147,11 +264,35 @@ if __name__ == '__main__':
         else:
             fgot = np.float32(-1.)
 
+        if(both):
+            ntargets_apo = len(np.where(outtargets['covered_apo'][icadence])[0])
+            ngot_apo = np.int32((outtargets['satisfied_apo'][icadence] > 0).sum())
+            if(ntargets_apo > 0):
+                fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
+            else:
+                fgot_apo = np.float32(-1.)
+            ntargets_lco = len(np.where(outtargets['covered_lco'][icadence])[0])
+            ngot_lco = np.int32((outtargets['satisfied_lco'][icadence] > 0).sum())
+            if(ntargets_lco > 0):
+                fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
+            else:
+                fgot_lco = np.float32(-1.)
+
         hdr = dict()
+        hdr['STRATVER'] = robostrategy.__version__
+        hdr['SCHEDVER'] = roboscheduler.__version__
+        hdr['KAIJUVER'] = kaiju.__version__
         hdr['CADENCE'] = unique_base_cadence
         hdr['NTARGETS'] = ntargets
         hdr['NGOT'] = ngot
         hdr['FGOT'] = fgot
+        if(both):
+            hdr['NTAR_APO'] = ntargets_apo
+            hdr['NGOT_APO'] = ngot_apo
+            hdr['FGOT_APO'] = fgot_apo
+            hdr['NTAR_LCO'] = ntargets_lco
+            hdr['NGOT_LCO'] = ngot_lco
+            hdr['FGOT_LCO'] = fgot_lco
         fitsio.write(completeness_file, ntargets_map, header=hdr,
                      clobber=False)
         fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
@@ -172,6 +313,20 @@ if __name__ == '__main__':
         else:
             fgot = np.float32(-1.)
 
+        if(both):
+            ntargets_apo = len(np.where(outtargets['covered_apo'][icarton])[0])
+            ngot_apo = np.int32((outtargets['satisfied_apo'][icarton] > 0).sum())
+            if(ntargets_apo > 0):
+                fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
+            else:
+                fgot_apo = np.float32(-1.)
+            ntargets_lco = len(np.where(outtargets['covered_lco'][icarton])[0])
+            ngot_lco = np.int32((outtargets['satisfied_lco'][icarton] > 0).sum())
+            if(ntargets_lco > 0):
+                fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
+            else:
+                fgot_lco = np.float32(-1.)
+
         hdr = dict()
         hdr['STRATVER'] = robostrategy.__version__
         hdr['SCHEDVER'] = roboscheduler.__version__
@@ -180,7 +335,27 @@ if __name__ == '__main__':
         hdr['NTARGETS'] = ntargets
         hdr['NGOT'] = ngot
         hdr['FGOT'] = fgot
+        if(both):
+            hdr['NTAR_APO'] = ntargets_apo
+            hdr['NGOT_APO'] = ngot_apo
+            hdr['FGOT_APO'] = fgot_apo
+            hdr['NTAR_LCO'] = ntargets_lco
+            hdr['NGOT_LCO'] = ngot_lco
+            hdr['FGOT_LCO'] = fgot_lco
         fitsio.write(completeness_file, ntargets_map, header=hdr,
                      clobber=False)
         fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
         fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
+
+        subcompleteness_file = sdss_path.full('rsCompleteness', plan=plan,
+                                              observatory=observatory)
+        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                            'bycarton/rsCompleteness-{c}'.format(c=unique_carton))
+        if(opentargets):
+            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                                'rsCompletenessOpen')
+        fitsio.write(subcompleteness_file, outtargets[icarton], header=hdr,
+                     clobber=True)
+        fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)
+        fitsio.write(subcompleteness_file, ngot_map, header=hdr, clobber=False)
+        fitsio.write(subcompleteness_file, fgot_map, header=hdr, clobber=False)

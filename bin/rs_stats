@@ -16,13 +16,12 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import configparser
 import numpy as np
 import fitsio
 import sdss_access.path
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 if __name__ == '__main__':
 
@@ -32,14 +31,37 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
+    opentargets = args.opentargets
+
+    description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
+                                    'carton_description.cfg')
+    if(os.path.exists(description_file)):
+        description_cfg = configparser.ConfigParser(allow_no_value=True)
+        description_cfg.optionxform = str
+        description_cfg.read(description_file)
+        if(opentargets):
+            carton_description = description_cfg['Open']
+        else:
+            carton_description = description_cfg['Mapper']
+    else:
+        carton_description = dict()
 
     html_path = os.path.dirname(sdss_path.full('rsCompleteness', plan=plan,
                                                observatory='apo'))
-    html_file = os.path.join(html_path, 'rs-stats.html')
-    stats_file = os.path.join(html_path, 'rsStats-{p}.fits'.format(p=plan))
+
+    if(opentargets):
+        html_file = os.path.join(html_path, 'rs-open-stats.html')
+        stats_file = os.path.join(html_path, 'rsStatsOpen-{p}.fits'.format(p=plan))
+    else:
+        html_file = os.path.join(html_path, 'rs-stats.html')
+        stats_file = os.path.join(html_path, 'rsStats-{p}.fits'.format(p=plan))
 
     stats_dtype = [('carton', np.dtype('a40')),
                    ('ntarget', np.int32),
@@ -53,45 +75,55 @@ if __name__ == '__main__':
                    ('fgot_lco', np.float32)]
     stats = np.zeros(0, dtype=stats_dtype)
 
-    for observatory in ['apo', 'lco']:
-        completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
-                                                            plan=plan,
-                                                            observatory=observatory))
+    completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
+                                                        plan=plan,
+                                                        observatory='both'))
+    if(opentargets):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessOpen')
 
-        nt, completeness_hdr = fitsio.read(completeness_file, header=True)
+    completeness_hdr = fitsio.read_header(completeness_file, ext=1)
 
-        nprog = np.int32(completeness_hdr['NCARTON'])
-        ncad = np.int32(completeness_hdr['NCADENCE'])
-        for iprog in np.arange(nprog):
-            hdr = fitsio.read_header(completeness_file,
-                                     ext=(ncad + 1 + iprog) * 3 + 2)
-            carton = hdr['CARTON'].strip()
-            ntarget = hdr['NTARGETS']
-            ngot = hdr['NGOT']
-            fgot = hdr['FGOT']
-            if(len(stats) > 0):
-                plist = np.array([p.decode().strip()
-                                  for p in stats['carton']])
-                ip = np.where(plist == carton)[0]
-            else:
-                ip = []
-            if(len(ip) == 0):
-                stats_one = np.zeros(1, dtype=stats_dtype)
-                stats_one['carton'] = carton
-                stats = np.append(stats, stats_one)
-                plist = np.array([p.decode().strip()
-                                  for p in stats['carton']])
-                ip = np.where(plist == carton)[0]
-            print(carton)
-            print(plist)
-            ip = ip[0]
-            stats['ngot_{o}'.format(o=observatory)][ip] = ngot
-            stats['ntarget_{o}'.format(o=observatory)][ip] = ntarget
-            stats['fgot_{o}'.format(o=observatory)][ip] = fgot
-
-    stats['ntarget'] = stats['ntarget_apo'] + stats['ntarget_lco']
-    stats['ngot'] = stats['ngot_apo'] + stats['ngot_lco']
-    stats['fgot'] = stats['ngot'] / stats['ntarget']
+    ncarton = np.int32(completeness_hdr['NCARTON'])
+    ncad = np.int32(completeness_hdr['NCADENCE'])
+    for icarton in np.arange(ncarton):
+        hdr = fitsio.read_header(completeness_file,
+                                 ext=(ncad + 1 + icarton) * 3 + 2)
+        carton = hdr['CARTON'].strip()
+        ntarget = hdr['NTARGETS']
+        ngot = hdr['NGOT']
+        fgot = hdr['FGOT']
+        ntarget_apo = hdr['NTAR_APO']
+        ngot_apo = hdr['NGOT_APO']
+        fgot_apo = hdr['FGOT_APO']
+        ntarget_lco = hdr['NTAR_LCO']
+        ngot_lco = hdr['NGOT_LCO']
+        fgot_lco = hdr['FGOT_LCO']
+        if(len(stats) > 0):
+            plist = np.array([p.decode().strip()
+                              for p in stats['carton']])
+            ip = np.where(plist == carton)[0]
+        else:
+            ip = []
+        if(len(ip) == 0):
+            stats_one = np.zeros(1, dtype=stats_dtype)
+            stats_one['carton'] = carton
+            stats = np.append(stats, stats_one)
+            plist = np.array([p.decode().strip()
+                              for p in stats['carton']])
+            ip = np.where(plist == carton)[0]
+        print(carton)
+        print(plist)
+        ip = ip[0]
+        stats['ngot'][ip] = ngot
+        stats['ntarget'][ip] = ntarget
+        stats['fgot'][ip] = fgot
+        stats['ngot_lco'][ip] = ngot_lco
+        stats['ntarget_lco'][ip] = ntarget_lco
+        stats['fgot_lco'][ip] = fgot_lco
+        stats['ngot_apo'][ip] = ngot_apo
+        stats['ntarget_apo'][ip] = ntarget_apo
+        stats['fgot_apo'][ip] = fgot_apo
 
     fitsio.write(stats_file, stats, clobber=True)
 
@@ -113,6 +145,7 @@ table, th, td {
 <thead>
     <tr>
     <th><b>Carton</b></th>
+    <th><b>Description</b></th>
     <th><b>Number Gotten</b></th>
     <th>Number Targets</th>
     <th>Fraction Gotten</th>
@@ -127,6 +160,7 @@ table, th, td {
 
     row_template = """<tr>
 <td align='right'><b>{carton}</b></td>
+<td align='right'><b>{description}</b></td>
 <td align='right'><b>{ngot}</b></td>
 <td align='right'>{ntarget}</td>
 <td align='right'>{fgot:5.2f}</td>
@@ -141,7 +175,8 @@ table, th, td {
     ps = np.array([p.decode().strip() for p in stats['carton']])
     isci = np.where(ps != 'CALIBRATION')[0]
 
-    fp.write(row_template.format(carton='All',
+    fp.write(row_template.format(carton='All Science',
+                                 description='', 
                                  ngot=stats['ngot'][isci].sum(),
                                  ntarget=stats['ntarget'][isci].sum(),
                                  fgot=stats['ngot'][isci].sum() /
@@ -156,7 +191,13 @@ table, th, td {
                                  stats['ntarget_lco'][isci].sum()))
 
     for s in stats[isci]:
-        fp.write(row_template.format(carton=s['carton'].decode().strip(),
+        carton = s['carton'].decode().strip()
+        if(carton in carton_description):
+            description = carton_description[carton]
+        else:
+            description = ''
+        fp.write(row_template.format(carton=carton,
+                                     description=description,
                                      ngot=s['ngot'],
                                      ntarget=s['ntarget'],
                                      fgot=s['fgot'],

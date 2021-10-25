@@ -32,12 +32,20 @@ def count_spares(indx):
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
 
-    spare = np.zeros(1, dtype=spares_dtype)
-
     field_target_file = sdss_path.full('rsFieldAssignments',
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
+    if(opentargets):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsOpen')
     f = field.Field(filename=field_target_file, allgrids=False)
+
+    spares_dtype = [('fieldid', np.int32),
+                    ('racen', np.float64),
+                    ('deccen', np.float64),
+                    ('nboss_spare', np.int32, f.field_cadence.nexp_total),
+                    ('napogee_spare', np.int32, f.field_cadence.nexp_total)]
+    spare = np.zeros(1, dtype=spares_dtype)
 
     spare['fieldid'] = fieldid
     spare['racen'] = allocate.fields['racen'][indx]
@@ -46,10 +54,14 @@ def count_spares(indx):
                           for x in range(500)])
     iapogee = np.where(hasApogee)[0]
     if(f.assignments is not None):
-        ina_apogee = np.where(f._robot2indx[iapogee, :] < 0)[0]
-        ina_boss = np.where(f._robot2indx[:, :] < 0)[0]
-        nun_apogee = len(ina_apogee)
-        nun_boss = len(ina_boss)
+        nun_apogee = np.zeros(f.field_cadence.nexp_total, dtype=np.int32)
+        nun_boss = np.zeros(f.field_cadence.nexp_total, dtype=np.int32)
+        for iexp in np.arange(f.field_cadence.nexp_total,
+                              dtype=np.int32):
+            ina_apogee = np.where(f._robot2indx[iapogee, iexp] < 0)[0]
+            ina_boss = np.where(f._robot2indx[:, iexp] < 0)[0]
+            nun_apogee[iexp] = len(ina_apogee)
+            nun_boss[iexp] = len(ina_boss)
         
         nsp_apogee_standard = (f.calibrations['standard_apogee'] -
                                f.required_calibrations['standard_apogee'])
@@ -106,17 +118,21 @@ def count_spares(indx):
         # The below is correct because every APOGEE robot is
         # also potentially a BOSS robot, but not vice-versa.
         spare['nboss_spare'] = (nun_boss +
-                                nsp_boss_standard.sum() +
-                                nsp_boss_sky.sum() +
-                                nsp_apogee_standard.sum() +
-                                nsp_apogee_sky.sum())
+                                nsp_boss_standard +
+                                nsp_boss_sky +
+                                nsp_apogee_standard +
+                                nsp_apogee_sky)
         spare['napogee_spare'] = (nun_apogee +
-                                  nsp_apogee_standard.sum() +
-                                  nsp_apogee_sky.sum() + 
-                                  nsp_boss_standard_wapogee.sum() +
-                                  nsp_boss_sky_wapogee.sum())
+                                  nsp_apogee_standard +
+                                  nsp_apogee_sky + 
+                                  nsp_boss_standard_wapogee +
+                                  nsp_boss_sky_wapogee)
         
-        fitsio.write('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid), spare, clobber=True)
+        base = 'rsFieldSpares'
+        if(opentargets):
+            base = 'rsFieldSparesOpen'
+        spares_file = 'targets/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base)
+        fitsio.write(spares_file, spare, clobber=True)
 
 if __name__ == '__main__':
 
@@ -129,10 +145,23 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    start = args.start
+    end = args.end
+    opentargets = args.opentargets
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -144,21 +173,66 @@ if __name__ == '__main__':
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
+    if(end < 0):
+        end = allocate.field_array['fieldid'].max()
+    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
+                     (allocate.field_array['fieldid'] <= end))[0]
+
     spares_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('nboss_spare', np.int32),
                     ('napogee_spare', np.int32)]
 
-    indxs = np.arange(len(allocate.field_array))
+    spares_exp_dtype = [('fieldid', np.int32),
+                        ('iexp', np.int32),
+                        ('racen', np.float64),
+                        ('deccen', np.float64),
+                        ('nboss_spare', np.int32),
+                        ('napogee_spare', np.int32)]
+
     with multiprocessing.Pool() as pool:
-        pool.map(count_spares, indxs)
+        pool.map(count_spares, ikeep)
 
     spares = np.zeros(len(allocate.field_array), dtype=spares_dtype)
+    spares_exp = np.zeros(allocate.field_array['nfilled'].sum(),
+                          dtype=spares_exp_dtype)
 
-    for indx in indxs:
+    ispares_exp = 0
+    for indx in ikeep:
         fieldid = allocate.field_array['fieldid'][indx]
-        spares[indx] = fitsio.read('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid))
-    fitsio.write('rsSpares-{o}-{p}.fits'.format(o=observatory,
-                                                p=plan), spares,
-                 clobber=True)
+        base = 'rsFieldSpares'
+        if(opentargets):
+            base = 'rsFieldSparesOpen'
+        spares_file = 'targets/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base)
+        cspares = fitsio.read(spares_file)
+
+        try:
+            nexp = len(cspares['nboss_spare'][0, :])
+        except IndexError:
+            nexp = 1
+        spares_exp['fieldid'][ispares_exp:ispares_exp + nexp] = fieldid
+        spares_exp['iexp'][ispares_exp:ispares_exp + nexp] = np.arange(nexp, dtype=np.int32)
+        spares_exp['racen'][ispares_exp:ispares_exp + nexp] = cspares['racen'][0]
+        spares_exp['deccen'][ispares_exp:ispares_exp + nexp] = cspares['deccen'][0]
+        spares_exp['nboss_spare'][ispares_exp:ispares_exp + nexp] = cspares['nboss_spare'][0]
+        spares_exp['napogee_spare'][ispares_exp:ispares_exp + nexp] = cspares['napogee_spare'][0]
+        ispares_exp = ispares_exp + nexp
+
+        spares['fieldid'][indx] = fieldid
+        spares['racen'][indx] = cspares['racen'][0]
+        spares['deccen'][indx] = cspares['deccen'][0]
+        spares['nboss_spare'][indx] = cspares['nboss_spare'].sum()
+        spares['napogee_spare'][indx] = cspares['napogee_spare'].sum()
+
+    base = 'rsSpares'
+    if(opentargets):
+        base = 'rsSparesOpen'
+    outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    fitsio.write(outfile, spares, clobber=True)
+
+    base = 'rsSparesExp'
+    if(opentargets):
+        base = 'rsSparesExpOpen'
+    outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    fitsio.write(outfile, spares_exp, clobber=True)

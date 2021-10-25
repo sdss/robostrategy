@@ -17,7 +17,6 @@ import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy
 import robostrategy.field as field
-import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
 
@@ -49,18 +48,20 @@ if __name__ == '__main__':
         rotate = False
         paname = ''
 
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    if(rotate):
+        fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
+    fields_array = fitsio.read(fields_file)
+
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
-    allocate_file = sdss_path.full('rsAllocation', plan=plan,
-                                   observatory=observatory)
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
-
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                    observatory=observatory)
+    targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
     full_targets = fitsio.read(targets_file)
 
     rsid2indx = dict()
@@ -84,8 +85,8 @@ if __name__ == '__main__':
         satisfied[xfer] = full_targets[xfer]
 
     count = 0
-    for indx in np.arange(len(allocate.field_array)):
-        fieldid = allocate.field_array['fieldid'][indx]
+    for indx in np.arange(len(fields_array)):
+        fieldid = fields_array['fieldid'][indx]
         if((fieldid % 10) == 0):
             print(fieldid)
 
@@ -93,6 +94,8 @@ if __name__ == '__main__':
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
+        field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
+                                                          'rsFieldAssignmentsOpen')
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
@@ -103,6 +106,13 @@ if __name__ == '__main__':
             assignments = None
 
         if(assignments is not None):
+            inopen = np.zeros(len(targets), dtype=bool)
+            for itarget, rsid in enumerate(targets['rsid']):
+                if(rsid in rsid2indx):
+                    inopen[itarget] = True
+            iinopen = np.where(inopen)[0]
+            targets = targets[iinopen]
+            assignments = assignments[iinopen]
             isat = np.array([rsid2indx[rsid] for rsid in targets['rsid']],
                             dtype=np.int32)
             satisfied['satisfied'][isat] = (satisfied['satisfied'][isat] +
@@ -116,7 +126,8 @@ if __name__ == '__main__':
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
-    satisfied_file = assigned_file.replace('rsAssignments', 'rsSatisfied')
+    satisfied_file = assigned_file.replace('rsAssignments',
+                                           'rsSatisfiedOpen')
     hdr = dict()
     hdr['STRATVER'] = robostrategy.__version__
     hdr['SCHEDVER'] = roboscheduler.__version__

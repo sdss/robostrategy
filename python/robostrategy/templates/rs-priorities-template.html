@@ -1,0 +1,41 @@
+<html><head>
+<style>
+    table, th, tr, td {border: 1px solid black}
+</style>
+<body>
+
+<table style="border: 1px solid black;" cellspacing=0px>
+    <thead>
+        <tr>
+            <th>Priority</th> <th>Carton</th> <th>Cadence</th>
+        </tr>
+    </thead>
+		<tbody>
+			{% for priority in priorities %}
+			{% for carton in priority.cartons %}
+			{% for cadence in carton.cadences %}
+			<tr>
+				{% if priority.priority == last_priority %}
+				<td></td>
+				{% else %}
+				<td>{{ priority.priority }}</td>
+				{% endif %}
+				{% if (priority.priority == last_priority) i %}
+				<td></td>
+				{% else %}
+				<td>{{ priority.priority }}</td>
+				{% endif %}
+				{% if priority.priority == last_priority %}
+				<td></td>
+				{% else %}
+				<td>{{ priority.priority }}</td>
+				{% endif %}
+			</tr>
+			{% set last_priority = priority.priority %}
+			{% set last_carton = carton.carton %}
+			{% set last_cadence = cadence.cadence %}
+			{% endfor %}
+     </tbody}
+</table>
+</body>
+</html>
