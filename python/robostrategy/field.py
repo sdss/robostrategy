@@ -2380,10 +2380,11 @@ class Field(object):
             indx = self.rsid2indx[rsid]
             nexp = clist.cadences[self.targets['cadence'][indx]].nexp_total
             robotIDs = np.array(tdict[rsid].validRobotIDs)
-            robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
             if((len(robotIDs) > 0) &
                (self.assignments['satisfied'][indx] == 0)):
+
+                robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
                 iexpgot = []
                 for epoch, iexp in zip(epochs, iexps):

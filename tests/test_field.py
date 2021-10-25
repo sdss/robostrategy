@@ -10,6 +10,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
             category='science', fiberType='BOSS', cadence='single_1x1'):
     t_dtype = np.dtype([('ra', np.float64),
                         ('dec', np.float64),
+                        ('epoch', np.float64),
                         ('delta_ra', np.float64),
                         ('delta_dec', np.float64),
                         ('priority', np.int32),
@@ -28,6 +29,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
         t['dec'] = 0. - 1.5 + 3.0 * np.random.random(nt)
     else:
         t['dec'] = dec
+    t['epoch'] = 2000.
     t['delta_ra'] = delta_ra
     t['delta_dec'] = delta_dec
     t['priority'] = 1
