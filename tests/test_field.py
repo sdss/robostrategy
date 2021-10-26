@@ -426,7 +426,7 @@ def test_satisfied_1():
     assert f.assignments['satisfied'][2] > 0
     assert f.assignments['satisfied'][3] > 0
 
-    f.unassign(rsid=0)
+    f.unassign(rsids=[0])
 
     assert f.assignments['robotID'][0, 0] == -1
     assert f.assignments['equivRobotID'][0, 0] == -1
@@ -452,7 +452,7 @@ def test_satisfied_1():
     assert f.assignments['satisfied'][2] > 0
     assert f.assignments['satisfied'][3] > 0
 
-    f.unassign(rsid=2)
+    f.unassign(rsids=[2])
 
     assert f.assignments['robotID'][0, 0] == -1
     assert f.assignments['equivRobotID'][0, 0] == -1
@@ -527,28 +527,28 @@ def test_satisfied_2():
 
     assert f.validate() == 0
 
-    f.unassign(rsid=1)
+    f.unassign(rsids=[1])
 
     assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
     assert f.assignments['satisfied'][3] == 0
 
-    f.unassign(rsid=2)
+    f.unassign(rsids=[2])
 
     assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] == 0
     assert f.assignments['satisfied'][3] == 0
 
-    f.unassign(rsid=3)
+    f.unassign(rsids=[3])
 
     assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
     assert f.assignments['satisfied'][3] == 0
 
-    f.unassign(rsid=0)
+    f.unassign(rsids=[0])
 
     assert f.assignments['satisfied'][0] == 0
     assert f.assignments['satisfied'][1] == 0
@@ -618,28 +618,28 @@ def test_satisfied_3():
 
     assert f.validate() == 0
 
-    f.unassign(rsid=1)
+    f.unassign(rsids=[1])
 
     assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
     assert f.assignments['satisfied'][3] == 0
 
-    f.unassign(rsid=2)
+    f.unassign(rsids=[2])
 
     assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] == 0
     assert f.assignments['satisfied'][3] == 0
 
-    f.unassign(rsid=3)
+    f.unassign(rsids=[3])
 
     assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
     assert f.assignments['satisfied'][3] == 0
 
-    f.unassign(rsid=0)
+    f.unassign(rsids=[0])
 
     assert f.assignments['satisfied'][0] == 0
     assert f.assignments['satisfied'][1] == 0
