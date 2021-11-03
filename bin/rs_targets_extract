@@ -104,6 +104,12 @@ if __name__ == '__main__':
     i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
     targets['cadence'][i4] = 'dark_2x2'
 
+    # Fudge open_fiber into science
+    iopen = np.where(targets['category'] == 'open_fiber')[0]
+    if(len(iopen) > 0):
+        print("Recategorizing {n} targets from open_fiber to science".format(n=len(iopen)))
+        targets['category'][iopen] = 'science'
+
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
 
