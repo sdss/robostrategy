@@ -16,6 +16,7 @@ import kaiju
 import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy
+import robostrategy.header
 import robostrategy.field as field
 import robostrategy.allocate
 import robostrategy.params as params
@@ -73,6 +74,8 @@ if __name__ == '__main__':
                                 ('ra', np.float64),
                                 ('dec', np.float64),
                                 ('cadence', np.unicode_, 30),
+                                ('allowed', np.int32),
+                                ('incadence', np.int32),
                                 ('satisfied', np.int32),
                                 ('assigned', np.int32),
                                 ('nexps', np.int32),
@@ -109,6 +112,14 @@ if __name__ == '__main__':
                                             assignments['satisfied'])
             satisfied['assigned'][isat] = (satisfied['assigned'][isat] +
                                            assignments['assigned'])
+            satisfied['incadence'][isat] = (satisfied['incadence'][isat] +
+                                            targets['incadence'])
+            if(len(assignments['allowed'].shape) > 1):
+                satisfied['allowed'][isat] = (satisfied['allowed'][isat] +
+                                              assignments['allowed'].sum(axis=1))
+            else:
+                satisfied['allowed'][isat] = (satisfied['allowed'][isat] +
+                                              assignments['allowed'])
             satisfied['nexps'][isat] = (satisfied['nexps'][isat] +
                                         assignments['nexps'])
             satisfied['nepochs'][isat] = (satisfied['nepochs'][isat] +
@@ -117,9 +128,6 @@ if __name__ == '__main__':
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
     satisfied_file = assigned_file.replace('rsAssignments', 'rsSatisfied')
-    hdr = dict()
-    hdr['STRATVER'] = robostrategy.__version__
-    hdr['SCHEDVER'] = roboscheduler.__version__
-    hdr['KAIJUVER'] = kaiju.__version__
+    hdr = robostrategy.header.rsheader()
     fitsio.write(satisfied_file, satisfied, header=hdr,
                  clobber=True)

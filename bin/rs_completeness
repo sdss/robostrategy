@@ -21,10 +21,56 @@ import healpy
 import fitsio
 import sdss_access.path
 import robostrategy
+import robostrategy.header
 import roboscheduler
 import kaiju
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def header_counts(hdr, ntargets, ngot, nallowed, fgot,
+                  ntargets_apo=None, ngot_apo=None, nallowed_apo=None, fgot_apo=None,
+                  ntargets_lco=None, ngot_lco=None, nallowed_lco=None, fgot_lco=None):
+    
+    hdr.append({'name': 'NTARGETS',
+                'value': ntargets,
+                'comment': 'number of targets'})
+    hdr.append({'name': 'NGOT',
+                'value': ngot,
+                'comment': 'number of satisfied targets'})
+    hdr.append({'name': 'NALLOWED',
+                'value': nallowed,
+                'comment': 'number of allowed targets'})
+    hdr.append({'name': 'FGOT',
+                'value': fgot,
+                'comment': 'fraction of satisfied targets'})
+    if(ntargets_apo is not None):
+        hdr.append({'name': 'NTAR_APO',
+                    'value': ntargets_apo,
+                    'comment': 'number of APO targets'})
+        hdr.append({'name': 'NGOT_APO',
+                    'value': ngot_apo,
+                    'comment': 'number of satisfied APO targets'})
+        hdr.append({'name': 'NALL_APO',
+                    'value': nallowed_apo,
+                    'comment': 'fraction of allowed APO targets'})
+        hdr.append({'name': 'FGOT_APO',
+                    'value': fgot_apo,
+                    'comment': 'fraction of satisfied APO targets'})
+        hdr.append({'name': 'NTAR_LCO',
+                    'value': ntargets_lco,
+                    'comment': 'number of LCO targets'})
+        hdr.append({'name': 'NGOT_LCO',
+                    'value': ngot_lco,
+                    'comment': 'number of satisfied LCO targets'})
+        hdr.append({'name': 'NALL_LCO',
+                    'value': nallowed_lco,
+                    'comment': 'fraction of allowed LCO targets'})
+        hdr.append({'name': 'FGOT_LCO',
+                    'value': fgot_lco,
+                    'comment': 'fraction of satisfied LCO targets'})
+
+    return(hdr)
 
 
 def make_map(hpix=None, got=None):
@@ -40,11 +86,10 @@ def make_map(hpix=None, got=None):
 
     return(ntargets_map, ngot_map, fgot_map)
 
-    hdr = dict()
-    hdr['STRATVER'] = robostrategy.__version__
-    hdr['SCHEDVER'] = roboscheduler.__version__
-    hdr['KAIJUVER'] = kaiju.__version__
-    hdr['NSIDE'] = nside
+    hdr = robostrategy.header.rsheader()
+    hdr.append({'name':'NSIDE',
+                'value':nside,
+                'comment':'NSIDE of healpix map'})
     fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
     fitsio.write(completeness_file, ngot_map, clobber=False)
     fitsio.write(completeness_file, fgot_map, clobber=False)
@@ -87,16 +132,24 @@ if __name__ == '__main__':
                                     np.dtype([('satisfied_lco', np.int32),
                                               ('assigned_lco', np.int32),
                                               ('covered_lco', np.int32),
+                                              ('allowed_lco', np.int32),
+                                              ('incadence_lco', np.int32),
                                               ('satisfied_apo', np.int32),
                                               ('assigned_apo', np.int32),
                                               ('covered_apo', np.int32),
+                                              ('allowed_apo', np.int32),
+                                              ('incadence_apo', np.int32),
                                               ('satisfied', np.int32),
                                               ('assigned', np.int32),
+                                              ('allowed', np.int32),
+                                              ('incadence', np.int32),
                                               ('covered', np.int32)]).descr)
     else:
         outtargets_dtype = np.dtype(targets.dtype.descr +
                                     np.dtype([('satisfied', np.int32),
                                               ('assigned', np.int32),
+                                              ('allowed', np.int32),
+                                              ('incadence', np.int32),
                                               ('covered', np.int32)]).descr)
     outtargets = np.zeros(len(targets), dtype=outtargets_dtype)
     for name in targets.dtype.names:
@@ -114,7 +167,7 @@ if __name__ == '__main__':
         icovered = np.where(targets_covered['within_hex'] > 0)[0]
         outtargets['covered'][icovered] = outtargets['covered'][icovered] + 1
         if(both):
-            outtargets['covered_{obs}'.format(obs=obs)] = 1
+            outtargets['covered_{obs}'.format(obs=obs)][icovered] = 1
 
     cadences = targets['cadence']
     base_cadences = np.array([c.split('-')[0] for c in cadences])
@@ -140,14 +193,24 @@ if __name__ == '__main__':
                                    satisfied['satisfied'])
         outtargets['assigned'] = (outtargets['assigned'] +
                                   satisfied['assigned'])
+        outtargets['allowed'] = (outtargets['allowed'] +
+                                 satisfied['allowed'])
+        outtargets['incadence'] = (outtargets['incadence'] +
+                                   satisfied['incadence'])
 
         if(both):
             sname = 'satisfied_{obs}'.format(obs=obs)
             aname = 'assigned_{obs}'.format(obs=obs)
+            lname = 'allowed_{obs}'.format(obs=obs)
+            iname = 'incadence_{obs}'.format(obs=obs)
             outtargets[sname] = (outtargets[sname] +
                                  satisfied['satisfied'])
             outtargets[aname] = (outtargets[aname] +
                                  satisfied['assigned'])
+            outtargets[lname] = (outtargets[lname] +
+                                 satisfied['allowed'])
+            outtargets[iname] = (outtargets[iname] +
+                                 satisfied['incadence'])
 
     iboss = np.where((outtargets['fiberType'] == 'BOSS') &
                      (outtargets['category'] == 'science') &
@@ -189,48 +252,69 @@ if __name__ == '__main__':
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
                                                 got=(outtargets['satisfied'][icadence] > 0))
 
-    ntargets = len(np.where(outtargets['covered'][icadence])[0])
-    ngot = np.int32((outtargets['satisfied'][icadence] > 0).sum())
+    icovered = np.where(outtargets['covered'][icadence])[0]
+    ntargets = len(icovered)
+    nallowed = np.int32((outtargets['allowed'][icadence[icovered]] > 0).sum())
+    ngot = np.int32((outtargets['satisfied'][icadence[icovered]] > 0).sum())
     if(ntargets > 0):
         fgot = np.float32(ngot) / np.float32(ntargets)
     else:
         fgot = np.float32(-1.)
 
     if(both):
-        ntargets_apo = len(np.where(outtargets['covered_apo'][icadence])[0])
-        ngot_apo = np.int32((outtargets['satisfied_apo'][icadence] > 0).sum())
+        icovered = np.where(outtargets['covered_apo'][icadence])[0]
+        ntargets_apo = len(icovered)
+        nallowed_apo = np.int32((outtargets['allowed_apo'][icadence[icovered]] > 0).sum())
+        ngot_apo = np.int32((outtargets['satisfied_apo'][icadence[icovered]] > 0).sum())
         if(ntargets_apo > 0):
             fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
         else:
             fgot_apo = np.float32(-1.)
-        ntargets_lco = len(np.where(outtargets['covered_lco'][icadence])[0])
-        ngot_lco = np.int32((outtargets['satisfied_lco'][icadence] > 0).sum())
+        icovered = np.where(outtargets['covered_lco'][icadence])[0]
+        ntargets_lco = len(icovered)
+        nallowed_lco = np.int32((outtargets['allowed_lco'][icadence[icovered]] > 0).sum())
+        ngot_lco = np.int32((outtargets['satisfied_lco'][icadence[icovered]] > 0).sum())
         if(ntargets_lco > 0):
             fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
         else:
             fgot_lco = np.float32(-1.)
+    else:
+        ntargets_apo = None
+        ngot_apo = None
+        nallowed_apo = None
+        fgot_apo = None
+        ntargets_lco = None
+        ngot_lco = None
+        nallowed_lco = None
+        fgot_lco = None
 
-    hdr = dict()
-    hdr['STRATVER'] = robostrategy.__version__
-    hdr['SCHEDVER'] = roboscheduler.__version__
-    hdr['KAIJUVER'] = kaiju.__version__
-    hdr['NSIDE'] = nside
-    hdr['NCADENCE'] = len(unique_base_cadences)
-    hdr['NCARTON'] = len(unique_cartons)
-    hdr['NTARGETS'] = ntargets
-    hdr['NTBOSS'] = nboss
-    hdr['NTAPOGEE'] = napogee
-    hdr['NGBOSS'] = ngotboss
-    hdr['NGAPOGEE'] = ngotapogee
-    hdr['NGOT'] = ngot
-    hdr['FGOT'] = fgot
-    if(both):
-        hdr['NTAR_APO'] = ntargets_apo
-        hdr['NGOT_APO'] = ngot_apo
-        hdr['FGOT_APO'] = fgot_apo
-        hdr['NTAR_LCO'] = ntargets_lco
-        hdr['NGOT_LCO'] = ngot_lco
-        hdr['FGOT_LCO'] = fgot_lco
+    hdr = robostrategy.header.rsheader()
+    hdr.append({'name':'NSIDE',
+                'value':nside,
+                'comment':'NSIDE of healpix map'})
+    hdr.append({'name':'NCADENCE',
+                'value':len(unique_base_cadences),
+                'comment':'number of cadence groups'})
+    hdr.append({'name':'NCARTON',
+                'value':len(unique_cartons),
+                'comment':'number of cartons'})
+    hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot,
+                        ntargets_apo=ntargets_apo, ngot_apo=ngot_apo,
+                        nallowed_apo=nallowed_apo, fgot_apo=fgot_apo,
+                        ntargets_lco=ntargets_lco, ngot_lco=ngot_lco,
+                        nallowed_lco=nallowed_lco, fgot_lco=fgot_lco)
+    hdr.append({'name':'NTBOSS',
+                'value':nboss,
+                'comment':'# covered unique BOSS science catalogids'})
+    hdr.append({'name':'NTAPOGEE',
+                'value':napogee,
+                'comment':'# covered unique APOGEE science catalogids'})
+    hdr.append({'name':'NGBOSS',
+                'value':ngotboss,
+                'comment':'# gotten unique BOSS science catalogid'})
+    hdr.append({'name':'NGAPOGEE',
+                'value':ngotapogee,
+                'comment':'# gotten unique APOGEE science catalogid'})
     fitsio.write(completeness_file, outtargets, header=hdr, clobber=True)
     fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=False)
     fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
@@ -257,42 +341,43 @@ if __name__ == '__main__':
         ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
                                                     got=(outtargets['satisfied'][icadence] > 0))
 
-        ntargets = len(np.where(outtargets['covered'][icadence])[0])
-        ngot = np.int32((outtargets['satisfied'][icadence] > 0).sum())
+        icovered = np.where(outtargets['covered'][icadence])[0]
+        ntargets = len(icovered)
+        ngot = np.int32((outtargets['satisfied'][icadence[icovered]] > 0).sum())
+        nallowed = np.int32((outtargets['allowed'][icadence[icovered]] > 0).sum())
         if(ntargets > 0):
             fgot = np.float32(ngot) / np.float32(ntargets)
         else:
             fgot = np.float32(-1.)
 
         if(both):
-            ntargets_apo = len(np.where(outtargets['covered_apo'][icadence])[0])
-            ngot_apo = np.int32((outtargets['satisfied_apo'][icadence] > 0).sum())
+            icovered = np.where(outtargets['covered_apo'][icadence])[0]
+            ntargets_apo = len(icovered)
+            nallowed_apo = np.int32((outtargets['allowed_apo'][icadence[icovered]] > 0).sum())
+            ngot_apo = np.int32((outtargets['satisfied_apo'][icadence[icovered]] > 0).sum())
             if(ntargets_apo > 0):
                 fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
             else:
                 fgot_apo = np.float32(-1.)
-            ntargets_lco = len(np.where(outtargets['covered_lco'][icadence])[0])
-            ngot_lco = np.int32((outtargets['satisfied_lco'][icadence] > 0).sum())
+            icovered = np.where(outtargets['covered_lco'][icadence])[0]
+            ntargets_lco = len(icovered)
+            nallowed_lco = np.int32((outtargets['allowed_lco'][icadence[icovered]] > 0).sum())
+            ngot_lco = np.int32((outtargets['satisfied_lco'][icadence[icovered]] > 0).sum())
             if(ntargets_lco > 0):
                 fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
             else:
                 fgot_lco = np.float32(-1.)
 
-        hdr = dict()
-        hdr['STRATVER'] = robostrategy.__version__
-        hdr['SCHEDVER'] = roboscheduler.__version__
-        hdr['KAIJUVER'] = kaiju.__version__
-        hdr['CADENCE'] = unique_base_cadence
-        hdr['NTARGETS'] = ntargets
-        hdr['NGOT'] = ngot
-        hdr['FGOT'] = fgot
-        if(both):
-            hdr['NTAR_APO'] = ntargets_apo
-            hdr['NGOT_APO'] = ngot_apo
-            hdr['FGOT_APO'] = fgot_apo
-            hdr['NTAR_LCO'] = ntargets_lco
-            hdr['NGOT_LCO'] = ngot_lco
-            hdr['FGOT_LCO'] = fgot_lco
+        hdr = robostrategy.header.rsheader()
+        hdr.append({'name': 'CADENCE',
+                    'value': unique_base_cadence,
+                    'comment': 'cadence group in this HDU'})
+        hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot,
+                            ntargets_apo=ntargets_apo, ngot_apo=ngot_apo,
+                            nallowed_apo=nallowed_apo, fgot_apo=fgot_apo,
+                            ntargets_lco=ntargets_lco, ngot_lco=ngot_lco,
+                            nallowed_lco=nallowed_lco, fgot_lco=fgot_lco)
+
         fitsio.write(completeness_file, ntargets_map, header=hdr,
                      clobber=False)
         fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
@@ -306,42 +391,43 @@ if __name__ == '__main__':
         ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icarton],
                                                     got=outtargets['satisfied'][icarton] > 0)
 
-        ntargets = len(np.where(outtargets['covered'][icarton])[0])
-        ngot = np.int32((outtargets['satisfied'][icarton] > 0).sum())
+        icovered = np.where(outtargets['covered'][icarton])[0]
+        ntargets = len(icovered)
+        nallowed = np.int32((outtargets['allowed'][icarton[icovered]] > 0).sum())
+        ngot = np.int32((outtargets['satisfied'][icarton[icovered]] > 0).sum())
         if(ntargets > 0):
             fgot = np.float32(ngot) / np.float32(ntargets)
         else:
             fgot = np.float32(-1.)
 
         if(both):
-            ntargets_apo = len(np.where(outtargets['covered_apo'][icarton])[0])
-            ngot_apo = np.int32((outtargets['satisfied_apo'][icarton] > 0).sum())
+            icovered = np.where(outtargets['covered_apo'][icarton])[0]
+            ntargets_apo = len(icovered)
+            ngot_apo = np.int32((outtargets['satisfied_apo'][icarton[icovered]] > 0).sum())
+            nallowed_apo = np.int32((outtargets['allowed_apo'][icarton[icovered]] > 0).sum())
             if(ntargets_apo > 0):
                 fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
             else:
                 fgot_apo = np.float32(-1.)
-            ntargets_lco = len(np.where(outtargets['covered_lco'][icarton])[0])
-            ngot_lco = np.int32((outtargets['satisfied_lco'][icarton] > 0).sum())
+            icovered = np.where(outtargets['covered_lco'][icarton])[0]
+            ntargets_lco = len(icovered)
+            ngot_lco = np.int32((outtargets['satisfied_lco'][icarton[icovered]] > 0).sum())
+            nallowed_lco = np.int32((outtargets['allowed_lco'][icarton[icovered]] > 0).sum())
             if(ntargets_lco > 0):
                 fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
             else:
                 fgot_lco = np.float32(-1.)
 
-        hdr = dict()
-        hdr['STRATVER'] = robostrategy.__version__
-        hdr['SCHEDVER'] = roboscheduler.__version__
-        hdr['KAIJUVER'] = kaiju.__version__
-        hdr['CARTON'] = unique_carton
-        hdr['NTARGETS'] = ntargets
-        hdr['NGOT'] = ngot
-        hdr['FGOT'] = fgot
-        if(both):
-            hdr['NTAR_APO'] = ntargets_apo
-            hdr['NGOT_APO'] = ngot_apo
-            hdr['FGOT_APO'] = fgot_apo
-            hdr['NTAR_LCO'] = ntargets_lco
-            hdr['NGOT_LCO'] = ngot_lco
-            hdr['FGOT_LCO'] = fgot_lco
+        hdr = robostrategy.header.rsheader()
+        hdr.append({'name': 'CARTON',
+                    'value': unique_carton,
+                    'comment': 'carton in this HDU'})
+        hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot,
+                            ntargets_apo=ntargets_apo, ngot_apo=ngot_apo,
+                            nallowed_apo=nallowed_apo, fgot_apo=fgot_apo,
+                            ntargets_lco=ntargets_lco, ngot_lco=ngot_lco,
+                            nallowed_lco=nallowed_lco, fgot_lco=fgot_lco)
+
         fitsio.write(completeness_file, ntargets_map, header=hdr,
                      clobber=False)
         fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)

@@ -177,6 +177,7 @@ if __name__ == '__main__':
 
         cg['ntargets'] = hdr['NTARGETS']
         cg['ngot'] = hdr['NGOT']
+        cg['nallowed'] = hdr['NALLOWED']
         cg['fgot'] = "{fgot:4.3f}".format(fgot=hdr['FGOT'])
         
         if(cg['name'] in carton_description):
