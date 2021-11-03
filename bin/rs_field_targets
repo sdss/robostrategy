@@ -21,6 +21,7 @@ import healpy
 import fitsio
 import sdss_access.path
 import robostrategy
+import robostrategy.header
 import roboscheduler
 import kaiju
 import robostrategy.field as field
@@ -169,9 +170,6 @@ if __name__ == '__main__':
     targets_covered_file = os.path.join(os.path.dirname(targets_file),
                                         targets_covered_base)
 
-    hdr = dict()
-    hdr['STRATVER'] = robostrategy.__version__
-    hdr['SCHEDVER'] = roboscheduler.__version__
-    hdr['KAIJUVER'] = kaiju.__version__
+    hdr = robostrategy.header.rsheader()
     fitsio.write(targets_covered_file, targets_covered,
                  header=hdr, clobber=True)

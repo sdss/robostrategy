@@ -24,6 +24,7 @@ import fitsio
 import sdss_access.path
 import roboscheduler
 import robostrategy
+import robostrategy.header
 import robostrategy.field as field
 import robostrategy.params as params
 
@@ -168,12 +169,14 @@ if __name__ == '__main__':
             icad = np.where(unique_cadences == field_cadence)[0]
             cadence_mask[indx, icad] = 1
 
-    hdr = dict()
-    hdr['STRATVER'] = robostrategy.__version__
-    hdr['SCHEDVER'] = roboscheduler.__version__
-    hdr['NCAD'] = len(unique_cadences)
+    hdr = robostrategy.header.rsheader()
+    hdr.append({'name':'NCAD',
+                'value':len(unique_cadences),
+                'comment':'number of unique cadences'})
     for indx, cad in zip(np.arange(len(unique_cadences)), unique_cadences):
-        hdr['CAD{indx}'.format(indx=indx)] = cad
+        hdr.append({'name':'CAD{indx}'.format(indx=indx),
+                    'value':cad,
+                    'comment':'cadence name'})
 
     field_cadence_file = sdss_path.full('rsFieldCadences',
                                         plan=plan, observatory=observatory)

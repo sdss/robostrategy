@@ -19,15 +19,14 @@ import sys
 import numpy as np
 import fitsio
 import robostrategy
+import robostrategy.header
 import roboscheduler
 import robostrategy.field as field
 import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdss_access.path
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 def make_count_entry(f, fields_entry, utcadences,
@@ -138,9 +137,7 @@ if __name__ == '__main__':
                                                         obs=observatory)
     count_file = os.path.join(outdir, cfilebase)
 
-    hdr = dict()
-    hdr['STRATVER'] = robostrategy.__version__
-    hdr['SCHEDVER'] = roboscheduler.__version__
+    hdr = robostrategy.header.rsheader()
     fitsio.write(count_file, count_array, header=hdr,
                  clobber=True)
 

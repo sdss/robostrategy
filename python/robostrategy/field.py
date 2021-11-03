@@ -20,6 +20,7 @@ import kaiju
 import kaiju.robotGrid
 import robostrategy
 import robostrategy.targets
+import robostrategy.header
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
@@ -1235,33 +1236,62 @@ class Field(object):
         HDU1 has targets array
         HDU1 has assignments array
 """
-        hdr = dict()
-        hdr['STRATVER'] = robostrategy.__version__
-        hdr['SCHEDVER'] = roboscheduler.__version__
-        hdr['KAIJUVER'] = kaiju.__version__
-        hdr['RACEN'] = self.racen
-        hdr['DECCEN'] = self.deccen
-        hdr['OBS'] = self.observatory
-        hdr['PA'] = self.pa
+        hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'RACEN',
+                    'value':self.racen,
+                    'comment':'RA J2000 center of field (deg)'})
+        hdr.append({'name':'DECCEN',
+                    'value':self.deccen,
+                    'comment':'Dec J2000 center of field (deg)'})
+        hdr.append({'name':'OBS',
+                    'value':self.observatory,
+                    'comment':'observatory used for field'})
+        hdr.append({'name':'PA',
+                    'value':self.pa,
+                    'comment':'position angle (deg E of N)'})
         if(self.field_cadence is not None):
-            hdr['FCADENCE'] = self.field_cadence.name
-            hdr['NEXP'] = self.field_cadence.nexp_total
-            hdr['DESMODE'] = ' '.join(list(self.design_mode[self.field_cadence.epochs]))
+            hdr.append({'name':'FCADENCE',
+                        'value':self.field_cadence.name,
+                        'comment':'field cadence'})
+            hdr.append({'name':'NEXP',
+                        'value':self.field_cadence.nexp_total,
+                        'comment':'number of exposures in cadence'})
+            dmodelist = ' '.join(list(self.design_mode[self.field_cadence.epochs]))
+            hdr.append({'name':'DESMODE',
+                        'value':dmodelist,
+                        'comment':'list of design modes'})
         else:
-            hdr['FCADENCE'] = 'none'
-        hdr['CBUFFER'] = self.collisionBuffer
-        hdr['NOCALIB'] = self.nocalib
+            hdr.append({'name':'FCADENCE',
+                        'value':'none',
+                        'comment':'field cadence'})
+        hdr.append({'name':'CBUFFER',
+                    'value':self.collisionBuffer,
+                    'comment':'kaiju collision buffer'})
+        hdr.append({'name':'NOCALIB',
+                    'value':self.nocalib,
+                    'comment':'True if this field ignores calibrations'})
         if(self.nocalib is False):
             for indx, rc in enumerate(self.required_calibrations):
                 name = 'RCNAME{indx}'.format(indx=indx)
                 num = 'RCNUM{indx}'.format(indx=indx)
-                hdr[name] = rc
-                hdr[num] = ' '.join([str(int(n)) for n in self.required_calibrations[rc]])
+                hdr.append({'name':name,
+                            'value':rc,
+                            'comment':'calibration category'})
+                ns = ' '.join([str(int(n)) for n in self.required_calibrations[rc]])
+                hdr.append({'name':num,
+                            'value':ns,
+                            'comment':'number required per exposure'})
             for indx, ac in enumerate(self.achievable_calibrations):
                 name = 'ACNAME{indx}'.format(indx=indx)
                 num = 'ACNUM{indx}'.format(indx=indx)
-                hdr[name] = ac
-                hdr[num] = ' '.join([str(int(n)) for n in self.achievable_calibrations[ac]])
+                hdr.append({'name':name,
+                            'value':ac,
+                            'comment':'calibration category'})
+                ns = ' '.join([str(int(n)) for n in self.achievable_calibrations[ac]])
+                hdr.append({'name':num,
+                            'value':ns,
+                            'comment':'number achievable per exposure'})
+
         fitsio.write(filename, None, header=hdr, clobber=True)
         fitsio.write(filename, self.targets, extname='TARGET')
         if(self.assignments is not None):
