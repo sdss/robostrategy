@@ -22,6 +22,7 @@ import astropy.coordinates as coordinates
 import astropy.units as units
 import fitsio
 import robostrategy
+import robostrategy.header
 import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -70,9 +71,7 @@ if __name__ == '__main__':
     utcartons = np.unique(np.array(tcartons))
     nutcartons = len(utcartons)
 
-    hd = dict()
-    hd['STRATVER'] = robostrategy.__version__
-    hd['SCHEDVER'] = roboscheduler.__version__
+    hd = robostrategy.header.rsheader()
 
     cadence_dtype = [('cadence', np.unicode_, 30)]
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)

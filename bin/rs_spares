@@ -21,6 +21,7 @@ import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import robostrategy.allocate
+import robostrategy.header
 import sdss_access.path
 import fitsio
 
@@ -132,7 +133,8 @@ def count_spares(indx):
         if(opentargets):
             base = 'rsFieldSparesOpen'
         spares_file = 'targets/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base)
-        fitsio.write(spares_file, spare, clobber=True)
+        hdr = robostrategy.header.rsheader()
+        fitsio.write(spares_file, spare, header=hdr, clobber=True)
 
 if __name__ == '__main__':
 
@@ -229,10 +231,12 @@ if __name__ == '__main__':
     if(opentargets):
         base = 'rsSparesOpen'
     outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
-    fitsio.write(outfile, spares, clobber=True)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(outfile, spares, header=hdr, clobber=True)
 
     base = 'rsSparesExp'
     if(opentargets):
         base = 'rsSparesExpOpen'
     outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
-    fitsio.write(outfile, spares_exp, clobber=True)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(outfile, spares_exp, header=hdr, clobber=True)

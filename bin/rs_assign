@@ -23,6 +23,7 @@ import astropy.units as units
 import fitsio
 import kaiju
 import robostrategy
+import robostrategy.header
 import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -218,10 +219,7 @@ def field_options(ifield):
         f.clear_field_cadence()
 
     # Write out at each field to allow resumption
-    hd = dict()
-    hd['STRATVER'] = robostrategy.__version__
-    hd['SCHEDVER'] = roboscheduler.__version__
-    hd['KAIJUVER'] = kaiju.__version__
+    hd = robostrategy.header.rsheader()
     fitsio.write(options_file, assign_array, header=hd, clobber=True)
 
     cadence_dtype = [('cadence', np.unicode_, 30)]
@@ -373,10 +371,7 @@ if __name__ == '__main__':
 
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
-    hd = dict()
-    hd['STRATVER'] = robostrategy.__version__
-    hd['SCHEDVER'] = roboscheduler.__version__
-    hd['KAIJUVER'] = kaiju.__version__
+    hd = robostrategy.header.rsheader()
     fitsio.write(options_file, assign_all, header=hd, clobber=True)
 
     cadence_dtype = [('cadence', np.unicode_, 30)]
