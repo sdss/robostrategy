@@ -1834,6 +1834,7 @@ class Field(object):
 
         validRobotIDs = self.masterTargetDict[rsid].validRobotIDs
         validRobotIDs = np.array(validRobotIDs, dtype=np.int32)
+        np.random.shuffle(validRobotIDs)
 
         if(len(validRobotIDs) == 0):
             available = dict()
@@ -1892,6 +1893,7 @@ class Field(object):
                     # If this robot was good, then let's just return it
                     if(first):
                         break
+
             availableRobotIDs[iepoch] = arlist
             nAvailableRobotIDs[iepoch] = len(arlist)
             frees[iepoch] = flist
@@ -2352,6 +2354,7 @@ class Field(object):
             if((len(robotIDs) > 0) &
                (self.assignments['satisfied'][indx] == 0)):
 
+                np.random.shuffle(robotIDs)
                 robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
                 gotem = False
@@ -2408,6 +2411,7 @@ class Field(object):
             if((len(robotIDs) > 0) &
                (self.assignments['satisfied'][indx] == 0)):
 
+                np.random.shuffle(robotIDs)
                 robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
                 iexpgot = []
@@ -2634,7 +2638,9 @@ class Field(object):
         
         icalib = np.where(self._is_calibration &
                           (self.targets['rsassign'] != 0))[0]
-        self.assign_cadences(rsids=self.targets['rsid'][icalib])
+        rsids = self.targets['rsid'][icalib]
+        np.random.shuffle(rsids)
+        self.assign_cadences(rsids=rsids)
         self._set_has_spare_calib()
         if(self.verbose):
             print("fieldid {fid}:   (done assigning calibrations)".format(fid=self.fieldid), flush=True)
