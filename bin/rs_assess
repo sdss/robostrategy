@@ -64,3 +64,4 @@ if __name__ == '__main__':
     f = field.Field(filename=field_target_file)
 
     print(f.assess())
+    print(f.validate())
