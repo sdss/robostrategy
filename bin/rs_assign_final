@@ -210,6 +210,9 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
+                        help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -218,6 +221,7 @@ if __name__ == '__main__':
     end = args.end
     coordinate = args.coordinate
     noclobber = args.noclobber
+    nomultiprocess = args.nomultiprocess
     print(time.ctime(time.time()))
 
     rsParams = params.RobostrategyParams(plan=plan)
@@ -258,8 +262,12 @@ if __name__ == '__main__':
                                                                    ikeep,observatory=observatory)
 
         np.random.shuffle(parallel_ids)
-        with multiprocessing.Pool() as pool:
-            pool.map(assign_field, parallel_ids)
+        if(nomultiprocess):
+            for i in parallel_ids:
+                assign_field(i)
+        else:
+            with multiprocessing.Pool() as pool:
+                pool.map(assign_field, parallel_ids)
 
         print("Identifying duplicate targets")
         print(time.ctime(time.time()))
@@ -281,7 +289,12 @@ if __name__ == '__main__':
             assign_field(i)
     else:
         np.random.shuffle(ikeep)
-        with multiprocessing.Pool() as pool:
-            pool.map(assign_field, ikeep)
+        if(nomultiprocess):
+            for i in ikeep:
+                assign_field(i)
+        else:
+            with multiprocessing.Pool() as pool:
+                pool.map(assign_field, ikeep)
+
     print('DONE: rs_assign_final')
     print(time.ctime(time.time()))
