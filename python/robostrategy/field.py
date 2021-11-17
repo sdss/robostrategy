@@ -2034,13 +2034,13 @@ class Field(object):
                 self._set_assigned(itarget=self.rsid2indx[rsid])
 
         if(reset_satisfied | reset_count):
-            self._set_equiv(rsids=[rsid])
+            self._set_equiv(rsids=rsids)
 
         if(reset_satisfied):
-            self._set_satisfied(rsids=[rsid], reset_equiv=False)
+            self._set_satisfied(rsids=rsids, reset_equiv=False)
 
         if(reset_count):
-            self._set_count(rsids=[rsid], reset_equiv=False)
+            self._set_count(rsids=rsids, reset_equiv=False)
 
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
