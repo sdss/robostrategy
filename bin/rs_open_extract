@@ -21,8 +21,8 @@ import numpy as np
 import fitsio
 import robostrategy
 import roboscheduler.cadence
-import robostrategy.params as params
 import robostrategy.targets
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
@@ -61,38 +61,28 @@ if __name__ == '__main__':
     rsParams = params.RobostrategyParams(plan=plan)
 
     nt = 0
-    for carton in rsParams.cfg['Cartons']:
-        version = rsParams.cfg['Cartons'][carton]
+    for carton in rsParams.cfg['CartonsOpen']:
+        version = rsParams.cfg['CartonsOpen'][carton]
         nt = nt + robostrategy.targets.get_targets(carton, version,
                                                    justcount=True, c2c=c2c)
 
-    for carton in rsParams.cfg['CartonsExtra']:
-        version = rsParams.cfg['CartonsExtra'][carton]
-        if(carton in rsParams.cfg['Cartons']):
-            print("Duplicate carton in CartonsExtra! Ignoring!")
-            continue
-        nt = nt + robostrategy.targets.get_targets(carton, version,
-                                                   justcount=True, c2c=c2c)
+    adjust = dict()
+    if('CartonsOpenPriorityAdjust' in rsParams.cfg):
+        for carton in rsParams.cfg['CartonsOpenPriorityAdjust']:
+            adjust[carton] = np.float32(rsParams.cfg.get('CartonsOpenPriorityAdjust',
+                                                         carton))
 
     targets = np.zeros(nt, dtype=robostrategy.targets.target_dtype)
 
     nt = 0
-    for carton in rsParams.cfg['Cartons']:
-        version = rsParams.cfg['Cartons'][carton]
+    for carton in rsParams.cfg['CartonsOpen']:
+        version = rsParams.cfg['CartonsOpen'][carton]
         tmp_targets = robostrategy.targets.get_targets(carton, version, c2c=c2c)
         if(tmp_targets is not None):
-            tmp_targets['rsassign'] = 1
-            targets[nt:nt + len(tmp_targets)] = tmp_targets
-            nt = nt + len(tmp_targets)
-
-    for carton in rsParams.cfg['CartonsExtra']:
-        version = rsParams.cfg['CartonsExtra'][carton]
-        if(carton in rsParams.cfg['Cartons']):
-            print("Duplicate carton in CartonsExtra! Ignoring!")
-            continue
-        tmp_targets = robostrategy.targets.get_targets(carton, version, c2c=c2c)
-        if(tmp_targets is not None):
-            tmp_targets['rsassign'] = 0
+            tmp_targets['rsassign'] = 2
+            if(carton in adjust):
+                tmp_targets['priority'] = (tmp_targets['priority'] +
+                                           adjust[carton])
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
@@ -100,19 +90,12 @@ if __name__ == '__main__':
         print("Lost some targets ... hope that is expected!")
         targets.resize(nt)
 
-    # FUDGE dark_1x4 to dark_2x2
-    i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
-    targets['cadence'][i4] = 'dark_2x2'
-
-    # Fudge open_fiber into science
-    iopen = np.where(targets['category'] == 'open_fiber')[0]
-    if(len(iopen) > 0):
-        print("Recategorizing {n} targets from open_fiber to science".format(n=len(iopen)))
-        targets['category'][iopen] = 'science'
-
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
+    open_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
+
+    targets['category'] = 'science'
 
     hd = dict()
     hd['STRATVER'] = robostrategy.__version__
-    fitsio.write(targets_file, targets, header=hd, clobber=True)
+    fitsio.write(open_file, targets, header=hd, clobber=True)

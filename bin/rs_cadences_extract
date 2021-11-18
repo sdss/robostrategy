@@ -77,7 +77,7 @@ if __name__ == '__main__':
         if('version' in rsParams.cfg['CadenceVersions']):
             version = rsParams.cfg.get('CadenceVersions', 'version')
 
-    cadencelist = cadence.CadenceList()
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadencelist.reset()
     cadencelist.fromdb(version=version)
 

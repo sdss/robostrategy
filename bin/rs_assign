@@ -23,6 +23,7 @@ import astropy.units as units
 import fitsio
 import kaiju
 import robostrategy
+import robostrategy.header
 import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
@@ -30,11 +31,9 @@ import robostrategy.params as params
 import sdss_access.path
 import multiprocessing
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir  # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
-cadencelist = cadence.CadenceList()
+cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 noclobber = False
 
@@ -220,10 +219,7 @@ def field_options(ifield):
         f.clear_field_cadence()
 
     # Write out at each field to allow resumption
-    hd = dict()
-    hd['STRATVER'] = robostrategy.__version__
-    hd['SCHEDVER'] = roboscheduler.__version__
-    hd['KAIJUVER'] = kaiju.__version__
+    hd = robostrategy.header.rsheader()
     fitsio.write(options_file, assign_array, header=hd, clobber=True)
 
     cadence_dtype = [('cadence', np.unicode_, 30)]
@@ -346,7 +342,7 @@ if __name__ == '__main__':
     ikeep = np.where((fields_array['fieldid'] >= start) &
                      (fields_array['fieldid'] <= end))[0]
 
-    if(len(ikeep) > 10):
+    if(len(ikeep) > 1):
         with multiprocessing.Pool() as pool:
             pool.map(field_options, ikeep)
     else:
@@ -375,10 +371,7 @@ if __name__ == '__main__':
 
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
-    hd = dict()
-    hd['STRATVER'] = robostrategy.__version__
-    hd['SCHEDVER'] = roboscheduler.__version__
-    hd['KAIJUVER'] = kaiju.__version__
+    hd = robostrategy.header.rsheader()
     fitsio.write(options_file, assign_all, header=hd, clobber=True)
 
     cadence_dtype = [('cadence', np.unicode_, 30)]

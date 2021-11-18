@@ -8,6 +8,7 @@
 import os
 import re
 import random
+import datetime
 import numpy as np
 import fitsio
 import collections
@@ -19,6 +20,8 @@ import roboscheduler.cadence
 import kaiju
 import kaiju.robotGrid
 import robostrategy
+import robostrategy.targets
+import robostrategy.header
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
@@ -43,33 +46,11 @@ def interlist(list1, list2):
 
 
 # Type for targets array
-targets_dtype = np.dtype([('ra', np.float64),
-                          ('dec', np.float64),
-                          ('epoch', np.float32),
-                          ('pmra', np.float32),
-                          ('pmdec', np.float32),
-                          ('parallax', np.float32),
-                          ('lambda_eff', np.float32),
-                          ('delta_ra', np.float64),
-                          ('delta_dec', np.float64),
-                          ('magnitude', np.float32, 7),
-                          ('x', np.float64),
-                          ('y', np.float64),
-                          ('within', np.int32),
-                          ('incadence', np.int32),
-                          ('priority', np.int32),
-                          ('value', np.float32),
-                          ('program', np.unicode_, 30),
-                          ('carton', np.unicode_, 50),
-                          ('carton_pk', np.int32),
-                          ('category', np.unicode_, 30),
-                          ('cadence', np.unicode_, 30),
-                          ('fiberType', np.unicode_, 10),
-                          ('catalogid', np.int64),
-                          ('carton_to_target_pk', np.int64),
-                          ('rsid', np.int64),
-                          ('target_pk', np.int64),
-                          ('rsassign', np.int32)])
+targets_dtype = robostrategy.targets.target_dtype
+targets_dtype = targets_dtype + [('x', np.float64),
+                                 ('y', np.float64),
+                                 ('within', np.int32),
+                                 ('incadence', np.int32)]
 
 # Dictionary defining meaning of flags
 _flagdict = {'CADENCE_INCONSISTENT': 1,
@@ -92,7 +73,7 @@ Dependencies:
 """
 
 # Establish access to the CadenceList singleton
-clist = roboscheduler.cadence.CadenceList()
+clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 class Field(object):
     """Field class
@@ -138,6 +119,9 @@ class Field(object):
     verbose : bool
         if True, issue a lot of output statements
 
+    veryverbose : bool
+        if True, really issue a lot of output statements
+
     Attributes:
     ----------
 
@@ -156,7 +140,7 @@ class Field(object):
     field_cadence : Cadence object
         cadence associated with field
 
-    design_mode : list of str
+    design_mode : np.array of str
         keys to DesignModeDict for each exposure
 
     collisionBuffer : float
@@ -222,6 +206,9 @@ class Field(object):
     verbose : bool
         if True, issue a lot of output statements
 
+    veryverbose : bool
+        if True, really issue a lot of output statements
+
     Notes:
     -----
 
@@ -230,8 +217,9 @@ class Field(object):
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
-                 verbose=False):
+                 verbose=False, veryverbose=False):
         self.verbose = verbose
+        self.veryverbose = veryverbose
         self.fieldid = fieldid
         self.nocalib = nocalib
         self.nocollide = nocollide
@@ -718,17 +706,33 @@ class Field(object):
             wavename = fiberType.capitalize()
         else:
             wavename = np.array([x.capitalize() for x in fiberType])
-        epoch = self.obstime.jd
+        if(epoch is not None):
+            epoch_jd = np.zeros(len(epoch), dtype=np.float64)
+            oneday = datetime.timedelta(days=1)
+            for i, e in enumerate(epoch):
+                epoch_year = int(e)
+                epoch_frac = e - int(e)
+                epoch_year_dt = datetime.datetime(epoch_year, 1, 1)
+                epoch_dt = epoch_year_dt + oneday * epoch_frac * 365.25
+                epoch_jd[i] = coordio.time.Time(epoch_dt).jd
+        else:
+            epoch_jd = None
         raoff, decoff = self._offset_radec(ra=ra, dec=dec, delta_ra=delta_ra,
                                            delta_dec=delta_dec)
-        x, y, warn, ha, pa = coordio.utils.radec2wokxy(raoff, decoff, epoch,
+        pmra = np.zeros(len(raoff), dtype=np.float64) # BECAUSE PM FAILS!!
+        pmdec = np.zeros(len(raoff), dtype=np.float64)
+        radVel = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
+        parallax = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
+        x, y, warn, ha, pa = coordio.utils.radec2wokxy(raoff, decoff, epoch_jd,
                                                        wavename,
                                                        self.racen, self.deccen,
                                                        self.pa,
                                                        self.observatory.upper(),
                                                        self.obstime.jd,
                                                        pmra=pmra,
-                                                       pmdec=pmdec)
+                                                       pmdec=pmdec,
+                                                       parallax=parallax,
+                                                       radVel=radVel)
         return(x, y)
 
     def xy2radec(self, x=None, y=None, fiberType=None):
@@ -777,14 +781,6 @@ class Field(object):
                     limits = designMode.stds_mags[fiberType]
                 ok = np.ones(len(icurr), dtype=np.bool)
                 for i in np.arange(limits.shape[0], dtype=np.int32):
-                    #if((limits[i, 0] != - 999.) |
-                    #   (limits[i, 1] != - 999.)):
-                        #ok = ok & ((np.isnan(mags[:, i]) == False) &
-                        #           (mags[:, i] != 0.) &
-                        #           (mags[:, i] != 99.9) &
-                        #           (mags[:, i] != 999.) &
-                        #           (mags[:, i] != - 999.) &
-                        #           (mags[:, i] != - 9999.))
                     icheck = np.where((np.isnan(mags[:, i]) == False) &
                                       (mags[:, i] != 0.) &
                                       (mags[:, i] != 99.9) &
@@ -892,6 +888,9 @@ class Field(object):
             print("Convert targets coords to x/y", flush=True)
         targets['x'], targets['y'] = self.radec2xy(ra=targets['ra'],
                                                    dec=targets['dec'],
+                                                   epoch=targets['epoch'],
+                                                   pmra=targets['pmra'],
+                                                   pmdec=targets['pmdec'],
                                                    delta_ra=targets['delta_ra'],
                                                    delta_dec=targets['delta_dec'],
                                                    fiberType=targets['fiberType'])
@@ -1018,28 +1017,51 @@ class Field(object):
         HDU1 has targets array
         HDU1 has assignments array
 """
-        hdr = dict()
-        hdr['STRATVER'] = robostrategy.__version__
-        hdr['SCHEDVER'] = roboscheduler.__version__
-        hdr['KAIJUVER'] = kaiju.__version__
-        hdr['RACEN'] = self.racen
-        hdr['DECCEN'] = self.deccen
-        hdr['OBS'] = self.observatory
-        hdr['PA'] = self.pa
+        hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'RACEN',
+                    'value':self.racen,
+                    'comment':'RA J2000 center of field (deg)'})
+        hdr.append({'name':'DECCEN',
+                    'value':self.deccen,
+                    'comment':'Dec J2000 center of field (deg)'})
+        hdr.append({'name':'OBS',
+                    'value':self.observatory,
+                    'comment':'observatory used for field'})
+        hdr.append({'name':'PA',
+                    'value':self.pa,
+                    'comment':'position angle (deg E of N)'})
         if(self.field_cadence is not None):
-            hdr['FCADENCE'] = self.field_cadence.name
-            hdr['NEXP'] = self.field_cadence.nexp_total
-            hdr['DESMODE'] = ' '.join(list(self.design_mode[self.field_cadence.epochs]))
+            hdr.append({'name':'FCADENCE',
+                        'value':self.field_cadence.name,
+                        'comment':'field cadence'})
+            hdr.append({'name':'NEXP',
+                        'value':self.field_cadence.nexp_total,
+                        'comment':'number of exposures in cadence'})
+            dmodelist = ' '.join(list(self.design_mode[self.field_cadence.epochs]))
+            hdr.append({'name':'DESMODE',
+                        'value':dmodelist,
+                        'comment':'list of design modes'})
         else:
-            hdr['FCADENCE'] = 'none'
-        hdr['CBUFFER'] = self.collisionBuffer
-        hdr['NOCALIB'] = self.nocalib
+            hdr.append({'name':'FCADENCE',
+                        'value':'none',
+                        'comment':'field cadence'})
+        hdr.append({'name':'CBUFFER',
+                    'value':self.collisionBuffer,
+                    'comment':'kaiju collision buffer'})
+        hdr.append({'name':'NOCALIB',
+                    'value':self.nocalib,
+                    'comment':'True if this field ignores calibrations'})
         if(self.nocalib is False):
             for indx, rc in enumerate(self.required_calibrations):
                 name = 'RCNAME{indx}'.format(indx=indx)
                 num = 'RCNUM{indx}'.format(indx=indx)
-                hdr[name] = rc
-                hdr[num] = ' '.join([str(int(n)) for n in self.required_calibrations[rc]])
+                hdr.append({'name':name,
+                            'value':rc,
+                            'comment':'required calibration category'})
+                ns = ' '.join([str(int(n)) for n in self.required_calibrations[rc]])
+                hdr.append({'name':num,
+                            'value':ns,
+                            'comment':'number required per exposure'})
         fitsio.write(filename, None, header=hdr, clobber=True)
         fitsio.write(filename, self.targets, extname='TARGET')
         if(self.assignments is not None):
@@ -1052,6 +1074,49 @@ class Field(object):
                 dmarr = np.zeros(len(self.designModeDict), dtype=arr.dtype)
             dmarr[i] = arr
         fitsio.write(filename, dmarr, extname='DESMODE')
+
+        if(self.assignments is not None):
+            robots_dtype = [('robotID', np.int32),
+                            ('holeID', np.dtype("|U15")),
+                            ('hasBoss', np.bool),
+                            ('hasApogee', np.bool),
+                            ('rsid', np.int64, self.field_cadence.nexp_total),
+                            ('itarget', np.int32, self.field_cadence.nexp_total),
+                            ('catalogid', np.int64, self.field_cadence.nexp_total),
+                            ('fiberType', np.dtype("|U6"),
+                             self.field_cadence.nexp_total)]
+            robotIDs = np.sort(np.array([r for r in self.mastergrid.robotDict],
+                                        dtype=np.int32))
+            robots = np.zeros(len(robotIDs), dtype=robots_dtype) 
+            for indx, robotID in enumerate(robotIDs):
+                robots['robotID'][indx] = robotID
+                robots['holeID'][indx] = self.mastergrid.robotDict[robotID].holeID
+                robots['hasBoss'][indx] = self.mastergrid.robotDict[robotID].hasBoss
+                robots['hasApogee'][indx] = self.mastergrid.robotDict[robotID].hasApogee
+                if(self.field_cadence.nexp_total == 1):
+                    robots['rsid'][indx] = self.robotgrids[0].robotDict[robotID].assignedTargetID
+                    if(robots['rsid'][indx] == -1):
+                        robots['itarget'][indx] = -1
+                        robots['catalogid'][indx] = -1
+                        robots['fiberType'][indx] = ''
+                    else:
+                        robots['itarget'][indx] = self.rsid2indx[robots['rsid'][indx]]
+                        robots['catalogid'][indx] = self.targets['catalogid'][robots['itarget'][indx]]
+                        robots['fiberType'][indx] = self.targets['fiberType'][robots['itarget'][indx]]
+                else:
+                    for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+                        robots['rsid'][indx, iexp] = self.robotgrids[iexp].robotDict[robotID].assignedTargetID
+                        if(robots['rsid'][indx, iexp] == -1):
+                            robots['itarget'][indx, iexp] = -1
+                            robots['catalogid'][indx, iexp] = -1
+                            robots['fiberType'][indx, iexp] = ''
+                        else:
+                            robots['itarget'][indx, iexp] = self.rsid2indx[robots['rsid'][indx, iexp]]
+                            robots['catalogid'][indx, iexp] = self.targets['catalogid'][robots['itarget'][indx, iexp]]
+                            robots['fiberType'][indx, iexp] = self.targets['fiberType'][robots['itarget'][indx, iexp]]
+
+            fitsio.write(filename, robots, extname='ROBOTS')
+                    
         return
 
     def collide_robot_exposure(self, rsid=None, robotID=None, iexp=None):
@@ -1769,6 +1834,7 @@ class Field(object):
 
         validRobotIDs = self.masterTargetDict[rsid].validRobotIDs
         validRobotIDs = np.array(validRobotIDs, dtype=np.int32)
+        np.random.shuffle(validRobotIDs)
 
         if(len(validRobotIDs) == 0):
             available = dict()
@@ -1827,6 +1893,7 @@ class Field(object):
                     # If this robot was good, then let's just return it
                     if(first):
                         break
+
             availableRobotIDs[iepoch] = arlist
             nAvailableRobotIDs[iepoch] = len(arlist)
             frees[iepoch] = flist
@@ -1881,6 +1948,8 @@ class Field(object):
         # Check if there are robots available
         nRobotIDs = np.array([len(x) for x in availableRobotIDs])
         if(nRobotIDs.min() < 1):
+            if(self.veryverbose):
+                print("rsid={r}: no robots available".format(r=rsid))
             return False
 
         # Assign to each epoch
@@ -1893,6 +1962,10 @@ class Field(object):
             robotID = currRobotIDs[irobot]
             free = freeExposures[iepoch][irobot]
             nexp = nexps[iepoch]
+
+            if(self.veryverbose):
+                print("rsid={r}: assigning robotID {robotID}".format(r=rsid,
+                                                                     robotID=robotID))
 
             self.assign_robot_epoch(rsid=rsid, robotID=robotID, epoch=epoch,
                                     nexp=nexp, free=free,
@@ -1934,6 +2007,8 @@ class Field(object):
                                                                 merge_epochs=True)
 
         if(ok == False):
+            if(self.veryverbose):
+                print("rsid={r} does not fit field cadence".format(r=rsid))
             return False
 
         # Check for all potential epochs whether they can accomodate at
@@ -1952,12 +2027,20 @@ class Field(object):
         ibad = np.where(available['nAvailableRobotIDs'] == 0)[0]
         epoch_bad = np.zeros(self.field_cadence.nepochs, dtype=np.bool)
         epoch_bad[epochs[ibad]] = True
+
+        if(self.veryverbose):
+            print("rsid={r}: note epoch_bad=".format(r=rsid) + str(epoch_bad)) 
         
         for indx, epochs in enumerate(epochs_list):
             if(epoch_bad[epochs].max() == False):
+                if(self.veryverbose):
+                    print("rsid={r}: trying epochs: ".format(r=rsid) + str(epochs))
                 nexps = nexps_list[indx]
                 if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
                     return True
+
+        if(self.veryverbose):
+            print("rsid={r}: no epochs worked".format(r=rsid))
                 
         return False
 
@@ -2261,12 +2344,18 @@ class Field(object):
 
         tdict = self.mastergrid.targetDict
 
+        hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                              for x in np.arange(500) + 1], dtype=bool)
+
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
             robotIDs = np.array(tdict[rsid].validRobotIDs)
 
             if((len(robotIDs) > 0) &
                (self.assignments['satisfied'][indx] == 0)):
+
+                np.random.shuffle(robotIDs)
+                robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
                 gotem = False
                 for epoch, iexp in zip(epochs, iexps):
@@ -2311,6 +2400,9 @@ class Field(object):
 
         tdict = self.mastergrid.targetDict
 
+        hasApogee = np.array([self.mastergrid.robotDict[x].hasApogee
+                              for x in np.arange(500) + 1], dtype=bool)
+
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
             nexp = clist.cadences[self.targets['cadence'][indx]].nexp_total
@@ -2318,6 +2410,9 @@ class Field(object):
 
             if((len(robotIDs) > 0) &
                (self.assignments['satisfied'][indx] == 0)):
+
+                np.random.shuffle(robotIDs)
+                robotIDs = robotIDs[np.argsort(hasApogee[robotIDs - 1])]
 
                 iexpgot = []
                 for epoch, iexp in zip(epochs, iexps):
@@ -2543,20 +2638,28 @@ class Field(object):
         
         icalib = np.where(self._is_calibration &
                           (self.targets['rsassign'] != 0))[0]
-        self.assign_cadences(rsids=self.targets['rsid'][icalib])
+        rsids = self.targets['rsid'][icalib]
+        np.random.shuffle(rsids)
+        self.assign_cadences(rsids=rsids)
         self._set_has_spare_calib()
         if(self.verbose):
             print("fieldid {fid}:   (done assigning calibrations)".format(fid=self.fieldid), flush=True)
         return
 
-    def assign_science(self):
+    def assign_science(self, rsassign=1):
         """Assign all science targets
+        
+        Parameters:
+        ----------
+
+        rsassign : int, np.int32
+            value of rsassign for selecting targets (default 1)
 
         Notes
         -----
 
         This assigns all targets with 'category' set to 'science'
-        and with 'rsassign' set to 1.
+        and with 'rsassign' set to selected value
 
         It calls assign_cadences(), which will assign the targets
         in order of their priority value. The order of assignment is
@@ -2569,7 +2672,7 @@ class Field(object):
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
-                            (self.targets['rsassign'] != 0))[0]
+                            (self.targets['rsassign'] == rsassign))[0]
         np.random.seed(self.fieldid)
         random.seed(self.fieldid)
         np.random.shuffle(iscience)

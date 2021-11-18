@@ -21,6 +21,7 @@ import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import robostrategy.allocate
+import robostrategy.header
 import sdss_access.path
 import fitsio
 
@@ -35,6 +36,9 @@ def count_spares(indx):
     field_target_file = sdss_path.full('rsFieldAssignments',
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
+    if(opentargets):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsOpen')
     f = field.Field(filename=field_target_file, allgrids=False)
 
     spares_dtype = [('fieldid', np.int32),
@@ -125,7 +129,12 @@ def count_spares(indx):
                                   nsp_boss_standard_wapogee +
                                   nsp_boss_sky_wapogee)
         
-        fitsio.write('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid), spare, clobber=True)
+        base = 'rsFieldSpares'
+        if(opentargets):
+            base = 'rsFieldSparesOpen'
+        spares_file = 'targets/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base)
+        hdr = robostrategy.header.rsheader()
+        fitsio.write(spares_file, spare, header=hdr, clobber=True)
 
 if __name__ == '__main__':
 
@@ -144,12 +153,17 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     start = args.start
     end = args.end
+    opentargets = args.opentargets
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -189,7 +203,11 @@ if __name__ == '__main__':
     ispares_exp = 0
     for indx in ikeep:
         fieldid = allocate.field_array['fieldid'][indx]
-        cspares = fitsio.read('targets/rsFieldSpares-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid))
+        base = 'rsFieldSpares'
+        if(opentargets):
+            base = 'rsFieldSparesOpen'
+        spares_file = 'targets/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base)
+        cspares = fitsio.read(spares_file)
 
         try:
             nexp = len(cspares['nboss_spare'][0, :])
@@ -209,10 +227,16 @@ if __name__ == '__main__':
         spares['nboss_spare'][indx] = cspares['nboss_spare'].sum()
         spares['napogee_spare'][indx] = cspares['napogee_spare'].sum()
 
-    fitsio.write('rsSpares-{o}-{p}.fits'.format(o=observatory,
-                                                p=plan), spares,
-                 clobber=True)
+    base = 'rsSpares'
+    if(opentargets):
+        base = 'rsSparesOpen'
+    outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(outfile, spares, header=hdr, clobber=True)
 
-    fitsio.write('rsSparesExp-{o}-{p}.fits'.format(o=observatory,
-                                                   p=plan), spares_exp,
-                 clobber=True)
+    base = 'rsSparesExp'
+    if(opentargets):
+        base = 'rsSparesExpOpen'
+    outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(outfile, spares_exp, header=hdr, clobber=True)

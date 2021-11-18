@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_spares
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import multiprocessing
+import numpy as np
+import sdss_access.path
+import fitsio
+import matplotlib.pyplot as plt
+import mpl_toolkits.basemap as basemap
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+def convert_radec(m, ra, dec):
+    return m(((360. - ra) + 180.) % 360., dec, inverse=False)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final assignment based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    opentargets = args.opentargets
+
+    base = 'rsSpares'
+    if(opentargets):
+        base = 'rsSparesOpen'
+    infile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    spares = fitsio.read(infile)
+
+    for fiberType in ['boss', 'apogee']:
+
+        lon_0 = 270.
+    
+        m = basemap.Basemap(projection='moll', lon_0=lon_0, resolution='c',
+                            celestial=True)
+        xx, yy = convert_radec(m, spares['racen'], spares['deccen'])
+        
+        png_file = '{base}-{o}-{p}-{fiberType}.png'.format(o=observatory,
+                                                           p=plan,
+                                                           base=base,
+                                                           fiberType=fiberType)
+
+        # draw parallels and meridians.
+        m.drawparallels(np.arange(-90., 120., 30.),
+                        linewidth=0.5,
+                        labels=[1, 0, 0, 0],
+                        labelstyle='+/-')
+        m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+        m.drawmapboundary()
+
+        name = 'n{ft}_spare'.format(ft=fiberType)
+        spval = np.arcsinh(spares[name]) / np.log(10.)
+        plt.scatter(xx, yy, s=3, c=spval)
+        title = 'Spare {ft} (after science allocation)'
+        if(opentargets):
+            title = 'Spare {ft} (after open fiber allocation)'
+        title = title.format(ft=fiberType.upper())
+        plt.title(title)
+
+        colorbar_label = '$sinh^{-1} N / (ln 10)$'
+        cb = plt.colorbar()
+        cb.set_label(colorbar_label)
+    
+        plt.savefig(png_file)
+        plt.clf()

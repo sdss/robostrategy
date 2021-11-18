@@ -14,6 +14,7 @@ import fitsio
 import collections
 import matplotlib.pyplot as plt
 import robostrategy
+import robostrategy.header
 import roboscheduler
 import kaiju
 import robostrategy.slots
@@ -600,10 +601,7 @@ class AllocateLST(object):
 
         Writes all array attributes as a binary table.
 """
-        hdr = dict()
-        hdr['STRATVER'] = robostrategy.__version__
-        hdr['SCHEDVER'] = roboscheduler.__version__
-        hdr['KAIJUVER'] = kaiju.__version__
+        hdr = robostrategy.header.rsheader()
         fitsio.write(filename, self.field_array, header=hdr,
                      clobber=True)
         self.slots.tofits(filename=filename, clobber=False)

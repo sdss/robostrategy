@@ -17,15 +17,14 @@ import configparser
 import argparse
 import os
 import sys
+import jinja2
 import numpy as np
 import fitsio
 import sdss_access.path
 import robostrategy.allocate
 import robostrategy.params as params
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 img_tag = "<a href='{png_file}'><img src='{png_file}' width=300px/></a>"
 
@@ -38,489 +37,159 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
-                        type=str, help='apo or lco',
-                        choices=['apo', 'lco'], required=True)
+                        type=str, help='apo or lco or both',
+                        choices=['apo', 'lco', 'both'], required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    if(observatory == 'both'):
+        both = True
+        observatories = ['apo', 'lco']
+    else:
+        both = False
+        observatories = [observatory]
+    opentargets = args.opentargets
+
+    description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
+                                    'carton_description.cfg')
+    if(os.path.exists(description_file)):
+        description_cfg = configparser.ConfigParser(allow_no_value=True)
+        description_cfg.optionxform = str
+        description_cfg.read(description_file)
+        if(opentargets):
+            carton_description = description_cfg['Open']
+        else:
+            carton_description = description_cfg['Mapper']
+    else:
+        carton_description = dict()
 
     rsParams = params.RobostrategyParams(plan=plan)
 
-    field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
-                                                         plan=plan, observatory=observatory))
-    cadence_mask, cadence_hdr = fitsio.read(field_cadence_file, header=True)
+    cadence_hdr = dict()
+    for obs in observatories:
+        field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
+                                                             plan=plan,
+                                                             observatory=obs))
+        cadence_mask, tmp_cadence_hdr = fitsio.read(field_cadence_file, header=True)
+        cadence_hdr[obs] = tmp_cadence_hdr
 
     completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
-                                                        plan=plan, observatory=observatory))
-    nt, completeness_hdr = fitsio.read(completeness_file, header=True)
+                                                        plan=plan,
+                                                        observatory=observatory))
+    if(opentargets):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessOpen')
+    completeness_hdr = fitsio.read_header(completeness_file, ext=1)
 
     html_path = os.path.dirname(sdss_path.full('rsCompletenessHtml', plan=plan,
                                                observatory=observatory))
     html_file = os.path.join(html_path,
                              'rs-{observatory}.html'.format(observatory=observatory))
+    if(opentargets):
+        html_file = os.path.join(html_path,
+                                 'rs-open-{observatory}.html'.format(observatory=observatory))
 
-    fp = open(html_file, "w")
-    fp.write("<html>")
-    fp.write("""<head>
-<style>
-    table, th, tr, td {border: 1px solid black}
-</style>
-""")
-    fp.write("<body>")
+    env = jinja2.Environment(
+        loader=jinja2.PackageLoader("robostrategy"),
+        autoescape=jinja2.select_autoescape()
+    )
 
-    summary = rsParams.cfg.get('Documentation', 'summary',
-                               fallback='No summary provided')
-    description = rsParams.cfg.get('Documentation', 'description',
-                                   fallback='No description provided')
-    fp.write("""<h2>Description</h2>
-<p>This page describes the results of robostrategy for plan {plan},
-for the SDSS-V FPS carton observing for the Milky Way Mapper and
-the Black Hole Mapper. These results are for the operations at {obs}.</p>
+    rsinfo = dict()
 
-<p><b>Summary:</b>{summary}</p>
+    rsinfo['stage'] = ''
+    if(opentargets):
+        rsinfo['stage'] = 'Open'
 
-<p><b>Description:</b>{description}</p>
-""".format(plan=plan, summary=summary, description=description,
-           obs=observatory.upper()))
+    rsinfo['plan'] = plan
+    rsinfo['observatory'] = observatory
+    rsinfo['observatories'] = observatories
+    rsinfo['summary'] = rsParams.cfg.get('Documentation', 'summary',
+                                         fallback='No summary provided')
 
-    fp.write("""<p><b>Cadences:</b>The detailed description of all 
-cadences used can be found <a href="rsCadences-{plan}-{obs}.html">
-here</a>.</p>
-""".format(plan=plan, obs=observatory))
+    if(opentargets):
+        rsinfo['method'] = "They are shown after open fiber target allocation."
+    else:
+        rsinfo['method'] = "They are shown after science requirement target allocation."
 
-    fp.write("""<p><b>Settings:</b></p>
-<ul>""")
-    if('AllFields' in rsParams.cfg['Allocation']):
-        fp.write("<li><i>AllFields</i>: All fields are guaranteed to get some observations.</li>")
-    if('Cost' in rsParams.cfg['Allocation']):
-        fp.write("<li><i>Cost model</i>: uses cost model {m}</li>".format(m=rsParams.cfg.get('Allocation', 'Cost')))
-    fp.write("""</ul>""")
-
-    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>""")
-
-    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
-    <thead>
-        <tr>
-            <th>Carton</th> <th>Version</th>
-        </tr>
-    </thead>""")
-    fp.write("""<tbody>""")
+    rsinfo['ngboss'] = completeness_hdr['NGBOSS']
+    rsinfo['ngapogee'] = completeness_hdr['NGAPOGEE']
+    
+    rsinfo['Cartons'] = []
     for carton in rsParams.cfg['Cartons']:
-        fp.write("<tr><td>{p}</td><td>{v}</td></tr>".format(p=carton,
-                                                            v=rsParams.cfg['Cartons'][carton]))
-    fp.write("""</tbody>""")
-    fp.write("""</table>""")
+        rsinfo['Cartons'].append({'carton':carton,
+                                  'version':rsParams.cfg['Cartons'][carton]})
+    
+    rsinfo['Fields'] = []
+    for field in rsParams.cfg['Fields']:
+        rsinfo['Fields'].append({'key':field,
+                                 'value':rsParams.cfg['Fields'][field]})
+    
+    rsinfo['CadencesFromTargets'] = []
+    for cft in rsParams.cfg['CadencesFromTargets']:
+        rsinfo['CadencesFromTargets'].append({'target_cadence':cft,
+                                              'field_cadence':rsParams.cfg['CadencesFromTargets'][cft]})
 
-    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
-    <thead>
-        <tr>
-            <th colspan="2">Field types included.</th>
-        </tr>
-        <tr>
-            <td><b>Fields</b></td> <td><b>Cadences</b></td>
-        </tr>
-    </thead>""")
-    fp.write("""<tbody>""")
-    exclude = ['NSDiv']
-    for field_type in rsParams.cfg['Fields']:
-        if(field_type not in exclude):
-            fp.write("<tr><td>{ft}</td><td>{c}</td></tr>".format(ft=field_type,
-                                                                 c=rsParams.cfg.get('Fields', field_type)))
-    fp.write("""</tbody>""")
-    fp.write("""</table>""")
+    rsinfo['field_cadences'] = dict()
+    for obs in observatories:
+        rsinfo['field_cadences'][obs] = []
+        ncad = np.int32(cadence_hdr[obs]['NCAD'])
+        for icad in np.arange(ncad):
+            field_cadence = cadence_hdr[obs]['CAD{icad}'.format(icad=icad)]
+            last = field_cadence.split('_')[-1]
+            if(last[0] == 'n'):
+                field_cadence_base = "_".join(field_cadence.split('_')[0:-1])
+            else:
+                field_cadence_base = field_cadence
+            entry = dict()
+            entry['field_cadence_name'] = field_cadence
+            entry['allocation_name'] = field_cadence_base
+            rsinfo['field_cadences'][obs].append(entry)
 
-    fp.write("""<table style="border: 1px solid black;" cellspacing=0px>
-    <thead>
-        <tr>
-            <th colspan="2">How field cadences are selected from targets.</th>
-        </tr>
-        <tr>
-            <td><b>Target Cadence</b></td> <td><b>Field Cadences to Include</b></td>
-        </tr>
-    </thead>""")
-    fp.write("""<tbody>""")
-    exclude = []
-    for target_cadence in rsParams.cfg['CadencesFromTargets']:
-        if(target_cadence not in exclude):
-            clist = rsParams.cfg.get('CadencesFromTargets', target_cadence)
-            if(clist is None):
-                clist = target_cadence
-            fp.write("<tr><td>{tc}</td><td>{c}</td></tr>".format(tc=target_cadence,
-                                                                 c=clist))
-    fp.write("""</tbody>""")
-    fp.write("""</table>""")
-
-
-    fp.write("""<p>The full configuration file can be found 
-<a href="robostrategy-{plan}.cfg">here</a> or on <a href="https://github.com/sdss/robostrategy/blob/master/etc/robostrategy-{plan}.cfg">github</a>.
-</p>
-""".format(plan=plan))
-
-    fp.write("""<h2>Output files</h2>
-
-<p>The main results of the allocation process can be found in the following 
-files. The last two, the rsAllocation and rsCompleteness files, are
-the most useful ones to consult, so I put list their columns
-explicitly.</p>
-
-<ul> <li> <a href="rsTargets-{plan}-{observatory}.fits">rsTargets</a>:
-list of target inputs </li>
-
-<li> <a href="rsCadences-{plan}-{observatory}.fits">rsCadences</a>:
-list of cadence definitions. This can be read into a CadenceList
-object (found in the robostrategy.cadence Python module)
-using the fromfits() method. </li>
-
-<li> <a
-href="rsAssignments-{plan}-{observatory}.fits">rsAssignments</a>: A
-list of assignments of fields to targets. The exposure number in the
-field cadence sequence is given (but the actual robot used is
-not). </li>
-
-<li> rsFieldAssignments: <a href="rs-{observatory}-fields.html">Compiled
-here</a> is the list individual field assignments (in the <a href="targets">targets</a> directory), 
-in individual rsField Assignments files.
-Each of these files has the following HDUs:
- <ul>
- <li>HDU1: Table with list of targets. It has header keywords:
-  <ul>
-   <li><code>RACEN</code>: RA of field center, J2000 deg</li>
-   <li><code>DECCEN</code>: Dec of field center, J2000 deg</li>
-   <li><code>FCADENCE</code>: Name of field cadence</li>
-  </ul>
-  And columns:
-  <ul>
-   <li><code>ra</code>: RA of target, J2000 deg</li>
-   <li><code>dec</code>: Dec of target, J2000 deg</li>
-   <li><code>pk</code>: primary key in DB (munged for RM targets)</li>
-   <li><code>cadence</code>: name of cadence for target</li>
-   <li><code>type</code>: name of type of target (something like cadence, can ignore)</li>
-  </ul>
- <li>HDU2: Image with assignments. It has a shape (546, nexposures),
-        and the value is the 0-indexed integer into the table in HDU1 for
-        target to be assigned to that positioner and exposure (or -1) if
-        none. </li>
- </ul>
-</li>
-
-<li> <a
-href="rsAllocation-{plan}-{observatory}.fits">rsAllocation</a>:
-cadences chosen for each field, and the LST and SKYBRIGHTNESS slots used.
-The <code>slots</code> column has a 24-by-2 array with the allocation
-of exposures by LST hour and sky brightness. If any of these values are
-non-zero, then the field cadence listed has been fully observed.
-<code>nfilled</code> will also be non-zero in this case. Note that
-<code>slots_exposures</code> and <code>slots_time</code> differ
-by a factor of the duration of each exposure times some cost associated
-with the airmass of observation.
-The columns of this file are:
-<ul>
-<li><code>fieldid</code>: unique ID number for field</li>
-<li><code>racen</code>: RA center of field (J2000 deg)</li>
-<li><code>deccen</code>: Dec center of field (J2000 deg)</li>
-<li><code>cadence</code>: Name of chosen cadence</li>
-<li><code>nfilled</code>: Number of observing exposures filled</li>
-<li><code>nneeded</code>: Number of observing exposures needed</li>
-<li><code>slots_exposures[2,24]</code>: How to distribute exposures across sky brightness and LST.</li>
-<li><code>slots_time[2,24]</code>: How to distribute time across sky brightness and LST (hours).</li>
-</ul>
-</li>
-
-<li> <a
-href="rsCompleteness-{plan}-{observatory}.fits">rsCompleteness</a>:
-Completeness information for all targets, and completeness maps for
-all targets, for targets sorted into cadence classes, and for targets
-sorted into cartons, in healpix format. The HDUs
-of the file are as follows:
-<ul>
- <li>HDU1: Table with list of targets. It has header keywords:
- <ul>
-  <li><code>NTARGETS</code>: number of targets covered (with "covered" set)</li>
-  <li><code>NGOT</code>: number of targets gotten (with "got" set)</li>
-  <li><code>FGOT</code>: fraction of targets gotten (with "got" set)</li>
-  <li><code>NCADENCE</code>: number of cadences in further HDUs</li>
- </ul>
- And columns:
- <ul>
-  <li><code>catalogid</code>: unique target ID (not 100% sure this is right)</li>
-  <li><code>pk</code>: primary key in DB (munged for RM targets)</li>
-  <li><code>ra</code>: RA of target, J2000 deg</li>
-  <li><code>dec</code>: Dec of target, J2000 deg</li>
-  <li><code>carton</code>: name of carton for target</li>
-  <li><code>cadence</code>: name of cadence for target</li>
-  <li><code>type</code>: name of type of target (something like cadence, can ignore)</li>
-  <li><code>got</code>: we got the target or not (1 or 0)</li>
-  <li><code>covered</code>: in the area we consider "covered" by this telescope</li>
- </ul>
- <li>HDU2: Healpix map of targets. This is an integer image. There are important
-   parameters in the header:
-   <ul>
-    <li><code>NSIDE</code>: "nside" value for healpix map, e.g. 32</li>
-    <li><code>NTARGETS</code>: number of targets covered (with "covered" set)</li>
-    <li><code>NGOT</code>: number of targets gotten (with "got" set)</li>
-    <li><code>FGOT</code>: fraction of targets gotten (with "got" set)</li>
-    <li><code>NCADENCE</code>: number of cadences in further HDUs</li>
-    <li><code>NCARTON</code>: number of cartons in further HDUs</li>
-   </ul></li>
- <li>HDU3: Healpix map of targets gotten. This is an integer image. It has a similar header as HDU2.</li>
- <li>HDU4: Healpix map of the fraction of targets gotten. This is a floating point image. It has a similar header as HDU2.</li>
- <li>Further HDUs come in triplets, one for each cadence. Each HDU has a header keyword <code>CADENCE</code> that tells you which cadence.</li>
- <li>Yet further HDUs come in triplets, one for each carton. Each HDU has a header keyword <code>CARTON</code> that tells you which carton.</li>
-</ul>
-</li>
-
-</ul>
-""".format(plan=plan, observatory=observatory))
-
-    fp.write("""<h2>Allocation of time</h2>
-
-    <p> For both all time and for different sky brightnesses, the allocation of time as a function of LST.</p>
-""")
-
-    fp.write("<table>")
-    fp.write("<tr>")
-    png_file = os.path.basename(sdss_path.full('rsAllocationPng', plan=plan,
-                                               observatory=observatory, name='lst-all'))
-    fp.write("<td>")
-    fp.write(img_tag.format(png_file=png_file))
-    fp.write("</td>")
-
-    png_file = os.path.basename(sdss_path.full('rsAllocationPng', plan=plan,
-                                               observatory=observatory, name='lst-dark'))
-    fp.write("<td>")
-    fp.write(img_tag.format(png_file=png_file))
-    fp.write("</td>")
-
-    png_file = os.path.basename(sdss_path.full('rsAllocationPng', plan=plan,
-                                               observatory=observatory, name='lst-bright'))
-    fp.write("<td>")
-    fp.write(img_tag.format(png_file=png_file))
-    fp.write("</td>")
-
-    fp.write("</tr>")
-    fp.write("</table>")
-
-    fp.write("""<h2>Exposures per field</h2>
-
-
-    <p>These plots show the number of exposures per field, and then the number of bright exposures and number of dark exposures. Note that these do not necessarily match the cadences, since bright cadences can be observed in dark time.</p>
-""")
-
-    fp.write("<table>")
-    fp.write("<tr>")
-    name = 'radec'
-    png_file = os.path.basename(
-        sdss_path.full('rsAllocationPng', plan=plan,
-                       observatory=observatory, name=name))
-    fp.write("<td>")
-    fp.write(img_tag.format(png_file=png_file))
-    fp.write("</td>")
-    name = 'radec-bright'
-    png_file = os.path.basename(
-        sdss_path.full('rsAllocationPng', plan=plan,
-                       observatory=observatory, name=name))
-    fp.write("<td>")
-    fp.write(img_tag.format(png_file=png_file))
-    fp.write("</td>")
-    name = 'radec-dark'
-    png_file = os.path.basename(
-        sdss_path.full('rsAllocationPng', plan=plan,
-                       observatory=observatory, name=name))
-    fp.write("<td>")
-    fp.write(img_tag.format(png_file=png_file))
-    fp.write("</td>")
-    fp.write("</tr>")
-    fp.write("</table>")
-
-    fp.write("""<h2>Cadences per field</h2>
-
-
-    <p>The left column shows which fields had an opportunity to be allowed each cadence. The right column shows how exposures were allocated to those fields, within each cadence.</p>
-""")
-
-    fp.write("<table>")
-    ncad = np.int32(cadence_hdr['NCAD'])
-    for icad in np.arange(ncad):
-        fp.write("<tr>")
-        field_cadence = cadence_hdr['CAD{icad}'.format(icad=icad)]
-        last = field_cadence.split('_')[-1]
-        if(last[0] == 'n'):
-            field_cadence_base = "_".join(field_cadence.split('_')[0:-1])
-        else:
-            field_cadence_base = field_cadence
-        print(field_cadence_base)
-
-        png_file = os.path.basename(sdss_path.full('rsFieldCadencesPng',
-                                                   name=field_cadence, plan=plan,
-                                                   observatory=observatory))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
-
-        name = 'radec-{field_cadence_base}'.format(
-            field_cadence_base=field_cadence_base)
-        png_file = os.path.basename(
-            sdss_path.full('rsAllocationPng', plan=plan,
-                           observatory=observatory, name=name))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
-
-        fp.write("</tr>")
-    fp.write("</table>")
-
-    fp.write("""<h2>Target completeness</h2>
-
-    <p>These plots show the completeness as a function of cadence group and also carton. Cadence groups lump cadences with the same prefix (e.g. mwm_rv_NxM) to be all within the same group. Targets either get all the necessary exposures for their cadence, or they get none.</p>
-
-    <p>The left column shows the total number of targets in each healpix pixel (scaled with asinh to be able to see the dynamic range. The middle column shows the number of targets completed (scaled with asinh again). The right column shows the fraction. If the fraction is shown as negative (the darkest color) then that means there were zero targets in the pixel to begin with.</p>
-""")
-
-    fp.write("<h3>Targets by cadence group</h3>")
-    fp.write("<table>")
+    rsinfo['cadenceGroups'] = []
     ncad = np.int32(completeness_hdr['NCADENCE'])
     for icad in np.arange(ncad + 1):
-        fp.write("<tr>")
+        cg = dict()
 
-        ntargets_map, hdr = fitsio.read(completeness_file, header=True,
-                                        ext=icad * 3 + 2)
+        hdr = fitsio.read_header(completeness_file, ext=icad * 3 + 2)
         if('CADENCE' in hdr):
-            cadence = hdr['CADENCE'].strip()
+            cg['name'] = hdr['CADENCE'].strip()
         else:
-            cadence = 'all'
+            cg['name'] = 'all'
 
-        ntarget = hdr['NTARGETS']
-        ngot = hdr['NGOT']
-        fgot = hdr['FGOT']
+        cg['ntargets'] = hdr['NTARGETS']
+        cg['ngot'] = hdr['NGOT']
+        cg['fgot'] = "{fgot:4.3f}".format(fgot=hdr['FGOT'])
+        
+        rsinfo['cadenceGroups'].append(cg)
 
-        png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='ntargets-cadence-{c}'.format(c=cadence),
-            plan=plan, observatory=observatory))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
+    rsinfo['cartons'] = []
+    ncarton = np.int32(completeness_hdr['NCARTON'])
+    for icarton in np.arange(ncarton):
+        hdr = fitsio.read_header(completeness_file,
+                                 ext=(ncad + 1 + icarton) * 3 + 2)
+        cg = dict()
+        cg['name'] = hdr['CARTON'].strip()
 
-        png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='ngot-cadence-{c}'.format(c=cadence),
-            plan=plan, observatory=observatory))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
+        cg['ntargets'] = hdr['NTARGETS']
+        cg['ngot'] = hdr['NGOT']
+        cg['nallowed'] = hdr['NALLOWED']
+        cg['fgot'] = "{fgot:4.3f}".format(fgot=hdr['FGOT'])
+        
+        if(cg['name'] in carton_description):
+            cg['description'] = carton_description[cg['name']]
+        else:
+            cg['description'] = ''
 
-        png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='fgot-cadence-{c}'.format(c=cadence),
-            plan=plan, observatory=observatory))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
+        rsinfo['cartons'].append(cg)
 
-        fp.write("<td>")
-        fp.write("<table>")
-        fp.write("<tr><td>Cadence group {c}</tr>".format(c=cadence))
-        fp.write("<tr><td>n<sub>target</sub> = {n}</td></tr>".format(n=ntarget))
-        fp.write("<tr><td>n<sub>got</sub> = {n}</td></tr>".format(n=ngot))
-        fp.write("<tr><td>f<sub>got</sub> = {n:4.3f}</td></tr>".format(n=fgot))
-        fp.write("</table>")
-        fp.write("</td>")
+    template = env.get_template('rs-template.html')
+    page = template.render(rsinfo)
 
-        fp.write("</tr>")
-    fp.write("</table>")
-
-    fp.write("<h3>Targets by carton</h3>")
-    fp.write("<table>")
-    nprog = np.int32(completeness_hdr['NCARTON'])
-    for iprog in np.arange(nprog):
-        fp.write("<tr>")
-
-        ntargets_map, hdr = fitsio.read(completeness_file, header=True,
-                                        ext=(ncad + 1 + iprog) * 3 + 2)
-        carton = hdr['CARTON'].strip()
-
-        ntarget = hdr['NTARGETS']
-        ngot = hdr['NGOT']
-        fgot = hdr['FGOT']
-
-        png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='ntargets-carton-{c}'.format(c=carton),
-            plan=plan, observatory=observatory))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
-
-        png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='ngot-carton-{c}'.format(c=carton),
-            plan=plan, observatory=observatory))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
-
-        png_file = os.path.basename(sdss_path.full(
-            'rsAssignmentsPng', name='fgot-carton-{c}'.format(c=carton),
-            plan=plan, observatory=observatory))
-        fp.write("<td>")
-        fp.write(img_tag.format(png_file=png_file))
-        fp.write("</td>")
-
-        fp.write("<td>")
-        fp.write("<table>")
-        fp.write("<tr><td>Carton {c}</tr>".format(c=carton))
-        fp.write("<tr><td>n<sub>target</sub> = {n}</td></tr>".format(n=ntarget))
-        fp.write("<tr><td>n<sub>got</sub> = {n}</td></tr>".format(n=ngot))
-        fp.write("<tr><td>f<sub>got</sub> = {n:4.3f}</td></tr>".format(n=fgot))
-        fp.write("</table>")
-        fp.write("</td>")
-
-        fp.write("</tr>")
-    fp.write("</table>")
-
-    fp.write("</body>")
-    fp.write("</html>")
-
-    fp.close()
-
-    html_file = os.path.join(html_path,
-                             'rs-{observatory}-fields.html'.format(observatory=observatory))
-
-    fp = open(html_file, "w")
-    fp.write("<html>")
-    fp.write("""<head>
-<style>
-table, th, td {
-  border: 1px solid black;
-  border-collapse: collapse;
-}
-</style>
-</head>
-""")
-    fp.write("<body>")
-    fp.write("<table>")
-
-    allocate_file = sdss_path.full('rsAllocation', plan=plan,
-                                   observatory=observatory)
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
-
-    row_template = """<tr>
-<td>{fieldid}</td>
-<td>{cadence}</td>
-<td><a href="targets/rsFieldAssignments-{plan}-{obs}-{fieldid}.fits">FITS output</a></td>
-<td><a href="targets/rsFieldAssignments-{plan}-{obs}-{fieldid}.png">
-<img src="targets/rsFieldAssignments-{plan}-{obs}-{fieldid}.thumb.png" width=100px height=100px/>
-</a></td>
-</tr>
-"""
-
-    for indx in np.arange(len(allocate.field_array)):
-        field = allocate.field_array[indx]
-        row = row_template.format(fieldid=field['fieldid'],
-                                  cadence=field['cadence'].strip(),
-                                  plan=plan, obs=observatory)
-        fp.write(row)
-
-    fp.write("</table>")
-
-    fp.write("</body>")
-    fp.write("</html>")
-
+    fp = open(html_file, 'w')
+    fp.write(page)
     fp.close()

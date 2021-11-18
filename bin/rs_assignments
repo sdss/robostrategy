@@ -22,6 +22,7 @@ import kaiju
 import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy
+import robostrategy.header
 import robostrategy.field as field
 import robostrategy.allocate
 import robostrategy.params as params
@@ -133,9 +134,6 @@ if __name__ == '__main__':
     print(count)
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
-    hdr = dict()
-    hdr['STRATVER'] = robostrategy.__version__
-    hdr['SCHEDVER'] = roboscheduler.__version__
-    hdr['KAIJUVER'] = kaiju.__version__
+    hdr = robostrategy.header.rsheader()
     fitsio.write(assigned_file, assignment, header=hdr,
                  clobber=True)
