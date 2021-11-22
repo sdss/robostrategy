@@ -100,7 +100,7 @@ def mk_reassigned(origin_fields,obs_array, plan=None):
     new_got['covered'][icovered] += 2
 
     # Save both new files to same place as rsCompletness
-    complete_file = sdss_path.full("rsCompletness", plan=plan, observatory='apo')
+    complete_file = sdss_path.full("rsCompleteness", plan=plan, observatory='apo')
     out_dir = os.path.dirname(complete_file)
     outfile_orig = os.path.join(out_dir, f'rsExtra-{plan}.fits')
     outfile_new = os.path.join(out_dir,f'rsExtra-{plan}-ra.fits')
@@ -227,6 +227,6 @@ if __name__ == '__main__':
     fields2 = fitsio.read(falloc2,columns='fieldid')
 
     origin_fields = np.append(fields1,fields2)
-    obs_array = np.append(np.full_like(fields1,'apo',dtype=str),
-                          np.full_like(fields, 'lco', dtype=str))
+    obs_array = np.append(np.full_like(fields1, 'apo', dtype=(np.unicode_, 3)),
+                          np.full_like(fields2, 'lco', dtype=(np.unicode_, 3)))
     mk_reassigned(origin_fields,obs_array,plan=plan)
