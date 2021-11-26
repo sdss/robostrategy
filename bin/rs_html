@@ -43,6 +43,10 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassignment target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -54,6 +58,7 @@ if __name__ == '__main__':
         both = False
         observatories = [observatory]
     opentargets = args.opentargets
+    reassign = args.reassign
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                     'carton_description.cfg')
@@ -84,6 +89,9 @@ if __name__ == '__main__':
     if(opentargets):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessOpen')
+    if(reassign):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessReassign')
     completeness_hdr = fitsio.read_header(completeness_file, ext=1)
 
     html_path = os.path.dirname(sdss_path.full('rsCompletenessHtml', plan=plan,
@@ -104,6 +112,8 @@ if __name__ == '__main__':
     rsinfo['stage'] = ''
     if(opentargets):
         rsinfo['stage'] = 'Open'
+    if(reassign):
+        rsinfo['stage'] = 'Reassign'
 
     rsinfo['plan'] = plan
     rsinfo['observatory'] = observatory
@@ -111,10 +121,11 @@ if __name__ == '__main__':
     rsinfo['summary'] = rsParams.cfg.get('Documentation', 'summary',
                                          fallback='No summary provided')
 
+    rsinfo['method'] = "They are shown after science requirement target allocation."
     if(opentargets):
         rsinfo['method'] = "They are shown after open fiber target allocation."
-    else:
-        rsinfo['method'] = "They are shown after science requirement target allocation."
+    if(reassign):
+        rsinfo['method'] = "They are shown after reassignment and open fiber target allocation."
 
     rsinfo['ngboss'] = completeness_hdr['NGBOSS']
     rsinfo['ngapogee'] = completeness_hdr['NGAPOGEE']
