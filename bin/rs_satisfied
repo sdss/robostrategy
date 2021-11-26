@@ -41,11 +41,16 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassignment target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     opentargets = args.opentargets
+    reassign = args.reassign
 
     rsParams = params.RobostrategyParams(plan=plan)
     if('Rotate' in rsParams.cfg['Fields']):
@@ -106,6 +111,9 @@ if __name__ == '__main__':
         if(opentargets):
             field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
                                                               'rsFieldAssignmentsOpen')
+        if(reassign):
+            field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
+                                                              'rsFieldAssignmentsOpen')
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
@@ -116,12 +124,9 @@ if __name__ == '__main__':
             assignments = None
 
         if(assignments is not None):
-            if(opentargets):
-                inopen = np.array([r in rsid2indx for r in targets['rsid']],
-                                  dtype=bool)
-                iin = np.where(inopen)[0]
-            else:
-                iin = np.arange(len(targets), dtype=np.int32)
+            isin = np.array([r in rsid2indx for r in targets['rsid']],
+                            dtype=bool)
+            iin = np.where(isin)[0]
             isat = np.array([rsid2indx[rsid] for rsid in targets['rsid'][iin]],
                             dtype=np.int32)
             satisfied['satisfied'][isat] = (satisfied['satisfied'][isat] +
@@ -147,6 +152,10 @@ if __name__ == '__main__':
     if(opentargets):
         satisfied_file = satisfied_file.replace('rsSatisfied',
                                                 'rsSatisfiedOpen')
+    if(reassign):
+        satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                'rsSatisfiedReassign')
+
     hdr = robostrategy.header.rsheader()
     fitsio.write(satisfied_file, satisfied, header=hdr,
                  clobber=True)
