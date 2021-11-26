@@ -35,10 +35,15 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassignment target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     opentargets = args.opentargets
+    reassign = args.reassign
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                     'carton_description.cfg')
@@ -81,6 +86,9 @@ if __name__ == '__main__':
     if(opentargets):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessOpen')
+    if(reassign):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessReassign')
 
     completeness_hdr = fitsio.read_header(completeness_file, ext=1)
 
