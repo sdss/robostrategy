@@ -40,17 +40,25 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassignment target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     opentargets = args.opentargets
+    reassign = args.reassign
 
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
     if(opentargets):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessOpen')
+    if(reassign):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessReassign')
 
     ntargets_map, hdr = fitsio.read(completeness_file, header=True, ext=2)
     nside = np.int32(hdr['NSIDE'])
@@ -81,6 +89,9 @@ if __name__ == '__main__':
         if(opentargets):
             ntargets_png_file = ntargets_png_file.replace('rsAssignments',
                                                           'rsAssignmentsOpen')
+        if(reassign):
+            ntargets_png_file = ntargets_png_file.replace('rsAssignments',
+                                                          'rsAssignmentsReassign')
         plt.savefig(ntargets_png_file)
         plt.clf()
 
@@ -95,6 +106,9 @@ if __name__ == '__main__':
         if(opentargets):
             ngot_png_file = ngot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsOpen')
+        if(reassign):
+            ngot_png_file = ngot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsReassign')
         plt.savefig(ngot_png_file)
         plt.clf()
 
@@ -110,6 +124,9 @@ if __name__ == '__main__':
         if(opentargets):
             fgot_png_file = fgot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsOpen')
+        if(reassign):
+            fgot_png_file = fgot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsReassign')
         plt.savefig(fgot_png_file)
         plt.clf()
 
@@ -134,6 +151,9 @@ if __name__ == '__main__':
         if(opentargets):
             ntargets_png_file = ntargets_png_file.replace('rsAssignments',
                                                           'rsAssignmentsOpen')
+        if(reassign):
+            ntargets_png_file = ntargets_png_file.replace('rsAssignments',
+                                                          'rsAssignmentsReassign')
         plt.savefig(ntargets_png_file)
         plt.clf()
 
@@ -148,6 +168,9 @@ if __name__ == '__main__':
         if(opentargets):
             ngot_png_file = ngot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsOpen')
+        if(reassign):
+            ngot_png_file = ngot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsReassign')
         plt.savefig(ngot_png_file)
         plt.clf()
 
@@ -163,5 +186,8 @@ if __name__ == '__main__':
         if(opentargets):
             fgot_png_file = fgot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsOpen')
+        if(reassign):
+            fgot_png_file = fgot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsReassign')
         plt.savefig(fgot_png_file)
         plt.clf()
