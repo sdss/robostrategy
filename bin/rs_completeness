@@ -140,6 +140,8 @@ if __name__ == '__main__':
                                               ('allowed_apo', np.int32),
                                               ('incadence_apo', np.int32),
                                               ('satisfied', np.int32),
+                                              ('nexps', np.int32),
+                                              ('nepochs', np.int32),
                                               ('assigned', np.int32),
                                               ('allowed', np.int32),
                                               ('incadence', np.int32),
@@ -147,6 +149,8 @@ if __name__ == '__main__':
     else:
         outtargets_dtype = np.dtype(targets.dtype.descr +
                                     np.dtype([('satisfied', np.int32),
+                                              ('nexps', np.int32),
+                                              ('nepochs', np.int32),
                                               ('assigned', np.int32),
                                               ('allowed', np.int32),
                                               ('incadence', np.int32),
@@ -191,6 +195,10 @@ if __name__ == '__main__':
 
         outtargets['satisfied'] = (outtargets['satisfied'] +
                                    satisfied['satisfied'])
+        outtargets['nexps'] = (outtargets['nexps'] +
+                               satisfied['nexps'])
+        outtargets['nepochs'] = (outtargets['nepochs'] +
+                                 satisfied['nepochs'])
         outtargets['assigned'] = (outtargets['assigned'] +
                                   satisfied['assigned'])
         outtargets['allowed'] = (outtargets['allowed'] +
