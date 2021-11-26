@@ -603,19 +603,19 @@ class AllocateLST(object):
 """
         hdr = robostrategy.header.rsheader()
         fitsio.write(filename, self.field_array, header=hdr,
-                     clobber=True)
+                     clobber=True, extname='ALLOCATE')
         self.slots.tofits(filename=filename, clobber=False)
-        fitsio.write(filename, self.fields, clobber=False)
-        fitsio.write(filename, self.field_slots, clobber=False)
-        fitsio.write(filename, self.field_options, clobber=False)
+        fitsio.write(filename, self.fields, extname='FIELDS', clobber=False)
+        fitsio.write(filename, self.field_slots, extname='FSLOTS', clobber=False)
+        fitsio.write(filename, self.field_options, extname='OPTIONS', clobber=False)
         cartons_arr = np.zeros(len(self.cartons),
                                dtype=[('carton', 'U50')])
         cartons_arr['carton'] = self.cartons
         cadences_arr = np.zeros(len(self.cadences),
                                dtype=[('cadences', 'U50')])
         cadences_arr['cadences'] = self.cadences
-        fitsio.write(filename, cartons_arr, clobber=False)
-        fitsio.write(filename, cadences_arr, clobber=False)
+        fitsio.write(filename, cartons_arr, extname='CARTONS', clobber=False)
+        fitsio.write(filename, cadences_arr, extname='CADENCES', clobber=False)
         return
 
     def fromfits(self, filename=None):

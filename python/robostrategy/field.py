@@ -2135,6 +2135,7 @@ class Field(object):
 
         validRobotIDs = self.masterTargetDict[rsid].validRobotIDs
         validRobotIDs = np.array(validRobotIDs, dtype=np.int32)
+        np.random.shuffle(validRobotIDs)
 
         if(len(validRobotIDs) == 0):
             available = dict()
@@ -2173,6 +2174,7 @@ class Field(object):
                     # If this robot was good, then let's just return it
                     if(first):
                         break
+
             availableRobotIDs[iepoch] = arlist
             nAvailableRobotIDs[iepoch] = len(arlist)
             statuses[iepoch] = slist
@@ -2628,6 +2630,7 @@ class Field(object):
         for rsid in rsids[inotsat]:
             indx = self.rsid2indx[rsid]
             robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
+            np.random.shuffle(robotIDs)
             hasApogee = self.robotHasApogee[robotIDs - 1]
             robotIDs = robotIDs[np.argsort(hasApogee)]
 
@@ -2669,6 +2672,7 @@ class Field(object):
             indx = self.rsid2indx[rsid]
             nexp_cadence = clist.cadences[self.targets['cadence'][indx]].nexp_total
             robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
+            np.random.shuffle(robotIDs)
             hasApogee = self.robotHasApogee[robotIDs - 1]
             robotIDs = robotIDs[np.argsort(hasApogee)]
 
@@ -2900,6 +2904,7 @@ class Field(object):
         
         icalib = np.where(self._is_calibration &
                           (self.targets['rsassign'] != 0))[0]
+        np.random.shuffle(icalib)
         self.assign_cadences(rsids=self.targets['rsid'][icalib])
 
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
@@ -3351,7 +3356,8 @@ class Field(object):
                             print("robotID={robotID} iexp={iexp} : expected {rsid} in assignedTargetID, got {actual}".format(rsid=self.targets['rsid'][itarget], iexp=iexp, robotID=robotID, actual=rg.robotDict[assignment['robotID'][iexp]].assignedTargetID))
                             nproblems = nproblems + 1
 
-        inotallowed = np.where((self.assignments['allowed'] == 0) &
+        epochs = self.field_cadence.epochs
+        inotallowed = np.where((self.assignments['allowed'][:, epochs] == 0) &
                                (self.assignments['robotID'] >= 0))[0]
         if(len(inotallowed) > 0):
             nproblems = nproblems + len(inotallowed)

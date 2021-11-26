@@ -168,7 +168,7 @@ class Slots(object):
         hdr['NSB'] = self.nskybrightness
         for indx in range(len(self.skybrightness)):
             hdr['SB{indx}'.format(indx=indx)] = self.skybrightness[indx]
-        fitsio.write(filename, self.slots, header=hdr, clobber=clobber)
+        fitsio.write(filename, self.slots, header=hdr, clobber=clobber, extname='SLOTS')
         return
 
     def fromfits(self, filename=None, ext=0):

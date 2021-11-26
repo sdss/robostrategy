@@ -49,7 +49,7 @@ def assign_field(indx):
                                                        'rsFieldTargetsOpen')
     if(fromreassign):
         field_assigned_file = field_assigned_file_orig.replace('targets/rsFieldAssignments',
-                                                               'reassign/rsFieldReassignments')
+                                                               'targets/rsFieldReassignments')
     else:
         field_assigned_file = field_assigned_file_orig
 

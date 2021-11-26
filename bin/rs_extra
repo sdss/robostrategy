@@ -1,0 +1,232 @@
+#!/usr/bin/env python
+# encoding: utf-8
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+import sys
+import glob
+import numpy as np
+import argparse
+import fitsio
+import pdb
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5',preserve_envvars=True)
+
+'''
+This code creates a file similar to the rsCompleteness file. The first
+science extension is the same. The second science extension counts extra epochs
+obtained. Since this also occurs serendipitously in the simluation code,
+it looks at both the rsFieldAssignments and rsFieldReassignments and creates
+two versions of the output file (the second with a '-ra-' appended to the file
+name to indicate 'reassignment')
+
+The "extra" extension will track:
+'nepochs_got'
+'nexps_got'
+'extra_assigned'
+'tot_extra_epoch'
+'tot_extra_exps'
+
+'''
+
+def parse_cadence(cadence):
+    '''
+    Parse a target cadence name and return n epochs and m eposures requested
+    '''
+    n_by_m = [c.split('_')[1] for c in cadence]
+    nepoch = np.array([np.int32(x.split('x')[0]) for x in n_by_m])
+    nexposure = np.array([np.int32(x.split('x')[1]) for x in n_by_m])
+    return nepoch, nexposure
+
+def mk_reassigned(origin_fields,obs_array, plan=None):
+    '''
+    origin_fields: Numpy array of integer field numbers in the original. These
+       will be used to build the rsExtra-{plan}.fits file
+
+    obs_array: Numpy array of length len(origin_fields) with corresponding
+               observatory for each field
+    '''
+    targets_file = sdss_path.full('rsTargets', plan=plan, observatory='apo')
+    targets = fitsio.read(targets_file)
+
+    # create the rsid2indx dictionary
+    rsid2indx = dict()
+    for indx,target in enumerate(targets):
+        rsid2indx[target['rsid']] = indx
+
+    got_dtype = np.dtype([('satisfied', np.int32),
+                          ('assigned', np.int32),
+                          ('covered', np.int32)])
+
+    outtargets_dtype = np.dtype(targets.dtype.descr + got_dtype.descr)
+
+    extra_dtype = np.dtype([('nepochs_got',np.int32),
+                             ('nexps_got',np.int32),
+                             ('extra_assigned',np.int32),
+                             ('tot_extra_epoch',np.int32),
+                             ('tot_extra_exps',np.int32)])
+
+    # Create the output object for the original simulation and copy over
+    # Everything except the 'got' statistics
+    outtargets = np.zeros(len(targets), dtype=outtargets_dtype)
+    for name in targets.dtype.names:
+        outtargets[name] = targets[name]
+
+    # Create the other needed output arrays. A "got" array for new simulation
+    # and 2 arrays for "extra"
+    new_got = np.zeros(len(targets), dtype = got_dtype)
+    orig_extra = np.zeros(len(targets), dtype = extra_dtype)
+    new_extra = np.zeros(len(targets), dtype = extra_dtype)
+
+    # Originally coded to use rsTargetsCovered, but that is a huge file
+    # Using instead the rsCompletness file and 'covered'colume
+    targets_covered_file = targets_file.replace('rsTargets', 'rsTargetsCovered')
+    targets= fitsio.read(targets_covered_file,columns=['within_hex'])
+    icovered = np.where(targets['within_hex'] > 0)[0]
+    outtargets['covered'][icovered] = 1
+    new_got['covered'][icovered] = 1
+
+    # Departure from robostrategy. Now read in the LCO file and add 2 to the
+    # icovered such that values of 0 = not covered, 1 = APO covered, 2 = LCO
+    # Covered and 3 = Both covered
+    targets = fitsio.read(targets_covered_file.replace('apo','lco'),columns=['within_hex'])
+    icovered = np.where(targets['within_hex'] > 0)[0]
+    outtargets['covered'][icovered] += 2
+    new_got['covered'][icovered] += 2
+
+    # Save both new files to same place as rsCompletness
+    complete_file = sdss_path.full("rsCompleteness", plan=plan, observatory='apo')
+    out_dir = os.path.dirname(complete_file)
+    outfile_orig = os.path.join(out_dir, f'rsExtra-{plan}.fits')
+    outfile_new = os.path.join(out_dir,f'rsExtra-{plan}-ra.fits')
+
+    for fid,obs in zip(origin_fields,obs_array):
+        field_file = sdss_path.full('rsFieldAssignments', plan=plan,observatory=obs,
+                                     fieldid = fid)
+        field_file = field_file
+        fheader = fitsio.read_header(field_file, ext=0)
+        ftargets = fitsio.read(field_file, ext=1)
+        fassignments = fitsio.read(field_file, ext=2)
+
+        isat = np.array([rsid2indx[rsid] for rsid in ftargets['rsid']],
+                             dtype = np.int32)
+
+        outtargets['satisfied'][isat] = (outtargets['satisfied'][isat] +
+                                        fassignments['satisfied'])
+
+        outtargets['assigned'][isat] = (outtargets['assigned'][isat] +
+                                        fassignments['assigned'])
+
+        orig_extra['nepochs_got'][isat] = (orig_extra['nepochs_got'][isat] +
+                                           fassignments['nepochs'])
+
+        orig_extra['nexps_got'][isat] = (orig_extra['nexps_got'][isat] +
+                                         fassignments['nexps'])
+
+        # Also read info from the reassignments file
+        field_file2 = field_file.replace('rsFieldAssignments','rsFieldReassignments')
+        ftargets2 = fitsio.read(field_file2,ext=1)
+        fassignments2 = fitsio.read(field_file2,ext=2)
+        isat2 = np.array([rsid2indx[rsid] for rsid in ftargets2['rsid']],
+                             dtype = np.int32)
+
+        new_got['satisfied'][isat2] = (new_got['satisfied'][isat2] +
+                                       fassignments2['satisfied'])
+
+        new_got['assigned'][isat2] = (new_got['assigned'][isat2] +
+                                          fassignments2['assigned'])
+
+        new_extra['nexps_got'][isat2] = (new_extra['nexps_got'][isat2] +
+                                          fassignments2['nexps'])
+
+        new_extra['nepochs_got'][isat2] = (new_extra['nepochs_got'][isat2] +
+                                            fassignments2['nepochs'])
+        new_extra['extra_assigned'][isat2] = (new_extra['extra_assigned'][isat2] +
+                                              fassignments2['extra'])
+
+    # Parse target cadence to get requested nxm from cadence name
+    u_cadence = np.unique(outtargets['cadence'])
+    u_cadence = u_cadence[u_cadence != '']
+    needed_n_epoch, needed_n_exp = parse_cadence(u_cadence)
+
+    # compare got nexposure and nepoch to that requested and tabulate exrta
+    for cadence,ep_need,exp_need in zip(u_cadence, needed_n_epoch,needed_n_exp):
+        ikp = np.where(outtargets['cadence'] == cadence)[0]
+
+        orig_extra['tot_extra_epoch'][ikp] = orig_extra['nepochs_got'][ikp] - ep_need
+        orig_extra['tot_extra_exps'][ikp] = orig_extra['nexps_got'][ikp] - exp_need
+
+        new_extra['tot_extra_epoch'][ikp] = new_extra['nepochs_got'][ikp] - ep_need
+        new_extra['tot_extra_exps'][ikp] = new_extra['nexps_got'][ikp] - exp_need
+
+
+    hdr = dict()
+    # As in rsCompleteness file
+    icadence = np.where(outtargets['cadence'] != "")[0]
+    ntargets = len(np.where(outtargets['covered'][icadence])[0])
+    ngot = np.int32((outtargets['satisfied'][icadence] > 0).sum())
+    if(ntargets > 0):
+        fgot = np.float32(ngot) /np.float32(ntargets)
+    else:
+        fgot = np.float32(-1)
+
+    nextra = np.int32((orig_extra['tot_extra_exps'] > 0).sum())
+
+    hdr['NTARGETS'] = ntargets
+    hdr['NGOT'] = ngot
+    hdr['FGOT'] = fgot
+    hdr['NEXTRA'] = nextra
+
+    fitsio.write(outfile_orig, outtargets, header=hdr, clobber=True)
+    fitsio.write(outfile_orig, orig_extra, clobber=False)
+
+    # update columns for reassignment output
+    outtargets['satisfied'] = new_got['satisfied']
+    outtargets['assigned'] = new_got['assigned']
+
+    hdr = dict()
+    # As in rsCompleteness file
+    ngot = np.int32((outtargets['satisfied'][icadence] > 0).sum())
+    if(ntargets > 0):
+        fgot = np.float32(ngot) /np.float32(ntargets)
+    else:
+        fgot = np.float32(-1)
+
+    nextra = np.int32((new_extra['tot_extra_exps'] > 0).sum())
+
+    hdr['NTARGETS'] = ntargets
+    hdr['NGOT'] = ngot
+    hdr['FGOT'] = fgot
+    hdr['NEXTRA'] = nextra
+
+    fitsio.write(outfile_new, outtargets, header=hdr, clobber=True)
+    fitsio.write(outfile_new, new_extra, clobber=False)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Evaluate extra assigments'
+    )
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                       type=str, help='name of plan', required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    falloc1 = sdss_path.full('rsAllocation',plan=plan,observatory='apo')
+    falloc2 = sdss_path.full('rsAllocation', plan=plan, observatory='lco')
+    fields1 = fitsio.read(falloc1,columns='fieldid')
+    fields2 = fitsio.read(falloc2,columns='fieldid')
+
+    origin_fields = np.append(fields1,fields2)
+    obs_array = np.append(np.full_like(fields1, 'apo', dtype=(np.unicode_, 3)),
+                          np.full_like(fields2, 'lco', dtype=(np.unicode_, 3)))
+    mk_reassigned(origin_fields,obs_array,plan=plan)

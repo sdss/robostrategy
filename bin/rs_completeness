@@ -110,6 +110,10 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassignment target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -121,6 +125,7 @@ if __name__ == '__main__':
         both = False
         observatories = [observatory]
     opentargets = args.opentargets
+    reassign = args.reassign
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatories[0])
@@ -191,6 +196,9 @@ if __name__ == '__main__':
         if(opentargets):
             satisfied_file = satisfied_file.replace('rsSatisfied',
                                                     'rsSatisfiedOpen')
+        if(reassign):
+            satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                    'rsSatisfiedReassign')
         satisfied = fitsio.read(satisfied_file)
 
         outtargets['satisfied'] = (outtargets['satisfied'] +
@@ -255,6 +263,9 @@ if __name__ == '__main__':
     if(opentargets):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessOpen')
+    if(reassign):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessReassign')
 
     icadence = np.where((cadences != "none") & (outtargets['category'] == 'science'))[0]
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
@@ -335,6 +346,9 @@ if __name__ == '__main__':
     if(opentargets):
         subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                             'rsCompletenessOpen')
+    if(reassign):
+        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                            'rsCompletenessReassign')
     fitsio.write(subcompleteness_file, outtargets[icadence], header=hdr,
                  clobber=True)
     fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)
@@ -448,6 +462,9 @@ if __name__ == '__main__':
         if(opentargets):
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessOpen')
+        if(reassign):
+            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                                'rsCompletenessReassign')
         fitsio.write(subcompleteness_file, outtargets[icarton], header=hdr,
                      clobber=True)
         fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)

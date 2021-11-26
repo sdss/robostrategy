@@ -45,8 +45,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
-    airmass_limit = 1.4
-    airmass_pad = 0.2
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -54,6 +52,18 @@ if __name__ == '__main__':
         bright_only_bright = True
     else:
         bright_only_bright = False
+
+    if('AirmassLimits' in rsParams.cfg['Allocation']):
+        airmass_limits_str = rsParams.cfg.get('Allocation', 'AirmassLimits').split()
+        airmass_limits = np.array([np.float32(x) for x in airmass_limits_str],
+                                  dtype=np.float32)
+    else:
+        airmass_limits = np.array([1.4, 1.4], dtype=np.float32)
+
+    if('AirmassPad' in rsParams.cfg['Allocation']):
+        airmass_pad = np.float32(rsParams.cfg.get('Allocation', 'AirmassPad'))
+    else:
+        airmass_pad = 0.2
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -119,7 +129,7 @@ if __name__ == '__main__':
         airmass_min = observer.alt2airmass(alt=alt_max)
         for iskybrightness in np.arange(slots.nskybrightness):
             okalt = ((alt > 0) &
-                     ((airmass < airmass_limit) |
+                     ((airmass < airmass_limits[iskybrightness]) |
                       (airmass < airmass_min + airmass_pad)))
             if(bright_only_bright):
                 oksky = (np.abs(field_max_skybrightness -
@@ -135,4 +145,10 @@ if __name__ == '__main__':
     slots_file = sdss_path.full('rsFieldSlots', plan=plan,
                                 observatory=observatory)
     hd = robostrategy.header.rsheader()
+    hd.append({'name':'AMASSLIM',
+               'value':' '.join([str(x) for x in airmass_limits]),
+               'comment':'airmass limits (dark, bright)'})
+    hd.append({'name':'AMASSPAD',
+               'value':str(airmass_pad),
+               'comment':'airmass pad if out of limit'})
     fitsio.write(slots_file, field_slots, header=hd, clobber=True)

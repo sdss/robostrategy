@@ -37,10 +37,20 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassignment target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    opentargets = args.opentargets
+    reassign = args.reassign
 
     rsParams = params.RobostrategyParams(plan=plan)
     if('Rotate' in rsParams.cfg['Fields']):
@@ -62,6 +72,8 @@ if __name__ == '__main__':
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                    observatory=observatory)
+    if(opentargets):
+        targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
     full_targets = fitsio.read(targets_file)
 
     rsid2indx = dict()
@@ -96,6 +108,12 @@ if __name__ == '__main__':
                                              plan=plan,
                                              observatory=observatory,
                                              fieldid=fieldid)
+        if(opentargets):
+            field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
+                                                              'rsFieldAssignmentsOpen')
+        if(reassign):
+            field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
+                                                              'rsFieldAssignmentsOpen')
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
@@ -106,28 +124,38 @@ if __name__ == '__main__':
             assignments = None
 
         if(assignments is not None):
-            isat = np.array([rsid2indx[rsid] for rsid in targets['rsid']],
+            isin = np.array([r in rsid2indx for r in targets['rsid']],
+                            dtype=bool)
+            iin = np.where(isin)[0]
+            isat = np.array([rsid2indx[rsid] for rsid in targets['rsid'][iin]],
                             dtype=np.int32)
             satisfied['satisfied'][isat] = (satisfied['satisfied'][isat] +
-                                            assignments['satisfied'])
+                                            assignments['satisfied'][iin])
             satisfied['assigned'][isat] = (satisfied['assigned'][isat] +
-                                           assignments['assigned'])
+                                           assignments['assigned'][iin])
             satisfied['incadence'][isat] = (satisfied['incadence'][isat] +
-                                            targets['incadence'])
+                                            targets['incadence'][iin])
             if(len(assignments['allowed'].shape) > 1):
                 satisfied['allowed'][isat] = (satisfied['allowed'][isat] +
-                                              assignments['allowed'].sum(axis=1))
+                                              assignments['allowed'][iin, :].sum(axis=1))
             else:
                 satisfied['allowed'][isat] = (satisfied['allowed'][isat] +
-                                              assignments['allowed'])
+                                              assignments['allowed'][iin])
             satisfied['nexps'][isat] = (satisfied['nexps'][isat] +
-                                        assignments['nexps'])
+                                        assignments['nexps'][iin])
             satisfied['nepochs'][isat] = (satisfied['nepochs'][isat] +
-                                          assignments['nepochs'])
+                                          assignments['nepochs'][iin])
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
     satisfied_file = assigned_file.replace('rsAssignments', 'rsSatisfied')
+    if(opentargets):
+        satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                'rsSatisfiedOpen')
+    if(reassign):
+        satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                'rsSatisfiedReassign')
+
     hdr = robostrategy.header.rsheader()
     fitsio.write(satisfied_file, satisfied, header=hdr,
                  clobber=True)
