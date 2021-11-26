@@ -23,7 +23,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         for name in self.assignments_dtype.names:
             new_assignments[name] = self.assignments[name]
 
-        self.assignmnets_dtype = new_dtype
+        self.assignments_dtype = new_dtype
         self.assignments = new_assignments
 
         return
@@ -107,7 +107,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     if len(per_epoch_available) > 0:
                         first_free_robot = per_epoch_available[0]
                         is_assign = self.assign_robot_epoch(rsid=rsid, robotID=first_free_robot, epoch=iepoch,
-                                                free=free['freeExposures'][iepoch][0], nexp=nexps)
+                                                            status=free['statuses'][iepoch][0], nexp=nexps)
                         if is_assign:
                            n_assign += 1
                     if n_assign >= max_extra: #stop when you have hit maximum extra
