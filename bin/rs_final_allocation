@@ -1,0 +1,151 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_final_allocation
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import numpy as np
+import astropy.io.fits as fits
+import roboscheduler.cadence as cadence
+import sdss_access.path
+import fitsio
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final allocation file, splitting mixed cadences')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-b', '--base-fieldid', dest='base_fieldid',
+                        type=int, help='base fieldid for fieldid numbering',
+                        required=True)
+
+    observatories = ['apo', 'lco']
+
+    args = parser.parse_args()
+    plan = args.plan
+    base_fieldid = args.base_fieldid
+
+    fieldid = base_fieldid
+
+    for observatory in observatories:
+        cadencelist = cadence.CadenceList()
+        cadencelist.reset()
+        cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                       observatory=observatory)
+        cadencelist.fromfits(filename=cadences_file, unpickle=False)
+
+        allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                       observatory=observatory)
+        allocate_final_file = allocate_file.replace('rsAllocation',
+                                                    'final/rsAllocationFinal')
+
+        allocate_hdus = fits.open(allocate_file)
+        rs_fields_array = allocate_hdus[1].data
+        rs_fields = allocate_hdus[3].data
+
+        fields_array_dtype = np.dtype(rs_fields_array.dtype.descr +
+                                      np.dtype([('iexpst', np.int32),
+                                                ('iexpnd', np.int32),
+                                                ('split', np.int32)]).descr)
+        fields_dtype = np.dtype(rs_fields.dtype.descr +
+                                np.dtype([('iexpst', np.int32),
+                                          ('iexpnd', np.int32),
+                                          ('split', np.int32)]).descr)
+        
+        fields_array = np.zeros(0, dtype=fields_array_dtype)
+        fields = np.zeros(0, dtype=fields_dtype)
+        ifield = 0
+        for irsfield in np.arange(len(rs_fields_array), dtype=np.int32):
+            fieldid = rs_fields_array['fieldid'][irsfield]
+            curr_cadence_name = rs_fields_array['cadence'][irsfield]
+            curr_cadence = cadencelist.cadences[curr_cadence_name]
+            skybrightness = curr_cadence.skybrightness[curr_cadence.epochs]
+            iexpst = 0
+            while(iexpst < curr_cadence.nexp_total):
+                iexpnd = iexpst
+                sb = skybrightness[iexpst]
+                if(iexpnd + 1 < curr_cadence.nexp_total):
+                    nextsb = skybrightness[iexpnd + 1]
+                while(((iexpnd + 1) < curr_cadence.nexp_total) &
+                      (np.abs(nextsb - sb) < 0.001)):
+                    iexpnd = iexpnd + 1
+                    if(iexpnd + 1 < curr_cadence.nexp_total):
+                        nextsb = skybrightness[iexpnd + 1]
+
+                tmp_fields_array = np.zeros(1, dtype=fields_array_dtype)
+                for n in rs_fields_array.dtype.names:
+                    tmp_fields_array[n][0] = rs_fields_array[n][irsfield]
+                tmp_fields_array['iexpst'][0] = iexpst
+                tmp_fields_array['iexpnd'][0] = iexpnd
+                fields_array = np.append(fields_array, tmp_fields_array)
+
+                tmp_fields = np.zeros(1, dtype=fields_dtype)
+                for n in rs_fields.dtype.names:
+                    tmp_fields[n][0] = rs_fields[n][irsfield]
+                tmp_fields['iexpst'][0] = iexpst
+                tmp_fields['iexpnd'][0] = iexpnd
+                fields = np.append(fields, tmp_fields)
+
+                fieldid = fieldid + 1
+                iexpst = iexpnd + 1
+
+        for ifield in np.arange(len(fields_array)):
+            curr_cadence_name = fields_array['cadence'][ifield].decode()
+            curr_cadence = cadencelist.cadences[curr_cadence_name]
+            rs_nexp_total = curr_cadence.nexp_total
+            iexpnd = fields_array['iexpnd'][ifield]
+            iexpst = fields_array['iexpst'][ifield]
+            nexp_total = iexpnd - iexpst + 1
+            if(nexp_total == rs_nexp_total):
+                fields_array['split'][ifield] = 0
+                fields['split'][ifield] = 0
+                continue
+            if(nexp_total > rs_nexp_total):
+                print("Impossible result for nexp, bombing")
+                sys.exit(1)
+            if(nexp_total < rs_nexp_total):
+                fields_array['split'][ifield] = 1
+                fields['split'][ifield] = 1
+                if(curr_cadence_name[0:13] == 'mixed2_single'):
+                    if((iexpst == 0) & (iexpnd == 1)):
+                        fields_array['cadence'][ifield] = 'mixed2_single_2x1'
+                    elif((iexpst == 2) & (iexpnd <= 19)):
+                        fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                    elif(iexpst == 2):
+                        fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                    else:
+                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        sys.exit(3)
+                else:
+                    print("Not expecting mixed cadence with name {n}".format(n=curr_cadence_name))
+                    print("nexp_total = {n}, rs_nexp_total = {r}".format(n=nexp_total,
+                                                                         r=rs_nexp_total))
+                    print(cadencelist.cadences[curr_cadence_name])
+                    sys.exit(2)
+
+        fields_array_hdu = fits.BinTableHDU(fields_array)
+        fields_hdu = fits.BinTableHDU(fields)
+        allocate_hdus[1] = fields_array_hdu
+        allocate_hdus[3] = fields_hdu
+        allocate_hdus.writeto(allocate_final_file, overwrite=True)
