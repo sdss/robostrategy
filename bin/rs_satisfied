@@ -119,6 +119,7 @@ if __name__ == '__main__':
             targets = fitsio.read(field_assigned_file, ext='TARGET')
             assignments = fitsio.read(field_assigned_file, ext='ASSIGN')
         except:
+            print("Missing file {f}".format(f=field_assigned_file))
             header = None
             targets = None
             assignments = None
