@@ -36,17 +36,11 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
-    parser.add_argument('-b', '--base-fieldid', dest='base_fieldid',
-                        type=int, help='base fieldid for fieldid numbering',
-                        required=True)
 
     observatories = ['apo', 'lco']
 
     args = parser.parse_args()
     plan = args.plan
-    base_fieldid = args.base_fieldid
-
-    fieldid = base_fieldid
 
     for observatory in observatories:
         cadencelist = cadence.CadenceList()
@@ -107,7 +101,6 @@ if __name__ == '__main__':
                 tmp_fields['iexpnd'][0] = iexpnd
                 fields = np.append(fields, tmp_fields)
 
-                fieldid = fieldid + 1
                 iexpst = iexpnd + 1
 
         for ifield in np.arange(len(fields_array)):
