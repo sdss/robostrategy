@@ -64,6 +64,11 @@ if __name__ == '__main__':
         rotate = False
         paname = ''
 
+    if('collisionBuffer' in rsParams.cfg['Assignment']):
+        collisionBuffer = np.float32(rsParams.cfg['Assignment']['collisionBuffer'])
+    else:
+        collisionBuffer = None
+
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
@@ -151,6 +156,7 @@ if __name__ == '__main__':
         f = field.Field(fieldid=fieldid,
                         racen=fields_entry['racen'],
                         deccen=fields_entry['deccen'],
+                        collisionBuffer=collisionBuffer,
                         observatory=observatory, pa=pa)
         f.targets_fromarray(target_array=targets)
         ihex = icheck[indx[np.where(f.targets['within'])[0]]]
