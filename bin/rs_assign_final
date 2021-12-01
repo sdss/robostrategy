@@ -233,9 +233,9 @@ if __name__ == '__main__':
         paname = ''
 
     collisionBuffer = 2.
-    if('Kaiju' in rsParams.cfg):
-        if('collisionBuffer' in rsParams.cfg['Kaiju']):
-            collisionBuffer = np.float32(rsParams.cfg['Kaiju']['collisionBuffer'])
+    if('Assignment' in rsParams.cfg):
+        if('collisionBuffer' in rsParams.cfg['Assignment']):
+            collisionBuffer = np.float32(rsParams.cfg['Assignment']['collisionBuffer'])
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
