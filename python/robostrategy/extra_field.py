@@ -194,9 +194,14 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         make_report = False
         any_extra = False
 
-        # Find gotten RVs and see try to get extra epochs - take any in the RV program
-        iextra = np.where((self.targets['program'] == 'mwm_rv') &
-                          (self.assignments['satisfied'] > 0))[0]
+        # Find gotten RVs and see try to get extra epochs - take any in the RV 
+        # program that was satisfied. Additionally, take any mwm_rv_long that 
+        # is UNSATISFIED and do those first
+        iextra1 = np.where((self.targets['carton'] == 'mwm_rv_long_fps') &
+                           (self.assignments['satisfied'] == 0))[0]
+        iextra2 = np.where((self.targets['program'] == 'mwm_rv') &
+                           (self.assignments['satisfied'] > 0))[0]
+        iextra = np.append(iextra1,iextra2)
 
         if len(iextra) > 0:
             # For RV's, group by cadence so you can determine how many exposures
