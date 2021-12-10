@@ -36,105 +36,70 @@ def count_spares(indx):
     field_target_file = sdss_path.full('rsFieldAssignments',
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
+    if(final):
+        field_target_file = field_target_file.replace('targets/rsFieldAssignments',
+                                                      'final/rsFieldAssignmentsFinal')
     if(opentargets):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldAssignmentsOpen')
+    if(reassign):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldReassignments')
+
     f = field.Field(filename=field_target_file, allgrids=False)
 
     spares_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('nboss_spare', np.int32, f.field_cadence.nexp_total),
-                    ('napogee_spare', np.int32, f.field_cadence.nexp_total)]
+                    ('napogee_spare', np.int32, f.field_cadence.nexp_total),
+                    ('nboss_science', np.int32, f.field_cadence.nexp_total),
+                    ('napogee_science', np.int32, f.field_cadence.nexp_total)]
+
     spare = np.zeros(1, dtype=spares_dtype)
 
     spare['fieldid'] = fieldid
     spare['racen'] = allocate.fields['racen'][indx]
     spare['deccen'] = allocate.fields['deccen'][indx]
-    hasApogee = np.array([f.mastergrid.robotDict[x + 1].hasApogee
-                          for x in range(500)])
-    iapogee = np.where(hasApogee)[0]
-    if(f.assignments is not None):
-        nun_apogee = np.zeros(f.field_cadence.nexp_total, dtype=np.int32)
-        nun_boss = np.zeros(f.field_cadence.nexp_total, dtype=np.int32)
-        for iexp in np.arange(f.field_cadence.nexp_total,
-                              dtype=np.int32):
-            ina_apogee = np.where(f._robot2indx[iapogee, iexp] < 0)[0]
-            ina_boss = np.where(f._robot2indx[:, iexp] < 0)[0]
-            nun_apogee[iexp] = len(ina_apogee)
-            nun_boss[iexp] = len(ina_boss)
-        
-        nsp_apogee_standard = (f.calibrations['standard_apogee'] -
-                               f.required_calibrations['standard_apogee'])
-        iz = np.where(nsp_apogee_standard < 0)[0]
-        nsp_apogee_standard[iz] = 0
 
-        nsp_apogee_sky = (f.calibrations['sky_apogee'] -
-                          f.required_calibrations['sky_apogee'])
-        iz = np.where(nsp_apogee_sky < 0)[0]
-        nsp_apogee_sky[iz] = 0
+    nboss_spare, napogee_spare = f.count_spares()
+    spare['nboss_spare'] = nboss_spare
+    spare['napogee_spare'] = napogee_spare
 
-        nsp_boss_standard = (f.calibrations['standard_boss'] -
-                             f.required_calibrations['standard_boss'])
-        iz = np.where(nsp_boss_standard < 0)[0]
-        nsp_boss_standard[iz] = 0
-        nsp_boss_standard_wapogee = np.zeros(f.field_cadence.nexp_total,
-                                             dtype=np.int32)
-        for iexp in np.arange(f.field_cadence.nexp_total,
-                              dtype=np.int32):
-            ia = np.where((f._robot2indx[:, iexp] >= 0) &
-                          hasApogee)[0]
-            if(len(ia) > 0):
-                ia = f._robot2indx[ia, iexp]
-                ic = np.where(f.targets['category'][ia] == 'boss_standard')[0]
-                nc = len(ic)
-            else:
-                nc = 0
-            if(nc < nsp_boss_standard[iexp]):
-                nsp_boss_standard_wapogee[iexp] = nc
-            else:
-                nsp_boss_standard_wapogee[iexp] = nsp_boss_standard[iexp]
+    if(f.field_cadence.nexp_total > 1):
+        for iexp in np.arange(f.field_cadence.nexp_total):
+            iok = np.where(f._robot2indx[:, iexp] >= 0)[0]
+            cindx = f._robot2indx[iok, iexp]
+            iboss = np.where((f.targets['category'][cindx] == 'science') &
+                             (f.targets['fiberType'][cindx] == 'BOSS'))[0]
+            spare['nboss_science'][0, iexp] = len(iboss)
+            iapogee = np.where((f.targets['category'][cindx] == 'science') &
+                               (f.targets['fiberType'][cindx] == 'APOGEE'))[0]
+            spare['napogee_science'][0, iexp] = len(iapogee)
+    else:
+        iok = np.where(f._robot2indx[:] >= 0)[0]
+        cindx = f._robot2indx[iok]
+        iboss = np.where((f.targets['category'][cindx] == 'science') &
+                         (f.targets['fiberType'][cindx] == 'BOSS'))[0]
+        spare['nboss_science'][0] = len(iboss)
+        iapogee = np.where((f.targets['category'][cindx] == 'science') &
+                           (f.targets['fiberType'][cindx] == 'APOGEE'))[0]
+        spare['napogee_science'][0] = len(iapogee)
+            
+    base = 'rsFieldSpares'
+    tdir = 'targets'
+    if(opentargets):
+        base = 'rsFieldSparesOpen'
+    if(reassign):
+        base = 'rsFieldSparesReassign'
+    if(final):
+        tdir = 'final'
+        base = 'rsFieldSparesFinal'
+    spares_file = '{tdir}/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base, tdir=tdir)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(spares_file, spare, header=hdr, clobber=True)
+    return
 
-        nsp_boss_sky = (f.calibrations['sky_boss'] -
-                        f.required_calibrations['sky_boss'])
-        iz = np.where(nsp_boss_sky < 0)[0]
-        nsp_boss_sky[iz] = 0
-        nsp_boss_sky_wapogee = np.zeros(f.field_cadence.nexp_total,
-                                        dtype=np.int32)
-        for iexp in np.arange(f.field_cadence.nexp_total,
-                              dtype=np.int32):
-            ia = np.where((f._robot2indx[:, iexp] >= 0) &
-                          hasApogee)[0]
-            if(len(ia) > 0):
-                ia = f._robot2indx[ia, iexp]
-                ic = np.where(f.targets['category'][ia] == 'boss_sky')[0]
-                nc = len(ic)
-            else:
-                nc = 0
-            if(nc < nsp_boss_sky[iexp]):
-                nsp_boss_sky_wapogee[iexp] = nc
-            else:
-                nsp_boss_sky_wapogee[iexp] = nsp_boss_sky[iexp]
-
-        # The below is correct because every APOGEE robot is
-        # also potentially a BOSS robot, but not vice-versa.
-        spare['nboss_spare'] = (nun_boss +
-                                nsp_boss_standard +
-                                nsp_boss_sky +
-                                nsp_apogee_standard +
-                                nsp_apogee_sky)
-        spare['napogee_spare'] = (nun_apogee +
-                                  nsp_apogee_standard +
-                                  nsp_apogee_sky + 
-                                  nsp_boss_standard_wapogee +
-                                  nsp_boss_sky_wapogee)
-        
-        base = 'rsFieldSpares'
-        if(opentargets):
-            base = 'rsFieldSparesOpen'
-        spares_file = 'targets/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base)
-        hdr = robostrategy.header.rsheader()
-        fitsio.write(spares_file, spare, header=hdr, clobber=True)
 
 if __name__ == '__main__':
 
@@ -157,6 +122,14 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassign results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-F', '--final', dest='final',
+                        help='set to read final results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -164,6 +137,8 @@ if __name__ == '__main__':
     start = args.start
     end = args.end
     opentargets = args.opentargets
+    reassign = args.reassign
+    final = args.final
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -172,6 +147,8 @@ if __name__ == '__main__':
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
+    if(final):
+        allocate_file = allocate_file.replace('rsAllocation', 'final/rsAllocationFinal')
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
@@ -184,14 +161,20 @@ if __name__ == '__main__':
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('nboss_spare', np.int32),
-                    ('napogee_spare', np.int32)]
+                    ('napogee_spare', np.int32),
+                    ('nboss_science', np.int32),
+                    ('napogee_science', np.int32),
+                    ('nboss_total', np.int32),
+                    ('napogee_total', np.int32)]
 
     spares_exp_dtype = [('fieldid', np.int32),
                         ('iexp', np.int32),
                         ('racen', np.float64),
                         ('deccen', np.float64),
                         ('nboss_spare', np.int32),
-                        ('napogee_spare', np.int32)]
+                        ('napogee_spare', np.int32),
+                        ('nboss_science', np.int32),
+                        ('napogee_science', np.int32)]
 
     with multiprocessing.Pool() as pool:
         pool.map(count_spares, ikeep)
@@ -204,9 +187,15 @@ if __name__ == '__main__':
     for indx in ikeep:
         fieldid = allocate.field_array['fieldid'][indx]
         base = 'rsFieldSpares'
+        tdir = 'targets'
         if(opentargets):
             base = 'rsFieldSparesOpen'
-        spares_file = 'targets/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base)
+        if(final):
+            tdir = 'final'
+            base = 'rsFieldSparesFinal'
+        if(reassign):
+            base = 'rsFieldSparesReassign'
+        spares_file = '{tdir}/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base, tdir=tdir)
         cspares = fitsio.read(spares_file)
 
         try:
@@ -219,6 +208,8 @@ if __name__ == '__main__':
         spares_exp['deccen'][ispares_exp:ispares_exp + nexp] = cspares['deccen'][0]
         spares_exp['nboss_spare'][ispares_exp:ispares_exp + nexp] = cspares['nboss_spare'][0]
         spares_exp['napogee_spare'][ispares_exp:ispares_exp + nexp] = cspares['napogee_spare'][0]
+        spares_exp['nboss_science'][ispares_exp:ispares_exp + nexp] = cspares['nboss_science'][0]
+        spares_exp['napogee_science'][ispares_exp:ispares_exp + nexp] = cspares['napogee_science'][0]
         ispares_exp = ispares_exp + nexp
 
         spares['fieldid'][indx] = fieldid
@@ -226,17 +217,29 @@ if __name__ == '__main__':
         spares['deccen'][indx] = cspares['deccen'][0]
         spares['nboss_spare'][indx] = cspares['nboss_spare'].sum()
         spares['napogee_spare'][indx] = cspares['napogee_spare'].sum()
+        spares['nboss_science'][indx] = cspares['nboss_science'].sum()
+        spares['napogee_science'][indx] = cspares['napogee_science'].sum()
+        spares['nboss_total'][indx] = 500 * nexp
+        spares['napogee_total'][indx] = 300 * nexp
 
     base = 'rsSpares'
     if(opentargets):
         base = 'rsSparesOpen'
-    outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    if(reassign):
+        base = 'rsSparesReassign'
+    if(final):
+        base = 'rsSparesFinal'
+    outfile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     hdr = robostrategy.header.rsheader()
     fitsio.write(outfile, spares, header=hdr, clobber=True)
 
     base = 'rsSparesExp'
     if(opentargets):
         base = 'rsSparesExpOpen'
-    outfile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    if(reassign):
+        base = 'rsSparesExpReassign'
+    if(final):
+        base = 'rsSparesExpFinal'
+    outfile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     hdr = robostrategy.header.rsheader()
     fitsio.write(outfile, spares_exp, header=hdr, clobber=True)

@@ -3212,6 +3212,16 @@ class Field(object):
             out = out + " {p}".format(p=len(iused_apogee))
         out = out + "\n"
 
+        out = out + "\nSpare fibers per exposure (including spare calibs):\n"
+        nboss_spare, napogee_spare = self.count_spares()
+        out = out + " BOSS: "
+        for iexp in range(self.field_cadence.nexp_total):
+            out = out + " {p}".format(p=nboss_spare[iexp])
+        out = out + "\n APOGEE: "
+        for iexp in range(self.field_cadence.nexp_total):
+            out = out + " {p}".format(p=napogee_spare[iexp])
+        out = out + "\n"
+
         out = out + "\nCarton completion:\n"
         cartons = np.unique(self.targets['carton'])
         for carton in cartons:
@@ -3431,7 +3441,77 @@ class Field(object):
                 print("rsid={rsid} : target assigned with wrong nepochs".format(rsid=target['rsid']))
                 nproblems += 1
 
+    def count_spares(self):
+        """Count spare fibers (accounting for spare calibrations)
 
+        Returns:
+        -------
+
+        nboss_spare : np.int32
+            Number of spare BOSS fibers (all, including APOGEE+BOSS robots)
+
+        napogee_spare : np.int32
+            Number of spare APOGEE fibers
+"""
+        hasApogee = np.array([self.mastergrid.robotDict[x + 1].hasApogee
+                              for x in range(500)])
+
+        iapogee = np.where(hasApogee)[0]
+        napogee_spare = len(iapogee)
+        nboss_spare = len(hasApogee)
+
+        if(self.assignments is not None):
+            nun_apogee = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            nun_boss = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+
+            # Count the ones with literally no assignment
+            for iexp in np.arange(self.field_cadence.nexp_total,
+                                  dtype=np.int32):
+                ina_apogee = np.where(self._robot2indx[iapogee, iexp] < 0)[0]
+                ina_boss = np.where(self._robot2indx[:, iexp] < 0)[0]
+                nun_apogee[iexp] = len(ina_apogee)
+                nun_boss[iexp] = len(ina_boss)
+        
+            nsp = collections.OrderedDict()
+            for calibration in self.calibrations:
+                nsp[calibration] = (self.calibrations[calibration] -
+                                    self.required_calibrations[calibration])
+                iz = np.where(nsp[calibration] < 0)[0]
+                nsp[calibration][iz] = 0
+
+            for bosscalib in ['standard_boss', 'sky_boss']:
+                nsp[bosscalib + '_wapogee'] = np.zeros(self.field_cadence.nexp_total,
+                                                       dtype=np.int32)
+                for iexp in np.arange(self.field_cadence.nexp_total,
+                                      dtype=np.int32):
+                    ia = np.where((self._robot2indx[:, iexp] >= 0) &
+                                  hasApogee)[0]
+                    if(len(ia) > 0):
+                        ia = self._robot2indx[ia, iexp]
+                        ic = np.where(self.targets['category'][ia] == bosscalib)[0]
+                        nc = len(ic)
+                    else:
+                        nc = 0
+                    if(nc < nsp[bosscalib][iexp]):
+                        nsp[bosscalib + '_wapogee'][iexp] = nc
+                    else:
+                        nsp[bosscalib + '_wapogee'][iexp] = nsp[bosscalib][iexp]
+
+            # The below is correct because every APOGEE robot is
+            # also potentially a BOSS robot, but not vice-versa.
+            nboss_spare = (nun_boss +
+                           nsp['standard_boss'] +
+                           nsp['sky_boss'] +
+                           nsp['standard_apogee'] +
+                           nsp['sky_apogee'])
+            napogee_spare = (nun_apogee +
+                             nsp['standard_apogee'] +
+                             nsp['sky_apogee'] + 
+                             nsp['standard_boss_wapogee'] +
+                             nsp['sky_boss_wapogee'])
+
+        return(nboss_spare, napogee_spare)
+        
     def _plot_robot(self, robot, color=None, ax=None):
         """Plot a single robot
 
@@ -3447,14 +3527,18 @@ class Field(object):
         ax : Axes object
             matplotlib Axes object to plot on
 """
-        xr = robot.xPos
-        yr = robot.yPos
-        xa = xr + _alphaLen * np.cos(robot.alpha / 180. * np.pi)
-        ya = yr + _alphaLen * np.sin(robot.alpha / 180. * np.pi)
-        xb = xa + _betaLen * np.cos((robot.alpha + robot.beta) / 180. * np.pi)
-        yb = ya + _betaLen * np.sin((robot.alpha + robot.beta) / 180. * np.pi)
-        ax.plot(np.array([xr, xa]), np.array([yr, ya]), color=color, alpha=0.5)
-        ax.plot(np.array([xa, xb]), np.array([ya, yb]), color=color, linewidth=3)
+        alphaPoint = robot.betaCollisionSegment[0]
+        betaPoint = robot.betaCollisionSegment[1]
+        alphaX = alphaPoint[0]
+        alphaY = alphaPoint[1]
+        betaX = betaPoint[0]
+        betaY = betaPoint[1]
+        xa = [robot.xPos, alphaX]
+        ya = [robot.yPos, alphaY]
+        xb = [alphaX, betaX]
+        yb = [alphaY, betaY]
+        ax.plot(np.array(xa), np.array(ya), color=color, alpha=0.5)
+        ax.plot(np.array(xb), np.array(yb), color=color, linewidth=2)
 
     def plot(self, iexp=None, robotID=False, catalogid=False):
         """Plot assignments of robots to targets for field
@@ -3484,65 +3568,47 @@ class Field(object):
         axfig = fig.add_axes([0., 0., 0.7, 1.])
         axleg = fig.add_axes([0.71, 0., 0.26, 1.])
 
+        itarget = np.where(self.targets['category'] == 'science')[0]
+        axfig.scatter(self.targets['x'][itarget],
+                      self.targets['y'][itarget], s=1, color='black',
+                      label='Science targets', alpha=0.2)
+        axleg.plot(self.targets['x'][itarget],
+                   self.targets['y'][itarget], linewidth=4, alpha=0.2, color='black',
+                   label='Science targets')
+
+        itarget = np.where(self.targets['category'] != 'science')[0]
+        axfig.scatter(self.targets['x'][itarget],
+                      self.targets['y'][itarget], s=1, color='blue',
+                      label='Calib targets', alpha=0.1)
+        axleg.plot(self.targets['x'][itarget],
+                   self.targets['y'][itarget], linewidth=4, alpha=0.2, color='blue',
+                   label='Calib targets')
+
         if(self.assignments is not None):
             target_got = np.zeros(len(self.targets), dtype=np.int32)
             target_robotid = np.zeros(len(self.targets), dtype=np.int32)
             itarget = np.where(self.assignments['robotID'][:, iexp] >= 1)[0]
             target_got[itarget] = 1
             target_robotid[itarget] = self.assignments['robotID'][itarget, iexp]
-            for indx in np.arange(len(target_cadences)):
-                itarget = np.where((target_got > 0) & (self.targets['cadence'] ==
-                                                       target_cadences[indx]))[0]
-
-                axfig.scatter(self.targets['x'][itarget],
-                              self.targets['y'][itarget], s=4)
-
-                icolor = indx % len(colors)
-                for i in itarget:
-                    robot = self.robotgrids[iexp].robotDict[target_robotid[i]]
-                    self._plot_robot(robot, color=colors[icolor], ax=axfig)
-
-        for indx in np.arange(len(target_cadences)):
-            itarget = np.where(self.targets['cadence'] == target_cadences[indx])[0]
-            icolor = indx % len(colors)
+            itarget = np.where(target_got > 0)[0]
+            
             axfig.scatter(self.targets['x'][itarget],
-                          self.targets['y'][itarget], s=2, color=colors[icolor],
-                          label=target_cadences[indx])
-            axleg.plot(self.targets['x'][itarget],
-                       self.targets['y'][itarget], linewidth=4, color=colors[icolor],
-                       label=target_cadences[indx])
+                          self.targets['y'][itarget], s=3, color='black')
 
-        xcen = np.array([self.robotgrids[iexp].robotDict[r].xPos
-                         for r in self.robotgrids[iexp].robotDict],
-                        dtype=np.float32)
-        ycen = np.array([self.robotgrids[iexp].robotDict[r].yPos
-                         for r in self.robotgrids[iexp].robotDict],
-                        dtype=np.float32)
-        robotid = np.array([str(r)
-                            for r in self.robotgrids[iexp].robotDict])
-        axfig.scatter(xcen, ycen, s=6, color='grey', label='Used robot')
-        axleg.plot(xcen, ycen, linewidth=4, color='grey', label='Used robot')
+            for i in itarget:
+                if(self.targets['category'][i] == 'science'):
+                    color='blue'
+                else:
+                    color='black'
+                robot = self.robotgrids[iexp].robotDict[target_robotid[i]]
+                self._plot_robot(robot, color=color, ax=axfig)
 
-        if(robotID):
-            for cx, cy, cr in zip(xcen, ycen, robotid):
-                plt.text(cx, cy, cr, color='grey', fontsize=8,
-                         clip_on=True)
-
-        if(catalogid):
-            for cx, cy, ct in zip(self.target_x, self.target_y,
-                                  self.target_catalogid):
-                plt.text(cx, cy, ct, fontsize=8, clip_on=True)
-
+        robotid = np.arange(500, dtype=int) + 1
         used = (self._robot2indx[:, iexp] >= 0)
-
         inot = np.where(used == False)[0]
-        axfig.scatter(xcen[inot], ycen[inot], s=20, color='grey',
-                      label='Unused robot')
-        axleg.plot(xcen[inot], ycen[inot], color='grey',
-                   linewidth=4, label='Unused robot')
         for i in robotid[inot]:
             self._plot_robot(self.robotgrids[iexp].robotDict[int(i)],
-                            color='grey', ax=axfig)
+                             color='grey', ax=axfig)
 
         plt.xlim([-370., 370.])
         plt.ylim([-370., 370.])

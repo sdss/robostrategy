@@ -46,6 +46,11 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
+    schedule = rsParams.cfg['Allocation']['Schedule']
+    schedule_prefix = schedule.split('_')[0]
+    if(schedule_prefix == 'minimal'):
+        np.random.seed(100)
+
     fields_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
                     ('deccen', np.float64),
@@ -141,6 +146,13 @@ if __name__ == '__main__':
                                'candidate_target_fields_bhm_aqmes_wide_{v}.fits')
         in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
         wide = fitsio.read(in_file)
+        if(schedule_prefix == 'minimal'):
+            print("Tossing some AQMES wide fields for minimal schedule")
+            keep = np.zeros(len(wide), dtype=bool)
+            nkeep = (4 * len(wide)) // 5
+            keep[0:nkeep] = 1
+            np.random.shuffle(keep)
+            wide = wide[keep]
         inew = np.where((wide['type'] == 'hpx') &
                         (wide['CADENCE'] == 'bhm_aqmes_wide_2x4'))[0]
         tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
@@ -182,6 +194,13 @@ if __name__ == '__main__':
                                'candidate_target_fields_bhm_aqmes_med_{v}.fits')
         in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
         med = fitsio.read(in_file)
+        if(schedule_prefix == 'minimal'):
+            print("Tossing some AQMES medium fields for minimal schedule")
+            keep = np.zeros(len(med), dtype=bool)
+            nkeep = (4 * len(med)) // 5
+            keep[0:nkeep] = 1
+            np.random.shuffle(keep)
+            med = med[keep]
         inew = np.where(med['type'] == 'hpx')[0]
         tmp_fields = np.zeros(len(inew), dtype=fields_dtype)
         tmp_fields['racen'] = med['RACEN'][inew]
