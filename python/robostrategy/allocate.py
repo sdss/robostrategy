@@ -186,7 +186,8 @@ class AllocateLST(object):
                  field_options=None, seed=100, filename=None,
                  observatory=None, cartons=None, cadences=None,
                  observe_all_fields=[], observe_all_cadences=[],
-                 dark_prefer=1., minimum_ntargets={}):
+                 dark_prefer=1., minimum_ntargets={}, epoch_overhead=None):
+        self.epoch_overhead = None
         if(filename is None):
             self.slots = slots
             self.fields = fields
@@ -194,10 +195,13 @@ class AllocateLST(object):
             self.field_options = field_options
             self.cartons = cartons
             self.cadences = cadences
-            self.minimum_ntargets = minimum_ntargets
             self.nfields = len(self.field_options)
+            self.epoch_overhead = epoch_overhead
         else:
             self.fromfits(filename=filename)
+        if(self.epoch_overhead is None):
+            self.epoch_overhead = 5.
+        self.minimum_ntargets = minimum_ntargets
         self.seed = seed
         np.random.seed(self.seed)
         self.observer = scheduler.Observer(observatory=observatory)
@@ -206,6 +210,15 @@ class AllocateLST(object):
         self.cadencelist = rcadence.CadenceList()
         self.dark_prefer = dark_prefer
         return
+
+    def duration_scale(self, cadence=None):
+        scale = 1.
+        exptime = self.slots.exptime
+        total = ((self.epoch_overhead * cadence.nepochs) +
+                 ((self.slots.exposure_overhead + exptime) *
+                  cadence.nexp_total))
+        scale = total / (self.slots.duration * cadence.nexp_total)
+        return(scale)
 
     def xfactor(self, racen=None, deccen=None, skybrightness=None,
                 lst=None, cadence=None):
@@ -569,6 +582,7 @@ class AllocateLST(object):
                                    field['fieldid']) &
                                   (fscadence == fcadence))[0][0]
                 curr_slots = self.field_slots[islots]['slots']
+                duration_scale = self.duration_scale(self.cadencelist.cadences[fcadence])
                 for ilst in np.arange(self.slots.nlst, dtype=np.int32):
                     lst = self.slots.lst[ilst]
                     for isb in np.arange(self.slots.nskybrightness,
@@ -580,7 +594,7 @@ class AllocateLST(object):
                                                    cadence=fcadence,
                                                    skybrightness=skybrightness,
                                                    lst=lst)
-                            field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.duration
+                            field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.duration * duration_scale
                             field['xfactor'][ilst, isb] = xfactor
 
         self.field_array = field_array
@@ -602,6 +616,9 @@ class AllocateLST(object):
         Writes all array attributes as a binary table.
 """
         hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'EPOVER',
+                    'value':self.epoch_overhead,
+                    'comment':'Epoch overhead assumed (minutes)'})
         fitsio.write(filename, self.field_array, header=hdr,
                      clobber=True, extname='ALLOCATE')
         self.slots.tofits(filename=filename, clobber=False)
@@ -633,6 +650,8 @@ class AllocateLST(object):
         Reads all attributes from a binary FITS table.
 """
         self.field_array, hdr = fitsio.read(filename, header=True, ext=1)
+        if('EPOVER' in hdr):
+            self.epoch_overhead = np.float32(hdr['EPOVER'])
         self.slots = robostrategy.slots.Slots()
         self.slots.fromfits(filename, ext=2)
         self.fields = fitsio.read(filename, ext=3)
