@@ -23,6 +23,7 @@ import multiprocessing
 import numpy as np
 import astropy.io.fits as fits
 import robostrategy.field
+import robostrategy.params as params
 import roboscheduler.cadence as cadence
 import sdss_access.path
 import fitsio
@@ -47,6 +48,11 @@ def process_field(ifield):
     print("Copying field {rf} to {f}".format(rf=field['rs_fieldid'], 
                                              f=field['fieldid']))
     shutil.copyfile(infile, outfile)
+
+    hdulist = fits.open(outfile, mode='update')
+    hdulist[0].header['FCADENCE'] = hdulist[0].header['FCADENCE'] + '_' + version
+    hdulist.flush()
+    hdulist.close()
     return
 
 
@@ -73,6 +79,13 @@ if __name__ == '__main__':
     plan = args.plan
     opentargets = args.opentargets
     reassign = args.reassign
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            version = rsParams.cfg.get('CadenceVersions', 'version')
 
     if(opentargets & reassign):
         print("Cannot set --open and --reassign simultaneously!")
