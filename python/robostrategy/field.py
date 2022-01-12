@@ -27,14 +27,6 @@ import coordio.utils
 import mugatu.designmode
     
 
-# alpha and beta lengths for plotting
-_alphaLen = 7.4
-_betaLen = 15
-
-# Make these to save some time later
-onetrue = np.ones(1, dtype=bool)
-onefalse = np.zeros(1, dtype=bool)
-
 # Default collision buffer
 defaultCollisionBuffer = 2.
 
@@ -52,11 +44,13 @@ targets_dtype = targets_dtype + [('x', np.float64),
                                  ('incadence', np.int32)]
 
 # Dictionary defining meaning of flags
-_flagdict = {'CADENCE_INCONSISTENT': 1,
-             'NOT_COVERED_BY_APOGEE': 2,
-             'NOT_COVERED_BY_BOSS': 4,
-             'ASSIGNED_IN_PREVIOUS_FIELD': 8,
-             'COLLISION': 16}
+_flagdict = {'NOT_TO_ASSIGN':1,
+             'NOT_SCIENCE':2,
+             'NOT_INCADENCE': 4,
+             'NOT_COVERED': 8,
+             'NONE_ALLOWED': 16,
+             'NO_AVAILABILITY': 32,
+             'ALREADY_ASSIGNED': 64}
 
 __all__ = ['Field']
 
@@ -1020,7 +1014,7 @@ class Field(object):
         return(target_allowed)
 
     def _targets_to_robotgrid(self, targets=None, robotgrid=None):
-        for target in targets:
+        for indx, target in enumerate(targets):
             if(target['fiberType'] == 'APOGEE'):
                 fiberType = kaiju.cKaiju.ApogeeFiber
             else:
@@ -2307,13 +2301,23 @@ class Field(object):
         if(self.veryverbose):
             print("rsid={r}: note epoch_bad=".format(r=rsid) + str(epoch_bad)) 
         
-        for indx, epochs in enumerate(epochs_list):
-            if(epoch_bad[epochs].max() == False):
-                if(self.veryverbose):
-                    print("rsid={r}: trying epochs: ".format(r=rsid) + str(epochs))
-                nexps = nexps_list[indx]
-                if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
-                    return True
+        allowed = self.assignments['allowed'][indx, :]
+        any_allowed = False
+        for eindx, epochs in enumerate(epochs_list):
+            all_allowed = allowed[epochs].min()
+            if(all_allowed > 0):
+                any_allowed = True
+                if(epoch_bad[epochs].max() == False):
+                    if(self.veryverbose):
+                        print("rsid={r}: trying epochs: ".format(r=rsid) + str(epochs))
+                    nexps = nexps_list[eindx]
+                    if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
+                        return True
+
+        if(any_allowed is False):
+            self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+        else:
+            self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
 
         if(self.veryverbose):
             print("rsid={r}: no epochs worked".format(r=rsid))
@@ -2938,6 +2942,8 @@ class Field(object):
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
 
+        print(self.validate())
+
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
@@ -2946,6 +2952,9 @@ class Field(object):
         random.seed(self.fieldid)
         np.random.shuffle(iscience)
         self.assign_cadences(rsids=self.targets['rsid'][iscience])
+
+        self.decollide_unassigned()
+        print(self.validate())
 
         self._set_satisfied(rsids=self.targets['rsid'][iscience])
         self._set_count(reset_equiv=False)
@@ -2982,6 +2991,8 @@ class Field(object):
                 if rsid in coordinated_targets.keys():
                     if coordinated_targets[rsid]:
                         self.target_duplicated[id_idx] = 1
+                        self.set_flag(rsid=rsid,
+                                      flagname='ALREADY_ASSIGNED')
 
         # Assign calibration to one exposure to determine achievable
         # requirements and then unassign
@@ -3011,7 +3022,24 @@ class Field(object):
         iassigned = np.where(self.assignments['assigned'])[0]
         self.unassign(rsids=self.targets['rsid'][iassigned])
 
+        inotscience = np.where(self.targets['category'] != 'science')[0]
+        self.set_flag(rsid=self.targets['rsid'][inotscience],
+                      flagname='NOT_SCIENCE')
+
+        inotincadence = np.where(self.targets['incadence'] == 0)[0]
+        self.set_flag(rsid=self.targets['rsid'][inotincadence],
+                      flagname='NOT_INCADENCE')
+
+        inotrsassign = np.where(self.targets['rsassign'] == 0)[0]
+        self.set_flag(rsid=self.targets['rsid'][inotrsassign],
+                      flagname='NOT_TO_ASSIGN')
+
+        inotcovered = np.where(self.targets['within'] == 0)[0]
+        self.set_flag(rsid=self.targets['rsid'][inotcovered],
+                      flagname='NOT_COVERED')
+        
         iscience = np.where((self.targets['category'] == 'science') &
+                            (self.targets['within']) &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
                             (self.targets['rsassign'] != 0))[0]
