@@ -96,10 +96,11 @@ def test_radec():
     add_cadence_single_nxm(n=1, m=1)
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
-    x, y = f.radec2xy(ra=180.5, dec=0.5, fiberType='APOGEE')
-    ra, dec = f.xy2radec(x=x, y=y)
-    assert np.abs(ra - 180.5) < 1.e-7
-    assert np.abs(dec - 0.5) < 1.e-7
+    x, y, z = f.radec2xyz(ra=np.array([180.5]),
+                          dec=np.array([0.5]), fiberType=['APOGEE'])
+    ra, dec = f.xy2radec(x=x, y=y, fiberType=['APOGEE'])
+    assert np.abs(ra - 180.5) < 1.e-5
+    assert np.abs(dec - 0.5) < 1.e-5
     return
 
 
@@ -165,7 +166,7 @@ def test_assign_robot_epoch():
                     field_cadence='single_2x2')
     targets(f, nt=500)
 
-    rid = 10
+    rid = list(f.robotgrids[0].robotDict.keys())[10]
     tids = f.robotgrids[0].robotDict[rid].validTargetIDs
     tid = tids[0]
 
@@ -178,10 +179,11 @@ def test_assign_robot_epoch():
     assert f.assignments['robotID'][f.rsid2indx[tid], 1] == -1
     assert f.assignments['robotID'][f.rsid2indx[tid], 2] == -1
     assert f.assignments['robotID'][f.rsid2indx[tid], 3] == -1
-    assert f._robot2indx[rid - 1, 0] == f.rsid2indx[tid]
-    assert f._robot2indx[rid - 1, 1] == -1
-    assert f._robot2indx[rid - 1, 2] == -1
-    assert f._robot2indx[rid - 1, 3] == -1
+    rindx = f.robotID2indx[rid]
+    assert f._robot2indx[rindx, 0] == f.rsid2indx[tid]
+    assert f._robot2indx[rindx, 1] == -1
+    assert f._robot2indx[rindx, 2] == -1
+    assert f._robot2indx[rindx, 3] == -1
 
     f.assign_robot_epoch(rsid=tid, robotID=rid, epoch=1, nexp=2)
     assert f.available_robot_epoch(robotID=rid, epoch=0, nexp=1)[0] == True
@@ -190,8 +192,9 @@ def test_assign_robot_epoch():
     assert f.available_robot_epoch(robotID=rid, epoch=1, nexp=2)[0] == False
     assert f.assignments['robotID'][f.rsid2indx[tid], 2] == rid
     assert f.assignments['robotID'][f.rsid2indx[tid], 3] == rid
-    assert f._robot2indx[rid - 1, 2] == f.rsid2indx[tid]
-    assert f._robot2indx[rid - 1, 3] == f.rsid2indx[tid]
+    rindx = f.robotID2indx[rid]
+    assert f._robot2indx[rindx, 2] == f.rsid2indx[tid]
+    assert f._robot2indx[rindx, 3] == f.rsid2indx[tid]
 
     f.unassign_epoch(rsid=tid, epoch=0)
     assert f.available_robot_epoch(robotID=rid, epoch=0, nexp=1)[0] == True
@@ -236,12 +239,13 @@ def test_available_epochs():
                 assert st[1][i].assignable[0] == True
                 assert st[1][i].assignable[1] == True
 
-            assert f._robot2indx[rid - 1, 0] == f.rsid2indx[tid0]
+            rindx = f.robotID2indx[rid]
+            assert f._robot2indx[rindx, 0] == f.rsid2indx[tid0]
 
             f.unassign(rsids=[tid0])
             f.unassign(rsids=[tid1])
 
-            assert f._robot2indx[rid - 1, 0] == - 1
+            assert f._robot2indx[rindx, 0] == - 1
 
 
 def test_assign_epochs():
@@ -665,7 +669,7 @@ def test_collisions():
     targets(f, nt=ntot, rsid_start=ntot, ra=f.targets['ra'],
             dec=f.targets['dec'] + 0.005)
 
-    rid1 = 100
+    rid1 = list(f.robotgrids[0].robotDict.keys())[100]
     tids1 = f.robotgrids[0].robotDict[rid1].validTargetIDs
     tid1 = tids1[0]
 
@@ -771,7 +775,7 @@ def test_available_exposures():
                     spare = f._is_spare(rsid=targetID, iexps=iexp) > 0
                 else:
                     spare = False
-                collided, fc, cs = f.robotgrids[iexp].wouldCollideWithAssigned(robotID, rsid)
+                collided, fc, gc, cs = f.robotgrids[iexp].wouldCollideWithAssigned(robotID, rsid)
                 if(collided & (len(cs) > 0)):
                     for c in cs:
                         cspare = f._is_spare(rsid=c, iexps=iexp)
