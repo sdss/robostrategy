@@ -149,10 +149,10 @@ def test_flags():
 
     targets(f)
 
-    f.set_flag(rsid=10, flagname='CADENCE_INCONSISTENT')
-    assert f.check_flag(rsid=10, flagname='CADENCE_INCONSISTENT')[0] == True
-    assert f.check_flag(rsid=10, flagname='NOT_COVERED_BY_BOSS')[0] == False
-    assert f.get_flag_names(f.assignments['rsflags'][f.rsid2indx[10]]) == ['CADENCE_INCONSISTENT']
+    f.set_flag(rsid=10, flagname='NOT_INCADENCE')
+    assert f.check_flag(rsid=10, flagname='NOT_INCADENCE')[0] == True
+    assert f.check_flag(rsid=10, flagname='NOT_COVERED')[0] == False
+    assert f.get_flag_names(f.assignments['rsflags'][f.rsid2indx[10]]) == ['NOT_INCADENCE']
 
 
 def test_assign_robot_epoch():
@@ -345,23 +345,45 @@ def test_append_targets_after_assign():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
-    targets(f, nt=50)
+    targets(f, nt=500)
 
     f.assign_science()
+
+    assert f.validate() == 0
+    isass = np.array([f.robotgrids[0].robotDict[x].isAssigned() for x in f.robotgrids[0].robotDict],
+                     dtype=int)
+    print(isass.sum())
+
     f.decollide_unassigned()
+
+    assert f.validate() == 0
+
+    print(f.robotgrids[0].robotDict[218].alpha)
+    print(f.robotgrids[0].robotDict[218].beta)
     
-    targets(f, nt=50, rsid_start=50, ra=f.targets['ra'],
+    targets(f, nt=500, rsid_start=500, ra=f.targets['ra'],
             dec=f.targets['dec'] + 0.005)
 
-    assert len(f.targets) == 100
-    assert len(f.assignments) == 100
-    assert f.assignments['robotID'].shape == (100, 4)
-    assert len(f.robotgrids[0].targetDict.keys()) == 100
+    print(f.robotgrids[0].robotDict[218].alpha)
+    print(f.robotgrids[0].robotDict[218].beta)
+
+    isass = np.array([f.robotgrids[0].robotDict[x].isAssigned() for x in f.robotgrids[0].robotDict],
+                     dtype=int)
+    print(isass.sum())
+
+    f.decollide_unassigned()
+
+    assert f.validate() == 0
+
+    assert len(f.targets) == 1000
+    assert len(f.assignments) == 1000
+    assert f.assignments['robotID'].shape == (1000, 4)
+    assert len(f.robotgrids[0].targetDict.keys()) == 1000
     for i, t in enumerate(f.targets):
         assert f.rsid2indx[t['rsid']] == i
 
-    for i in np.arange(50):
-        assert f.assignments['satisfied'][i] == f.assignments['satisfied'][i + 50]
+    for i in np.arange(500):
+        assert f.assignments['satisfied'][i] == f.assignments['satisfied'][i + 500]
     return
 
 
