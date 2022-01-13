@@ -822,7 +822,7 @@ class Field(object):
         flagname : str
             name of flag to set
 """
-        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)])
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
         self.assignments['rsflags'][indxs] = (self.assignments['rsflags'][indxs] | self.flagdict[flagname])
         return
 
@@ -844,7 +844,7 @@ class Field(object):
         setornot : ndarray of bool
             True if flag is set, flag otherwise
 """
-        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)])
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
         setornot = ((self.assignments['rsflags'][indxs] & self.flagdict[flagname]) != 0)
         return(setornot)
 
@@ -1197,7 +1197,7 @@ class Field(object):
             if(ekey not in self._equivindx):
                 self._equivindx[ekey] = np.zeros(0, dtype=np.int32)
             self._equivindx[ekey] = np.append(self._equivindx[ekey],
-                                              np.array([itarget]))
+                                              np.array([itarget], dtype=int))
             self._equivkey[itarget] = ekey
 
         if(assignments is not None):
@@ -2243,7 +2243,7 @@ class Field(object):
         statuses = available['statuses']
 
         # Check if there are robots available
-        nRobotIDs = np.array([len(x) for x in availableRobotIDs])
+        nRobotIDs = np.array([len(x) for x in availableRobotIDs], dtype=int)
         if(nRobotIDs.min() < 1):
             if(self.veryverbose):
                 print("rsid={r}: no robots available".format(r=rsid))
@@ -2318,7 +2318,7 @@ class Field(object):
             nexps = (np.zeros(self.field_cadence.nepochs, dtype=np.int32) + 
                      clist.cadences[target_cadence].nexp.min())
         else:
-            epochs = np.unique(np.array([e for es in epochs_list for e in es]))
+            epochs = np.unique(np.array([e for es in epochs_list for e in es], dtype=int))
             nexps = np.zeros(len(epochs), dtype=np.int32) + np.array([ne for nes in nexps_list for ne in nes], dtype=np.int32).min()
             
         available = self.available_epochs(rsid, epochs=epochs, nexps=nexps,
@@ -3516,7 +3516,7 @@ class Field(object):
             Number of spare APOGEE fibers
 """
         hasApogee = np.array([self.mastergrid.robotDict[x + 1].hasApogee
-                              for x in range(500)])
+                              for x in range(500)], dtype=bool)
 
         iapogee = np.where(hasApogee)[0]
         napogee_spare = len(iapogee)

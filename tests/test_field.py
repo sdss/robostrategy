@@ -358,14 +358,8 @@ def test_append_targets_after_assign():
 
     assert f.validate() == 0
 
-    print(f.robotgrids[0].robotDict[218].alpha)
-    print(f.robotgrids[0].robotDict[218].beta)
-    
     targets(f, nt=500, rsid_start=500, ra=f.targets['ra'],
             dec=f.targets['dec'] + 0.005)
-
-    print(f.robotgrids[0].robotDict[218].alpha)
-    print(f.robotgrids[0].robotDict[218].beta)
 
     isass = np.array([f.robotgrids[0].robotDict[x].isAssigned() for x in f.robotgrids[0].robotDict],
                      dtype=int)
