@@ -25,7 +25,9 @@ import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
 import mugatu.designmode
-    
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 # Default collision buffer
 defaultCollisionBuffer = 2.
@@ -68,6 +70,55 @@ Dependencies:
 
 # Establish access to the CadenceList singleton
 clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
+
+
+def read_field(plan=None, observatory=None, fieldid=None,
+               version=''):
+    """Convenience function to read a field object
+
+    Parameters:
+    ----------
+
+    plan : str
+        plan name
+
+    observatory : str
+        observatory name ('apo' or 'lco')
+
+    version : str
+        version of assignments ('', 'Open', 'Filler', 'Reassign')
+
+    fieldid : int
+        field id
+
+    Returns:
+    -------
+
+    field : Field object
+        field object read in
+"""
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    clist.fromfits(filename=cadences_file, unpickle=False)
+
+    field_file = sdss_path.full('rsFieldAssignments',
+                                plan=plan, observatory=observatory,
+                                fieldid=fieldid)
+    if(version == 'Reassign'):
+        field_file = field_file.replace('rsFieldAssignments',
+                                        'rsFieldReassignments')
+    if(version == 'Open'):
+        field_file = field_file.replace('rsFieldAssignments',
+                                        'rsFieldAssignmentsOpen')
+    if(version == 'Filler'):
+        field_file = field_file.replace('rsFieldAssignments',
+                                        'rsFieldAssignmentsFiller')
+    if(version == 'Final'):
+        field_file = field_file.replace('targets/rsFieldAssignments',
+                                        'final/rsFieldAssignmentsFinal')
+
+    f = Field(filename=field_file, fieldid=fieldid)
+    return(f)
 
 
 class AssignmentStatus(object):
@@ -582,6 +633,10 @@ class Field(object):
                                                reset_satisfied=False,
                                                reset_has_spare=False,
                                                reset_count=False)
+
+            for assignment, target in zip(assignments, targets):
+                indx = self.rsid2indx[target['rsid']]
+                self.assignments['rsflags'][indx] = assignment['rsflags']
             self._set_has_spare_calib()
             self._set_satisfied()
             self._set_count(reset_equiv=False)
@@ -2667,6 +2722,7 @@ class Field(object):
             hasApogee = self.robotHasApogee[robotindx]
             robotIDs = robotIDs[np.argsort(hasApogee)]
 
+            succeed = False
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=iexps)
                 self.set_assignment_status(status=s)
@@ -2679,7 +2735,14 @@ class Field(object):
                                                reset_count=False,
                                                reset_satisfied=False,
                                                reset_has_spare=True)
+                    succeed = True
                     break
+
+            if(succeed is False):
+                if(self.assignments['allowed'][indx].sum() == 0):
+                    self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+                else:
+                    self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
 
         self._set_satisfied(rsids=rsids[inotsat])
         return
@@ -2742,6 +2805,12 @@ class Field(object):
                 self._set_satisfied(rsids=[rsid])
                 if(self.nocalib is False):
                     self._set_has_spare_calib()
+
+            else:
+                if(self.assignments['allowed'][indx].sum() == 0):
+                    self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+                else:
+                    self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
 
         return
 
