@@ -2715,6 +2715,7 @@ class Field(object):
 
         inotsat = np.where(self.assignments['satisfied'][indxs] == 0)[0]
         for rsid in rsids[inotsat]:
+            indx = self.rsid2indx[rsid]
             robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
             np.random.shuffle(robotIDs)
             robotindx = np.array([self.robotID2indx[x] for x in robotIDs],
@@ -3324,7 +3325,7 @@ class Field(object):
         out = out + "\n"
 
         out = out + "Robots used:\n"
-        hasApogee = np.array([self.mastergrid.robotDict[x + 1].hasApogee
+        hasApogee = np.array([self.mastergrid.robotDict[self.robotIDs[x]].hasApogee
                               for x in range(500)], dtype=bool)
         out = out + " BOSS-only:"
         for iexp in range(self.field_cadence.nexp_total):
@@ -3584,7 +3585,7 @@ class Field(object):
         napogee_spare : np.int32
             Number of spare APOGEE fibers
 """
-        hasApogee = np.array([self.mastergrid.robotDict[x + 1].hasApogee
+        hasApogee = np.array([self.mastergrid.robotDict[self.robotIDs[x]].hasApogee
                               for x in range(500)], dtype=bool)
 
         iapogee = np.where(hasApogee)[0]
@@ -3734,10 +3735,9 @@ class Field(object):
                 robot = self.robotgrids[iexp].robotDict[target_robotid[i]]
                 self._plot_robot(robot, color=color, ax=axfig)
 
-        robotid = np.arange(500, dtype=int) + 1
         used = (self._robot2indx[:, iexp] >= 0)
         inot = np.where(used == False)[0]
-        for i in robotid[inot]:
+        for i in self.robotIDs[inot]:
             self._plot_robot(self.robotgrids[iexp].robotDict[int(i)],
                              color='grey', ax=axfig)
 
