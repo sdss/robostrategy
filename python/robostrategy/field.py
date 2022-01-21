@@ -73,7 +73,7 @@ clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
 def read_field(plan=None, observatory=None, fieldid=None,
-               version=''):
+               version='', targets=False):
     """Convenience function to read a field object
 
     Parameters:
@@ -88,6 +88,9 @@ def read_field(plan=None, observatory=None, fieldid=None,
     version : str
         version of assignments ('', 'Open', 'Filler', 'Reassign')
 
+    targets : bool
+        if True, read rsFieldTargets file, do not set cadence (default False)
+
     fieldid : int
         field id
 
@@ -101,21 +104,23 @@ def read_field(plan=None, observatory=None, fieldid=None,
                                    observatory=observatory)
     clist.fromfits(filename=cadences_file, unpickle=False)
 
-    field_file = sdss_path.full('rsFieldAssignments',
+    base = 'rsFieldAssignments'
+    if(targets):
+        base = 'rsFieldTargets'
+
+    field_file = sdss_path.full(base,
                                 plan=plan, observatory=observatory,
                                 fieldid=fieldid)
     if(version == 'Reassign'):
         field_file = field_file.replace('rsFieldAssignments',
                                         'rsFieldReassignments')
     if(version == 'Open'):
-        field_file = field_file.replace('rsFieldAssignments',
-                                        'rsFieldAssignmentsOpen')
+        field_file = field_file.replace(base, base + 'Open')
     if(version == 'Filler'):
-        field_file = field_file.replace('rsFieldAssignments',
-                                        'rsFieldAssignmentsFiller')
+        field_file = field_file.replace(base, base + 'Filler')
     if(version == 'Final'):
-        field_file = field_file.replace('targets/rsFieldAssignments',
-                                        'final/rsFieldAssignmentsFinal')
+        field_file = field_file.replace('targets/' + base,
+                                        'final/' + base + 'Final')
 
     f = Field(filename=field_file, fieldid=fieldid)
     return(f)
@@ -489,6 +494,30 @@ class Field(object):
                           min_deltav_ks91=[-2.5] * 12,
                           min_twilight_ang=[8.] * 12,
                           max_airmass=[2.] * 12)
+        clist.add_cadence(name='_field_dark_single_1x1',
+                          nepochs=1,
+                          skybrightness=[0.35],
+                          delta=[-1.],
+                          delta_min=[-1.],
+                          delta_max=[-1.],
+                          nexp=[1],
+                          max_length=[9999999.],
+                          min_moon_sep=[35.],
+                          min_deltav_ks91=[-1.5],
+                          min_twilight_ang=[15.],
+                          max_airmass=[1.6])
+        clist.add_cadence(name='_field_dark_single_12x1',
+                          nepochs=12,
+                          skybrightness=[0.35] * 12,
+                          delta=[-1.] * 12,
+                          delta_min=[-1.] * 12,
+                          delta_max=[-1.] * 12,
+                          nexp=[1] * 12,
+                          max_length=[9999999.] * 12,
+                          min_moon_sep=[35.] * 12,
+                          min_deltav_ks91=[-1.5] * 12,
+                          min_twilight_ang=[15.] * 12,
+                          max_airmass=[1.6] * 12)
         return
 
     def fromfits(self, filename=None):
@@ -2444,6 +2473,10 @@ class Field(object):
             indx = self.rsid2indx[rsid]
             allindxs = self._equivindx[self._equivkey[indx]]
 
+            if(len(allindxs) == 1):
+                self.assignments['equivRobotID'][allindxs, :] = self.assignments['robotID'][allindxs, :]
+                continue
+
             for iexp in iexps:
                 robotIDs = self.assignments['robotID'][allindxs, iexp]
                 robotIDs = robotIDs[robotIDs >= 0]
@@ -2614,6 +2647,7 @@ class Field(object):
         cadences = np.unique(self.targets['cadence'][indxs])
         singlebright = np.zeros(len(self.targets), dtype=bool)
         multibright = np.zeros(len(self.targets), dtype=bool)
+        multidark = np.zeros(len(self.targets), dtype=bool)
         for cadence in cadences:
             if(clist.cadence_consistency(cadence, '_field_single_1x1',
                                          return_solutions=False)):
@@ -2623,6 +2657,10 @@ class Field(object):
                                            return_solutions=False)):
                 icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
                 multibright[indxs[icad]] = True
+            elif(clist.cadence_consistency(cadence, '_field_dark_single_12x1',
+                                           return_solutions=False)):
+                icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
+                multidark[indxs[icad]] = True
 
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
@@ -2634,6 +2672,7 @@ class Field(object):
 
             iassign = np.where((singlebright[indxs] == False) &
                                (multibright[indxs] == False) &
+                               (multidark[indxs] == False) &
                                (self.assignments['satisfied'][indxs] == 0) &
                                (self.targets['priority'][indxs] == priority))[0]
 
@@ -2694,6 +2733,19 @@ class Field(object):
 
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
+
+            for icycle in range(1):
+                imultidark = np.where(multidark[indxs] &
+                                      (self.assignments['satisfied'][indxs] == 0) &
+                                      (self.targets['priority'][indxs] == priority))[0]
+                if(len(imultidark) > 0):
+                    if(self.verbose):
+                        print("fieldid {fid}:  - {n} assigning as multi dark (cycle {i})".format(n=len(imultidark), i=icycle, fid=self.fieldid), flush=True)
+                    self._assign_multidark(indxs=indxs[imultidark])
+                    success[imultidark] = self.assignments['satisfied'][indxs[imultidark]]
+
+                    if(self.verbose):
+                        print("fieldid {fid}:    (assigned {n})".format(n=success[imultidark].sum(), fid=self.fieldid), flush=True)
 
             self._competing_targets = None
 
@@ -2775,23 +2827,23 @@ class Field(object):
             robotindx = robotindx[np.argsort(hasApogee)]
 
             statusDict = dict()
-            expList = [[] for _ in range(self.field_cadence.nexp_total)]
-            nexp = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
+            nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=iexpsall)
                 self.set_assignment_status(status=s)
                 statusDict[robotID] = s
                 for iexp in s.assignable_exposures():
-                    expList[iexp].append(robotID)
-                    nexp[iexp] = nexp[iexp] + 1
+                    expRobotIDs[iexp].append(robotID)
+                    nExpRobotIDs[iexp] = nExpRobotIDs[iexp] + 1
 
             # if number of exposures with at least one free robot is high
             # enough, go ahead
-            iexps = np.where(nexp > 0)[0]
+            iexps = np.where(nExpRobotIDs > 0)[0]
             if(len(iexps) >= nexp_cadence):
 
                 for iexp in iexps[0:nexp_cadence]:
-                    robotID = expList[iexp][0]
+                    robotID = expRobotIDs[iexp][0]
                     status = statusDict[robotID]
                     self.unassign_assignable(status=status, iexp=iexp,
                                              reset_count=False,
@@ -2800,8 +2852,81 @@ class Field(object):
                     self.assign_robot_exposure(robotID=robotID,
                                                rsid=rsid,
                                                iexp=iexp,
-                                               reset_satisfied=True,
-                                               reset_has_spare=True)
+                                               reset_satisfied=False,
+                                               reset_has_spare=False)
+
+                self._set_satisfied(rsids=[rsid])
+                if(self.nocalib is False):
+                    self._set_has_spare_calib()
+
+            else:
+                if(self.assignments['allowed'][indx].sum() == 0):
+                    self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+                else:
+                    self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
+
+        return
+
+    def _assign_multidark(self, indxs=None):
+        """Assigns nx1 dark targets en masse
+
+        Parameters
+        ----------
+
+        indxs : ndarray of np.int32
+            indices into self.targets of targets to assign
+"""
+        rsids = self.targets['rsid'][indxs]
+        iexpsall = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
+        ok, epochs_list = clist.cadence_consistency('_field_dark_single_1x1', self.field_cadence.name)
+        iexpsall = np.array([self.field_cadence.epoch_indx[x[0]] +
+                             np.arange(self.field_cadence.nexp[x[0]],
+                                       dtype=int) for x in epochs_list],
+                            dtype=int).flatten()
+        tdict = self.mastergrid.targetDict
+
+        inotsat = np.where(self.assignments['satisfied'][indxs] == 0)[0]
+        for rsid in rsids[inotsat]:
+            indx = self.rsid2indx[rsid]
+            nexp_cadence = clist.cadences[self.targets['cadence'][indx]].nexp_total
+            robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
+            np.random.shuffle(robotIDs)
+            hasApogee = self.robotHasApogee[robotIDs - 1]
+            robotIDs = robotIDs[np.argsort(hasApogee)]
+
+            statusDict = dict()
+            expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
+            nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            for robotID in robotIDs:
+                s = AssignmentStatus(rsid=rsid, robotID=robotID,
+                                     iexps=iexpsall)
+                self.set_assignment_status(status=s)
+                statusDict[robotID] = s
+                for iexp in s.assignable_exposures():
+                    expRobotIDs[iexp].append(robotID)
+                    nExpRobotIDs[iexp] = nExpRobotIDs[iexp] + 1
+
+                iexps = np.where(nExpRobotIDs > 0)[0]
+                if(len(iexps) >= nexp_cadence):
+                    break
+
+            # if number of exposures with at least one free robot is high
+            # enough, go ahead
+            iexps = np.where(nExpRobotIDs > 0)[0]
+            if(len(iexps) >= nexp_cadence):
+
+                for iexp in iexps[0:nexp_cadence]:
+                    robotID = expRobotIDs[iexp][0]
+                    status = statusDict[robotID]
+                    self.unassign_assignable(status=status, iexp=iexp,
+                                             reset_count=False,
+                                             reset_satisfied=False,
+                                             reset_has_spare=True)
+                    self.assign_robot_exposure(robotID=robotID,
+                                               rsid=rsid,
+                                               iexp=iexp,
+                                               reset_satisfied=False,
+                                               reset_has_spare=False)
 
                 self._set_satisfied(rsids=[rsid])
                 if(self.nocalib is False):
