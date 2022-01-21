@@ -73,7 +73,7 @@ clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
 def read_field(plan=None, observatory=None, fieldid=None,
-               version='', targets=False, speedy=False):
+               version='', targets=False, speedy=False, verbose=False):
     """Convenience function to read a field object
 
     Parameters:
@@ -126,9 +126,10 @@ def read_field(plan=None, observatory=None, fieldid=None,
                                         'final/' + base + 'Final')
 
     if(speedy):
-        f = FieldSpeedy(filename=field_file, fieldid=fieldid)
+        f = FieldSpeedy(filename=field_file, fieldid=fieldid,
+                        verbose=verbose)
     else:
-        f = Field(filename=field_file, fieldid=fieldid)
+        f = Field(filename=field_file, fieldid=fieldid, verbose=verbose)
     return(f)
 
 
@@ -1500,14 +1501,35 @@ class Field(object):
         return
 
     def set_collided_status(self, status=None, iexp=None):
-        # leave alone if collisions are being ignored
-        if((not self.allgrids) | (self.nocollide)):
-            return
+        i = status.expindx[iexp]
+
+        # not relevant if there is no rsid
         if(status.rsid is None):
             return
-        i = status.expindx[iexp]
+
+        # don't even check if not assignable anyway
         if(status.assignable[i] == False):
             return
+
+        # if collisions are being ignored, just check if any
+        # equivalent rsid is assigned to another robot
+        if((not self.allgrids) | (self.nocollide)):
+            indx = self.rsid2indx[status.rsid]
+            allindxs = set(self._equivindx[self._equivkey[indx]])
+            if(len(allindxs) > 1):
+                allindxs.discard(indx)
+                allindxs = np.array(list(allindxs), dtype=np.int32)
+                if(self.assignments['robotID'][allindxs, iexp].max() >= 0):
+                    status.collided[i] = True
+                else:
+                    status.collided[i] = False
+            else:
+                status.collided[i] = False
+            status.assignable[i] = (status.assignable[i] and
+                                    (status.collided[i] == False))
+            return
+
+        # check collisions
         rg = self.robotgrids[iexp]
         collided, fcollided, gcollided, colliders = rg.wouldCollideWithAssigned(status.robotID, status.rsid)
         colliders = np.array(colliders, dtype=np.int32)
@@ -3981,8 +4003,9 @@ class FieldSpeedy(Field):
     Relative to Field, this class behaves as follows: 
      * nocalib is set True, so calibrations are skipped, which allows a
        a substantial simplification.
-     * Any 1x1 bright cadences are performed en masse
-     * Any cadences consistent with 12x1 bright cadences are performed en masse
+     * nocollide is set True, so collisions are not considered
+     * allgrids is set False, so that the robotgrid overhead
+       is avoided
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=2.,
@@ -3993,110 +4016,3 @@ class FieldSpeedy(Field):
                          verbose=verbose,
                          nocalib=True, nocollide=True, allgrids=False)
         return
-
-    def assign_cadences(self, rsids=None, check_satisfied=True):
-        """Assign a set of targets to robots
-
-        Parameters:
-        ----------
-
-        rsids : ndarray of np.int64
-            rsids of targets to assign
-
-        check_satisfied : bool
-            if True, do not try to reassign targets that are already satisfied
-
-        Returns:
-        --------
-
-        success : ndarray of bool
-            True if successful, False otherwise
-
-        Notes:
-        -----
-
-        Sorts cadences by priority for assignment.
-"""
-        success = np.zeros(len(rsids), dtype=bool)
-        indxs = np.array([self.rsid2indx[r] for r in rsids], dtype=np.int32)
-
-        # Find single bright cases
-        if(self.verbose):
-            print("fieldid {fid}: Finding single bright cases".format(fid=self.fieldid), flush=True)
-        cadences = np.unique(self.targets['cadence'][indxs])
-        singlebright = np.zeros(len(self.targets), dtype=bool)
-        for cadence in cadences:
-            if(clist.cadence_consistency(cadence, '_field_single_1x1',
-                                         return_solutions=False)):
-                icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
-                singlebright[indxs[icad]] = True
-
-        # Find multiple single exposure bright cases
-        if(self.verbose):
-            print("fieldid {fid}: Finding multi bright cases".format(fid=self.fieldid), flush=True)
-        multibright = np.zeros(len(self.targets), dtype=bool)
-        for cadence in cadences:
-            if(clist.cadence_consistency(cadence, '_field_single_12x1',
-                                         return_solutions=False)):
-                icad = np.where((self.targets['cadence'][indxs] == cadence) &
-                                (singlebright[indxs] == False))[0]
-                multibright[indxs[icad]] = True
-
-        priorities = np.unique(self.targets['priority'][indxs])
-        for priority in priorities:
-            if(self.verbose):
-                print("fieldid {fid}: Assigning priority {p}".format(p=priority, fid=self.fieldid), flush=True)
-
-            if(self.verbose):
-                print("fieldid {fid}: Set competing targets".format(fid=self.fieldid), flush=True)
-            iormore = np.where((self.targets['priority'][indxs] >= priority) &
-                               (self._is_calibration[indxs] == False))[0]
-            self._set_competing_targets(rsids[iormore])
-
-            if(self.verbose):
-                iall = np.where((self.assignments['satisfied'][indxs] == 0) &
-                                (self.targets['priority'][indxs] == priority))[0]
-                outstr = "fieldid {fid}: Includes cadences ".format(fid=self.fieldid)
-                pcads = np.unique(self.targets['cadence'][indxs[iall]])
-                for pcad in pcads:
-                    outstr = outstr + pcad + " "
-                print(outstr, flush=True)
-                    
-                outstr = "fieldid {fid}: Includes cartons ".format(fid=self.fieldid)
-                pcarts = np.unique(self.targets['carton'][indxs[iall]])
-                for pcart in pcarts:
-                    outstr = outstr + pcart + " "
-                print(outstr, flush=True)
-
-            # Since we are in speedy mode, skip the single-bright and
-            # multibright cases
-            iassign = np.where((singlebright[indxs] == False) &
-                               (multibright[indxs] == False) &
-                               (self.assignments['satisfied'][indxs] == 0) &
-                               (self.targets['priority'][indxs] == priority))[0]
-
-            if(len(iassign) > 0):
-
-                if(self.verbose):
-                    print("fieldid {fid}: Assign one by ones".format(fid=self.fieldid), flush=True)
-                success[iassign] = self._assign_one_by_one(rsids=rsids[iassign],
-                                                           check_satisfied=check_satisfied)
-
-            imultibright = np.where(multibright[indxs] &
-                                    (self.assignments['satisfied'][indxs] == 0) &
-                                    (self.targets['priority'][indxs] == priority))[0]
-            if(len(imultibright) > 0):
-                if(self.verbose):
-                    print("fieldid {fid}: Assign multibrights".format(fid=self.fieldid), flush=True)
-                self._assign_multibright(indxs=indxs[imultibright])
-
-            isinglebright = np.where(singlebright[indxs] &
-                                     (self.assignments['satisfied'][indxs] == 0) &
-                                     (self.targets['priority'][indxs] == priority))[0]
-            if(len(isinglebright) > 0):
-                if(self.verbose):
-                    print("fieldid {fid}: Assign singlebrights".format(fid=self.fieldid), flush=True)
-                self._assign_singlebright(indxs=indxs[isinglebright])
-
-            self._competing_targets = None
-        return(success)
