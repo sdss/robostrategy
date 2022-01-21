@@ -73,7 +73,7 @@ clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
 def read_field(plan=None, observatory=None, fieldid=None,
-               version='', targets=False):
+               version='', targets=False, speedy=False):
     """Convenience function to read a field object
 
     Parameters:
@@ -90,6 +90,9 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     targets : bool
         if True, read rsFieldTargets file, do not set cadence (default False)
+
+    speedy : bool
+        if True, return a FieldSpeedy object (default False)
 
     fieldid : int
         field id
@@ -122,7 +125,10 @@ def read_field(plan=None, observatory=None, fieldid=None,
         field_file = field_file.replace('targets/' + base,
                                         'final/' + base + 'Final')
 
-    f = Field(filename=field_file, fieldid=fieldid)
+    if(speedy):
+        f = FieldSpeedy(filename=field_file, fieldid=fieldid)
+    else:
+        f = Field(filename=field_file, fieldid=fieldid)
     return(f)
 
 
