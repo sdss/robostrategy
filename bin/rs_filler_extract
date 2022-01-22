@@ -74,6 +74,9 @@ if __name__ == '__main__':
         tmp_targets = robostrategy.targets.get_targets(carton, version, c2c=c2c)
         if(tmp_targets is not None):
             tmp_targets['rsassign'] = 3
+            if(carton == 'bhm_colr_galaxies_lsdr8'):
+                i4 = np.where(tmp_targets['cadence'] == 'dark_1x4')[0]
+                tmp_targets['cadence'][i4] = 'dark_single_4x1'
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
