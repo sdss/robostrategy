@@ -900,7 +900,7 @@ class Field(object):
         flagname : str
             name of flag to set
 """
-        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)])
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
         self.assignments['rsflags'][indxs] = (self.assignments['rsflags'][indxs] | self.flagdict[flagname])
         return
 
@@ -922,7 +922,7 @@ class Field(object):
         setornot : ndarray of bool
             True if flag is set, flag otherwise
 """
-        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)])
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
         setornot = ((self.assignments['rsflags'][indxs] & self.flagdict[flagname]) != 0)
         return(setornot)
 
@@ -1270,7 +1270,8 @@ class Field(object):
             if(ekey not in self._equivindx):
                 self._equivindx[ekey] = np.zeros(0, dtype=np.int32)
             self._equivindx[ekey] = np.append(self._equivindx[ekey],
-                                              np.array([itarget]))
+                                              np.array([itarget],
+                                                       dtype=int))
             self._equivkey[itarget] = ekey
 
         if(assignments is not None):
