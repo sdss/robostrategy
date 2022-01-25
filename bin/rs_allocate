@@ -57,7 +57,7 @@ if __name__ == '__main__':
         epoch_overhead = np.float32(rsParams.cfg.get('Allocation',
                                                      'EpochOverhead'))
     else:
-        exposure_overhead = 5.
+        epoch_overhead = 5.
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
