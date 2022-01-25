@@ -42,6 +42,9 @@ def count_spares(indx):
     if(opentargets):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldAssignmentsOpen')
+    if(filler):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsFiller')
     if(reassign):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldReassignments')
@@ -90,6 +93,8 @@ def count_spares(indx):
     tdir = 'targets'
     if(opentargets):
         base = 'rsFieldSparesOpen'
+    if(filler):
+        base = 'rsFieldSparesFiller'
     if(reassign):
         base = 'rsFieldSparesReassign'
     if(final):
@@ -122,11 +127,15 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassign results',
                         default=False, required=False,
                         action='store_true')
-    parser.add_argument('-F', '--final', dest='final',
+    parser.add_argument('-X', '--final', dest='final',
                         help='set to read final results',
                         default=False, required=False,
                         action='store_true')
@@ -137,6 +146,7 @@ if __name__ == '__main__':
     start = args.start
     end = args.end
     opentargets = args.opentargets
+    filler = args.filler
     reassign = args.reassign
     final = args.final
 
@@ -190,6 +200,8 @@ if __name__ == '__main__':
         tdir = 'targets'
         if(opentargets):
             base = 'rsFieldSparesOpen'
+        if(filler):
+            base = 'rsFieldSparesFiller'
         if(final):
             tdir = 'final'
             base = 'rsFieldSparesFinal'
@@ -225,6 +237,8 @@ if __name__ == '__main__':
     base = 'rsSpares'
     if(opentargets):
         base = 'rsSparesOpen'
+    if(filler):
+        base = 'rsSparesFiller'
     if(reassign):
         base = 'rsSparesReassign'
     if(final):
@@ -236,6 +250,8 @@ if __name__ == '__main__':
     base = 'rsSparesExp'
     if(opentargets):
         base = 'rsSparesExpOpen'
+    if(filler):
+        base = 'rsSparesExpFiller'
     if(reassign):
         base = 'rsSparesExpReassign'
     if(final):

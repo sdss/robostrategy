@@ -79,7 +79,8 @@ class Slots(object):
 
 """
     def __init__(self, nlst=24, skybrightness=[0., 0.35, 1.],
-                 observatory='apo', duration=18 / 60.,
+                 observatory='apo', exptime=15./60.,
+                 exposure_overhead=3. / 60.,
                  schedule='normal', fclear=None):
         self.nlst = nlst
         self.lst = ((np.arange(nlst, dtype=np.float32) + 0.5) * 24. /
@@ -95,7 +96,9 @@ class Slots(object):
                 self.fclear = 0.7
         else:
             self.fclear = fclear
-        self.duration = duration
+        self.exposure_overhead = exposure_overhead
+        self.exptime = exptime
+        self.duration = self.exposure_overhead + self.exptime
         return
 
     def fill(self):
@@ -163,6 +166,8 @@ class Slots(object):
         hdr['SCHEDVER'] = roboscheduler.__version__
         hdr['NLST'] = self.nlst
         hdr['DURATION'] = self.duration
+        hdr['EXPOVER'] = self.exposure_overhead
+        hdr['EXPTIME'] = self.exptime
         hdr['FCLEAR'] = self.fclear
         hdr['OBSERVAT'] = self.observatory
         hdr['NSB'] = self.nskybrightness
@@ -189,6 +194,8 @@ class Slots(object):
         self.slots, hdr = fitsio.read(filename, ext=ext, header=True)
         self.nlst = np.int32(hdr['NLST'])
         self.duration = np.float32(hdr['DURATION'])
+        self.exptime = np.float32(hdr['EXPTIME'])
+        self.exposure_overhead = np.float32(hdr['EXPOVER'])
         self.fclear = np.float32(hdr['FCLEAR'])
         self.observatory = hdr['OBSERVAT']
         self.nskybrightness = np.int32(hdr['NSB'])

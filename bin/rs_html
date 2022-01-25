@@ -43,6 +43,10 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -58,6 +62,7 @@ if __name__ == '__main__':
         both = False
         observatories = [observatory]
     opentargets = args.opentargets
+    filler = args.filler
     reassign = args.reassign
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
@@ -68,6 +73,8 @@ if __name__ == '__main__':
         description_cfg.read(description_file)
         if(opentargets):
             carton_description = description_cfg['Open']
+        if(filler):
+            carton_description = description_cfg['Filler']
         else:
             carton_description = description_cfg['Mapper']
     else:
@@ -76,6 +83,7 @@ if __name__ == '__main__':
     rsParams = params.RobostrategyParams(plan=plan)
 
     cadence_hdr = dict()
+    spares = dict()
     for obs in observatories:
         field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
                                                              plan=plan,
@@ -83,12 +91,25 @@ if __name__ == '__main__':
         cadence_mask, tmp_cadence_hdr = fitsio.read(field_cadence_file, header=True)
         cadence_hdr[obs] = tmp_cadence_hdr
 
+        spares_file = field_cadence_file.replace('FieldCadences',
+                                                 'Spares')
+        if(opentargets):
+            spares_file = spares_file.replace('rsSpares', 'rsSparesOpen')
+        if(filler):
+            spares_file = spares_file.replace('rsSpares', 'rsSparesFiller')
+        if(reassign):
+            spares_file = spares_file.replace('rsSpares', 'rsSparesReassign')
+        spares[obs] = fitsio.read(spares_file)
+
     completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
                                                         plan=plan,
                                                         observatory=observatory))
     if(opentargets):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessOpen')
+    if(filler):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessFiller')
     if(reassign):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessReassign')
@@ -102,6 +123,10 @@ if __name__ == '__main__':
         html_file = os.path.join(html_path,
                                  'rs-open-{observatory}.html'.format(observatory=observatory))
 
+    if(filler):
+        html_file = os.path.join(html_path,
+                                 'rs-filler-{observatory}.html'.format(observatory=observatory))
+
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("robostrategy"),
         autoescape=jinja2.select_autoescape()
@@ -112,6 +137,8 @@ if __name__ == '__main__':
     rsinfo['stage'] = ''
     if(opentargets):
         rsinfo['stage'] = 'Open'
+    if(filler):
+        rsinfo['stage'] = 'Filler'
     if(reassign):
         rsinfo['stage'] = 'Reassign'
 
@@ -124,6 +151,8 @@ if __name__ == '__main__':
     rsinfo['method'] = "They are shown after science requirement target allocation."
     if(opentargets):
         rsinfo['method'] = "They are shown after open fiber target allocation."
+    if(filler):
+        rsinfo['method'] = "They are shown after filler target allocation."
     if(reassign):
         rsinfo['method'] = "They are shown after reassignment and open fiber target allocation."
 
@@ -197,6 +226,14 @@ if __name__ == '__main__':
             cg['description'] = ''
 
         rsinfo['cartons'].append(cg)
+
+    rsinfo['spares'] = dict()
+    rsinfo['spares']['apo'] = dict()
+    rsinfo['spares']['apo']['boss'] = spares['apo']['nboss_spare'].sum()
+    rsinfo['spares']['apo']['apogee'] = spares['apo']['napogee_spare'].sum()
+    rsinfo['spares']['lco'] = dict()
+    rsinfo['spares']['lco']['boss'] = spares['lco']['nboss_spare'].sum()
+    rsinfo['spares']['lco']['apogee'] = spares['lco']['napogee_spare'].sum()
 
     template = env.get_template('rs-template.html')
     page = template.render(rsinfo)

@@ -21,6 +21,7 @@ import sys
 import numpy as np
 import astropy.io.fits as fits
 import roboscheduler.cadence as cadence
+import robostrategy.params as params
 import mugatu.designs_to_targetdb
 import sdss_access.path
 import fitsio
@@ -68,6 +69,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     reset = args.reset
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            version = rsParams.cfg.get('CadenceVersions', 'version')
+
     if(reset == 'db'):
         t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual')
         base_fieldid = t.find_next_available()
@@ -209,6 +218,9 @@ if __name__ == '__main__':
         fields_array['cadence'][ib2] = b'bright_2x1'
         ib1 = np.where(fields_array['cadence'] == b'bright_single_1x1')[0]
         fields_array['cadence'][ib1] = b'bright_1x1'
+
+        fields_array['cadence'] = np.array([x.decode() + '_' + version
+                                            for x in fields_array['cadence']])
 
         fields_array_hdu = fits.BinTableHDU(fields_array)
         fields_hdu = fits.BinTableHDU(fields)
