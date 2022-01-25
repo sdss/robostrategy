@@ -33,56 +33,12 @@ from astropy.coordinates.angle_utilities import angular_separation
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
+cadencelist = cadence.CadenceList(skybrightness_only=True)
+
 coordinated_dict = None
 noclobber = False
 
-_proc_status = '/proc/%d/status' % os.getpid()
-
-_scale = {'kB': 1024.0, 'mB': 1024.0 * 1024.0,
-          'KB': 1024.0, 'MB': 1024.0 * 1024.0}
-
-
-def _VmB(VmKey):
-    '''Private.
-    '''
-    global _proc_status, _scale
-    # get pseudo file  /proc/<pid>/status
-    try:
-        t = open(_proc_status)
-        v = t.read()
-        t.close()
-    except:
-        return 0.0  # non-Linux?
-    # get VmKey line e.g. 'VmRSS:  9999  kB\n ...'
-    i = v.index(VmKey)
-    v = v[i:].split(None, 3)  # whitespace
-    if len(v) < 3:
-        return 0.0  # invalid format?
-    # convert Vm value to bytes
-    return float(v[1]) * _scale[v[2]]
-
-
-def memory(since=0.0):
-    '''Return memory usage in bytes.
-    '''
-    return _VmB('VmSize:') - since
-
-
-def resident(since=0.0):
-    '''Return resident memory usage in bytes.
-    '''
-    return _VmB('VmRSS:') - since
-
-
-def stacksize(since=0.0):
-    '''Return stack size in bytes.
-    '''
-    return _VmB('VmStk:') - since
-
-
 def assign_field(indx):
-    print(time.ctime(time.time()))
-
     fieldid = allocate.field_array['fieldid'][indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
@@ -93,6 +49,8 @@ def assign_field(indx):
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
+    field_prep_file = field_target_file.replace('rsFieldTargets',
+                                                'rsFieldPrep')
 
     field_assigned_file = sdss_path.full('rsFieldAssignments',
                                          plan=plan,
@@ -104,14 +62,9 @@ def assign_field(indx):
         return
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-    f = field.Field(filename=field_target_file, verbose=True,
-                    fieldid=fieldid, collisionBuffer=collisionBuffer)
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-    icalib = np.where(f.targets['category'] != 'science')[0]
-    f.targets['cadence'][icalib] = field_cadence
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-    f.set_field_cadence(field_cadence)
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
+    f = field.Field(filename=field_prep_file, verbose=True,
+                    fieldid=fieldid, collisionBuffer=collisionBuffer,
+                    bright_neighbors=True)
 
     if(f.field_cadence is not None):
         print("Assign targets", flush=True)
@@ -222,22 +175,15 @@ if __name__ == '__main__':
     coordinate = args.coordinate
     noclobber = args.noclobber
     nomultiprocess = args.nomultiprocess
-    print(time.ctime(time.time()))
 
     rsParams = params.RobostrategyParams(plan=plan)
-    if('Rotate' in rsParams.cfg['Fields']):
-        rotate = True
-        paname = rsParams.cfg['Fields']['Rotate']
-    else:
-        rotate = False
-        paname = ''
 
     collisionBuffer = 2.
     if('Assignment' in rsParams.cfg):
         if('collisionBuffer' in rsParams.cfg['Assignment']):
             collisionBuffer = np.float32(rsParams.cfg['Assignment']['collisionBuffer'])
 
-    cadencelist = cadence.CadenceList()
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
@@ -251,7 +197,6 @@ if __name__ == '__main__':
         end = allocate.field_array['fieldid'].max()
     ikeep = np.where((allocate.field_array['fieldid'] >= start) &
                      (allocate.field_array['fieldid'] <= end))[0]
-
 
 # NEED TO DO SOME REWRITING. assign_field works on field index
     if coordinate:

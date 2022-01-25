@@ -18,7 +18,7 @@ import roboscheduler.cadence as cadence
 
 if __name__ == '__main__':
 
-    cadencelist = cadence.CadenceList()
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadencelist.fromdb()
 
     pairs = [['mwm_galactic_1x1', 'mwm_tess_1x1'],

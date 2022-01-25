@@ -84,7 +84,7 @@ if __name__ == '__main__':
         iuse = 0
 
     for observatory in observatories:
-        cadencelist = cadence.CadenceList()
+        cadencelist = cadence.CadenceList(skybrightness_only=True)
         cadencelist.reset()
         cadences_file = sdss_path.full('rsCadences', plan=plan,
                                        observatory=observatory)

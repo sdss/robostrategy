@@ -92,7 +92,7 @@ if __name__ == '__main__':
 #    noclobber = args.noclobber
     print(time.ctime(time.time()))
 
-    cadencelist = cadence.CadenceList()
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadence_file = sdss_path.full('rsCadences',plan=plan,
                                   observatory=observatory)
     cadencelist.fromfits(filename=cadence_file, unpickle=True)

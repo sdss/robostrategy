@@ -43,7 +43,7 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    cadencelist = roboscheduler.cadence.CadenceList()
+    cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file)
