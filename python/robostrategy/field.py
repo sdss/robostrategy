@@ -2919,7 +2919,9 @@ class Field(object):
             nexp_cadence = clist.cadences[self.targets['cadence'][indx]].nexp_total
             robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
             np.random.shuffle(robotIDs)
-            hasApogee = self.robotHasApogee[robotIDs - 1]
+            robotindx = np.array([self.robotID2indx[x]
+                                  for x in robotIDs], dtype=int)
+            hasApogee = self.robotHasApogee[robotindx]
             robotIDs = robotIDs[np.argsort(hasApogee)]
 
             statusDict = dict()
