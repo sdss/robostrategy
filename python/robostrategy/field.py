@@ -2207,7 +2207,7 @@ class Field(object):
 
         available : dictionary, with key value pairs below
             'available' : bool
-                is the overall ask available
+                are ALL needed exposures in every listed epoch available
 
             'nAvailableRobotIDs' : ndarray of int32
                 how many available robotIDs at each epoch
