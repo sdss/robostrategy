@@ -41,6 +41,10 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -50,6 +54,7 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
     opentargets = args.opentargets
+    filler = args.filler
     reassign = args.reassign
 
     rsParams = params.RobostrategyParams(plan=plan)
@@ -74,6 +79,8 @@ if __name__ == '__main__':
                                    observatory=observatory)
     if(opentargets):
         targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
+    if(filler):
+        targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
     full_targets = fitsio.read(targets_file)
 
     rsid2indx = dict()
@@ -111,6 +118,9 @@ if __name__ == '__main__':
         if(opentargets):
             field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
                                                               'rsFieldAssignmentsOpen')
+        if(filler):
+            field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
+                                                              'rsFieldAssignmentsFiller')
         if(reassign):
             field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
                                                               'rsFieldAssignmentsOpen')
@@ -153,6 +163,9 @@ if __name__ == '__main__':
     if(opentargets):
         satisfied_file = satisfied_file.replace('rsSatisfied',
                                                 'rsSatisfiedOpen')
+    if(filler):
+        satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                'rsSatisfiedFiller')
     if(reassign):
         satisfied_file = satisfied_file.replace('rsSatisfied',
                                                 'rsSatisfiedReassign')
