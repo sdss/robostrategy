@@ -227,7 +227,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 if make_report:
                     print('Radial Velocity')
                     print('---------------')
-                    print('Number attempted: {}'.format(len(iextra)))
+                    print('Number attempted: {}'.format(len(subset)))
                     print('Number successful: ')
                     uextra,ctextra = np.unique(nsuccess, return_counts=True)
                     for iex,ict in zip(uextra,ctextra):
