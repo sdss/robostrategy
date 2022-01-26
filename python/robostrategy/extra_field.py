@@ -123,69 +123,6 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         return(nsuccess)
 
 
-    def assign_extra_exps(self, rsids=None, max_extra=1):
-        # THIS CODE IS NOT DONE! I need to think about whether I have to implement things like
-        # Right now BHM only wants partial completion, but if you allow "extra exposures"
-        # On previously satsified things you need to think about how to apply the back-to-back
-        # and/or epochs rules in conjunction with already gotten things.
-        # I might need parametres like: back_to_back=False and same_epoch_only=True
-
-        '''
-        This is a generic code for assigning exposures outside of the nominal target cadence.
-        This is modeled a bit after assign_cadences().
-
-        Parameters:
-        ----------
-        rsids : ndarray of np.int64
-            rsids of targets to assign
-
-        max_extra: np.int
-            maximum number of extra exposures to assign (default 1)
-
-        Returns:
-        -------
-        nsuccess: ndarray of type np.int
-            number of exposures successfully assigned for each input rsid
-        '''
-        nsuccess = np.zeros(len(rsids), dtype=np.int) #count how many extra exposures assigned
-
-        first = True # Only return first available robot at each epoch
-                     # Simplest to code but may be limiting for cases when max_extra > 1
-                     # Other available robots could have more exposures available
-
-        for idx,rsid in enumerate(rsids):
-            free = self.available_epochs(rsid=rsid, first=first) # By default requests 1 exposures
-            # Assign up to max_extra . availableRobotIds is a list of lists
-            # Outer list length is field nepoch? Inner list is len n robots (1 if first = True)
-            n_assign = 0
-            iassigned = self.assignments['equivRobotID'][self.rsid2indx[rsid]] >= 0
-
-            # THIS IS WHERE I STOPPED. In the code for extra epochs. It made sense that you only wanted to
-            # assign one batch of new exposures per epoch. However, for extra exposures that is not the case.
-            # get as much as you can! I think you can get this with statusus.assignable_exposures
-            for iepoch, per_exp_available in enumerate(free['availableRobotIDs']):
-                if len(per_exp_available) > 0:
-                    first_free_robot = per_exp_available[0]
-                    free_exp_stat = free['statuses'][iepoch][0]
-                    nexps = len(free_exp_stat.assignable_exposures())
-                    if nexps < 1:
-                        pdb.set_trace()
-                    is_assign = self.assign_robot_epoch(rsid=rsid, robotID=first_free_robot, epoch=iepoch,
-                                                        status=free_exp_stat, nexp=nexps)
-                    if is_assign:
-                       n_assign += 1
-                if n_assign >= max_extra: #stop when you have hit maximum extra
-                    break
-
-
-            nsuccess[idx] = n_assign
-
-            self.assignments['extra'][self.rsid2indx[rsid]] = n_assign
-
-        self.decollide_unassigned()
-
-        return(nsuccess)
-
     def assign_dark_extra(self,make_report=False):
         '''
         Code for assigning extra MWM dark time targets. Does nothing if the field
@@ -310,7 +247,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         any_extra = False
 
-        # Find NOT-gotten YSOs and try to get some epochs am
+        # Find NOT-gotten YSOs and try to get some epochs
         iextra = np.where((self.targets['program'] == 'mwm_yso') &
                           (self.assignments['satisfied'] == 0))[0]
 
