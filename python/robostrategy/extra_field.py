@@ -186,15 +186,19 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         return(nsuccess)
 
-    def assign_dark_extra(self):
+    def assign_dark_extra(self,make_report=False):
         '''
         Code for assigning extra MWM dark time targets. Does nothing if the field
         is a bright-only field. Otherwise, identify previously "satisfied" objects
         for WDs, SNC (100/250pc boss), and BOSS CB targets (300pc, gaiagalex,
         cvcandidates). And check for extra epochs.
+
+        Parameters:
+        ----------
+        make_report: bool
+            if True print out a report of what happened
         '''
 
-        make_report = False # For testing, report what happened
         max_extra = 99 #get as many as you can, but for testing start with 1
         any_extra = False # initialize
 
@@ -249,13 +253,17 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
         return any_extra
 
-    def assign_rv_extra(self):
+    def assign_rv_extra(self, make_report=False):
         '''
         Code for assigning extra epochs to RV targets. The more the merrier for these stars!
+
+        Parameters:
+        ----------
+        make_report: bool
+            if True print out a report of what happened
+
         '''
 
-
-        make_report = False
         any_extra = False
 
         # Find gotten RVs and see try to get extra epochs - take any in the RV
@@ -289,13 +297,17 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                         print(f'   {ict} stars - {iex} extra epochs')
         return any_extra
 
-    def assign_partial(self):
+    def assign_partial(self, make_report=False):
         '''
         Code for assigning MWM targets with secondary science goals achievable
         if < than the full cadence is obtained. Just YSOs for now
+
+        Parameters:
+        ----------
+        make_report: bool
+            if True print out a report of what happened
         '''
 
-        make_report = True
         any_extra = False
 
         # Find NOT-gotten YSOs and try to get some epochs am
@@ -327,15 +339,18 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     print(nsuccess)
         return any_extra
 
-    def assign_bright_extra(self):
+    def assign_bright_extra(self, make_report=False):
         '''
         Code for assigning extra epochs to MWM bright time targets. Identify previously
         "satisfied" objects in the OB carton.
 
         Then assign first partial then extra EXPOSURES for BHM
-        '''
 
-        make_report = False # For testing, report what happened
+        Parameters:
+        ----------
+        make_report: bool
+            if True print out a report of what happened
+        '''
         max_extra = 99 #get as many as you can, but for testing start with 1
         any_extra = False # initialize
 
