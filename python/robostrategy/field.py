@@ -1703,8 +1703,9 @@ class Field(object):
         if(status.rsid is not None):
             for iexp in status.assignable_exposures():
                 self.set_collided_status(status=status, iexp=iexp)
-                self.set_bright_neighbor_status(status=status, iexp=iexp)
-            status.assignable = status.assignable & status.bright_neighbor
+                if(self.bright_neighbors):
+                    self.set_bright_neighbor_status(status=status, iexp=iexp)
+                    status.assignable = status.assignable & status.bright_neighbor
 
         return
 
