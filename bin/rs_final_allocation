@@ -21,11 +21,35 @@ import sys
 import numpy as np
 import astropy.io.fits as fits
 import roboscheduler.cadence as cadence
+import robostrategy.params as params
+import mugatu.designs_to_targetdb
 import sdss_access.path
 import fitsio
 import time
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def split_slots(exps, time, ndark=2, ttype=''):
+    new_exps_dark = exps.copy()
+    new_exps_bright = exps.copy()
+    new_exps_dark[:, 1] = 0.
+    new_time_dark = time.copy()
+    new_time_bright = time.copy()
+    new_time_dark[:, 1] = 0.
+    dark_total = new_exps_dark[:, 0].sum()
+    dark_scale = np.float32(ndark) / dark_total
+    new_exps_dark[:, 0] = new_exps_dark[:, 0] * dark_scale
+    new_exps_bright[:, 0] = new_exps_bright[:, 0] * (1. - dark_scale)
+    new_time_dark[:, 0] = new_time_dark[:, 0] * dark_scale
+    new_time_bright[:, 0] = new_time_bright[:, 0] * (1. - dark_scale)
+    if(ttype == 'dark'):
+        return(new_exps_dark, new_time_dark)
+    elif(ttype == 'bright'):
+        return(new_exps_bright, new_time_bright)
+    else:
+        return
+    return
 
 
 if __name__ == '__main__':
@@ -36,11 +60,37 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
+    parser.add_argument('-r', '--reset', dest='reset',
+                        type=str, help='reset (specific "db" or number)',
+                        required=True)
 
     observatories = ['apo', 'lco']
 
     args = parser.parse_args()
     plan = args.plan
+    reset = args.reset
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            version = rsParams.cfg.get('CadenceVersions', 'version')
+
+    if(reset == 'db'):
+        t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual')
+        base_fieldid = t.find_next_available()
+        check_fieldids = list(base_fieldid + np.arange(100000, dtype=np.int32))
+        t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual',
+                                                        fieldid=check_fieldids)
+        exists = t.check_availability()
+        check_fieldids = np.array(check_fieldids, dtype=np.int32)
+        fieldid_use = check_fieldids[np.where(exists == False)[0]]
+        iuse = 0
+    else:
+        reset = np.int32(reset)
+        fieldid_use = reset + np.arange(100000, dtype=np.int32)
+        iuse = 0
 
     for observatory in observatories:
         cadencelist = cadence.CadenceList()
@@ -61,17 +111,20 @@ if __name__ == '__main__':
         fields_array_dtype = np.dtype(rs_fields_array.dtype.descr +
                                       np.dtype([('iexpst', np.int32),
                                                 ('iexpnd', np.int32),
-                                                ('split', np.int32)]).descr)
+                                                ('split', np.int32),
+                                                ('rs_fieldid', np.int32)]).descr)
         fields_dtype = np.dtype(rs_fields.dtype.descr +
                                 np.dtype([('iexpst', np.int32),
                                           ('iexpnd', np.int32),
-                                          ('split', np.int32)]).descr)
+                                          ('split', np.int32),
+                                          ('rs_fieldid', np.int32)]).descr)
         
         fields_array = np.zeros(0, dtype=fields_array_dtype)
         fields = np.zeros(0, dtype=fields_dtype)
-        ifield = 0
         for irsfield in np.arange(len(rs_fields_array), dtype=np.int32):
-            fieldid = rs_fields_array['fieldid'][irsfield]
+            rs_fieldid = rs_fields_array['fieldid'][irsfield]
+            fieldid = fieldid_use[iuse]
+            iuse = iuse + 1
             curr_cadence_name = rs_fields_array['cadence'][irsfield]
             curr_cadence = cadencelist.cadences[curr_cadence_name]
             skybrightness = curr_cadence.skybrightness[curr_cadence.epochs]
@@ -92,6 +145,8 @@ if __name__ == '__main__':
                     tmp_fields_array[n][0] = rs_fields_array[n][irsfield]
                 tmp_fields_array['iexpst'][0] = iexpst
                 tmp_fields_array['iexpnd'][0] = iexpnd
+                tmp_fields_array['fieldid'][0] = fieldid
+                tmp_fields_array['rs_fieldid'][0] = rs_fieldid
                 fields_array = np.append(fields_array, tmp_fields_array)
 
                 tmp_fields = np.zeros(1, dtype=fields_dtype)
@@ -99,6 +154,8 @@ if __name__ == '__main__':
                     tmp_fields[n][0] = rs_fields[n][irsfield]
                 tmp_fields['iexpst'][0] = iexpst
                 tmp_fields['iexpnd'][0] = iexpnd
+                tmp_fields['fieldid'][0] = fieldid
+                tmp_fields['rs_fieldid'][0] = rs_fieldid
                 fields = np.append(fields, tmp_fields)
 
                 iexpst = iexpnd + 1
@@ -120,13 +177,30 @@ if __name__ == '__main__':
             if(nexp_total < rs_nexp_total):
                 fields_array['split'][ifield] = 1
                 fields['split'][ifield] = 1
+                fields_array['needed'][ifield] = nexp_total
+                fields_array['nfilled'][ifield] = nexp_total
                 if(curr_cadence_name[0:13] == 'mixed2_single'):
                     if((iexpst == 0) & (iexpnd == 1)):
                         fields_array['cadence'][ifield] = 'mixed2_single_2x1'
+                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
+                                                        fields_array['slots_time'][ifield, :, :],
+                                                        ttype='dark')
+                        fields_array['slots_exposures'][ifield, :, :] = new_exp
+                        fields_array['slots_time'][ifield, :, :] = new_time
                     elif((iexpst == 2) & (iexpnd <= 19)):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
+                                                        fields_array['slots_time'][ifield, :, :],
+                                                        ttype='bright')
+                        fields_array['slots_exposures'][ifield, :, :] = new_exp
+                        fields_array['slots_time'][ifield, :, :] = new_time
                     elif(iexpst == 2):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
+                                                        fields_array['slots_time'][ifield, :, :],
+                                                        ttype='bright')
+                        fields_array['slots_exposures'][ifield, :, :] = new_exp
+                        fields_array['slots_time'][ifield, :, :] = new_time
                     else:
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
@@ -136,6 +210,17 @@ if __name__ == '__main__':
                                                                          r=rs_nexp_total))
                     print(cadencelist.cadences[curr_cadence_name])
                     sys.exit(2)
+
+        # HACK to return cadences in the db
+        imixed22 = np.where(fields_array['cadence'] == b'mixed2_single_2x1')[0]
+        fields_array['cadence'][imixed22] = b'dark_2x1'
+        ib2 = np.where(fields_array['cadence'] == b'bright_single_2x1')[0]
+        fields_array['cadence'][ib2] = b'bright_2x1'
+        ib1 = np.where(fields_array['cadence'] == b'bright_single_1x1')[0]
+        fields_array['cadence'][ib1] = b'bright_1x1'
+
+        fields_array['cadence'] = np.array([x.decode() + '_' + version
+                                            for x in fields_array['cadence']])
 
         fields_array_hdu = fits.BinTableHDU(fields_array)
         fields_hdu = fits.BinTableHDU(fields)

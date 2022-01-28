@@ -25,15 +25,9 @@ import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
 import mugatu.designmode
-    
+import sdss_access.path
 
-# alpha and beta lengths for plotting
-_alphaLen = 7.4
-_betaLen = 15
-
-# Make these to save some time later
-onetrue = np.ones(1, dtype=bool)
-onefalse = np.zeros(1, dtype=bool)
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 # Default collision buffer
 defaultCollisionBuffer = 2.
@@ -52,11 +46,13 @@ targets_dtype = targets_dtype + [('x', np.float64),
                                  ('incadence', np.int32)]
 
 # Dictionary defining meaning of flags
-_flagdict = {'CADENCE_INCONSISTENT': 1,
-             'NOT_COVERED_BY_APOGEE': 2,
-             'NOT_COVERED_BY_BOSS': 4,
-             'ASSIGNED_IN_PREVIOUS_FIELD': 8,
-             'COLLISION': 16}
+_flagdict = {'NOT_TO_ASSIGN':1,
+             'NOT_SCIENCE':2,
+             'NOT_INCADENCE': 4,
+             'NOT_COVERED': 8,
+             'NONE_ALLOWED': 16,
+             'NO_AVAILABILITY': 32,
+             'ALREADY_ASSIGNED': 64}
 
 __all__ = ['Field']
 
@@ -73,6 +69,64 @@ Dependencies:
 
 # Establish access to the CadenceList singleton
 clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
+
+
+def read_field(plan=None, observatory=None, fieldid=None,
+               version='', targets=False, speedy=False, verbose=False):
+    """Convenience function to read a field object
+
+    Parameters:
+    ----------
+
+    plan : str
+        plan name
+
+    observatory : str
+        observatory name ('apo' or 'lco')
+
+    version : str
+        version of assignments ('', 'Open', 'Filler', 'Reassign')
+
+    targets : bool
+        if True, read rsFieldTargets file, do not set cadence (default False)
+
+    fieldid : int
+        field id
+
+    Returns:
+    -------
+
+    field : Field object
+        field object read in
+"""
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    clist.fromfits(filename=cadences_file, unpickle=False)
+
+    base = 'rsFieldAssignments'
+    if(targets):
+        base = 'rsFieldTargets'
+
+    field_file = sdss_path.full(base,
+                                plan=plan, observatory=observatory,
+                                fieldid=fieldid)
+    if(version == 'Reassign'):
+        field_file = field_file.replace('rsFieldAssignments',
+                                        'rsFieldReassignments')
+    if(version == 'Open'):
+        field_file = field_file.replace(base, base + 'Open')
+    if(version == 'Filler'):
+        field_file = field_file.replace(base, base + 'Filler')
+    if(version == 'Final'):
+        field_file = field_file.replace('targets/' + base,
+                                        'final/' + base + 'Final')
+
+    if(speedy):
+        f = FieldSpeedy(filename=field_file, fieldid=fieldid,
+                        verbose=verbose)
+    else:
+        f = Field(filename=field_file, fieldid=fieldid, verbose=verbose)
+    return(f)
 
 
 class AssignmentStatus(object):
@@ -439,6 +493,30 @@ class Field(object):
                           min_deltav_ks91=[-2.5] * 12,
                           min_twilight_ang=[8.] * 12,
                           max_airmass=[2.] * 12)
+        clist.add_cadence(name='_field_dark_single_1x1',
+                          nepochs=1,
+                          skybrightness=[0.35],
+                          delta=[-1.],
+                          delta_min=[-1.],
+                          delta_max=[-1.],
+                          nexp=[1],
+                          max_length=[9999999.],
+                          min_moon_sep=[35.],
+                          min_deltav_ks91=[-1.5],
+                          min_twilight_ang=[15.],
+                          max_airmass=[1.6])
+        clist.add_cadence(name='_field_dark_single_12x1',
+                          nepochs=12,
+                          skybrightness=[0.35] * 12,
+                          delta=[-1.] * 12,
+                          delta_min=[-1.] * 12,
+                          delta_max=[-1.] * 12,
+                          nexp=[1] * 12,
+                          max_length=[9999999.] * 12,
+                          min_moon_sep=[35.] * 12,
+                          min_deltav_ks91=[-1.5] * 12,
+                          min_twilight_ang=[15.] * 12,
+                          max_airmass=[1.6] * 12)
         return
 
     def fromfits(self, filename=None):
@@ -578,6 +656,10 @@ class Field(object):
                                                reset_satisfied=False,
                                                reset_has_spare=False,
                                                reset_count=False)
+
+            for assignment, target in zip(assignments, targets):
+                indx = self.rsid2indx[target['rsid']]
+                self.assignments['rsflags'][indx] = assignment['rsflags']
             self._set_has_spare_calib()
             self._set_satisfied()
             self._set_count(reset_equiv=False)
@@ -818,7 +900,7 @@ class Field(object):
         flagname : str
             name of flag to set
 """
-        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)])
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
         self.assignments['rsflags'][indxs] = (self.assignments['rsflags'][indxs] | self.flagdict[flagname])
         return
 
@@ -840,7 +922,7 @@ class Field(object):
         setornot : ndarray of bool
             True if flag is set, flag otherwise
 """
-        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)])
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
         setornot = ((self.assignments['rsflags'][indxs] & self.flagdict[flagname]) != 0)
         return(setornot)
 
@@ -1020,7 +1102,7 @@ class Field(object):
         return(target_allowed)
 
     def _targets_to_robotgrid(self, targets=None, robotgrid=None):
-        for target in targets:
+        for indx, target in enumerate(targets):
             if(target['fiberType'] == 'APOGEE'):
                 fiberType = kaiju.cKaiju.ApogeeFiber
             else:
@@ -1188,7 +1270,8 @@ class Field(object):
             if(ekey not in self._equivindx):
                 self._equivindx[ekey] = np.zeros(0, dtype=np.int32)
             self._equivindx[ekey] = np.append(self._equivindx[ekey],
-                                              np.array([itarget]))
+                                              np.array([itarget],
+                                                       dtype=int))
             self._equivkey[itarget] = ekey
 
         if(assignments is not None):
@@ -1400,14 +1483,35 @@ class Field(object):
         return
 
     def set_collided_status(self, status=None, iexp=None):
-        # leave alone if collisions are being ignored
-        if((not self.allgrids) | (self.nocollide)):
-            return
+        i = status.expindx[iexp]
+
+        # not relevant if there is no rsid
         if(status.rsid is None):
             return
-        i = status.expindx[iexp]
+
+        # don't even check if not assignable anyway
         if(status.assignable[i] == False):
             return
+
+        # if collisions are being ignored, just check if any
+        # equivalent rsid is assigned to another robot
+        if((not self.allgrids) | (self.nocollide)):
+            indx = self.rsid2indx[status.rsid]
+            allindxs = set(self._equivindx[self._equivkey[indx]])
+            if(len(allindxs) > 1):
+                allindxs.discard(indx)
+                allindxs = np.array(list(allindxs), dtype=np.int32)
+                if(self.assignments['robotID'][allindxs, iexp].max() >= 0):
+                    status.collided[i] = True
+                else:
+                    status.collided[i] = False
+            else:
+                status.collided[i] = False
+            status.assignable[i] = (status.assignable[i] and
+                                    (status.collided[i] == False))
+            return
+
+        # check collisions
         rg = self.robotgrids[iexp]
         collided, fcollided, colliders = rg.wouldCollideWithAssigned(status.robotID, status.rsid)
         colliders = np.array(colliders, dtype=np.int32)
@@ -2103,7 +2207,7 @@ class Field(object):
 
         available : dictionary, with key value pairs below
             'available' : bool
-                is the overall ask available
+                are ALL needed exposures in every listed epoch available
 
             'nAvailableRobotIDs' : ndarray of int32
                 how many available robotIDs at each epoch
@@ -2307,13 +2411,23 @@ class Field(object):
         if(self.veryverbose):
             print("rsid={r}: note epoch_bad=".format(r=rsid) + str(epoch_bad)) 
         
-        for indx, epochs in enumerate(epochs_list):
-            if(epoch_bad[epochs].max() == False):
-                if(self.veryverbose):
-                    print("rsid={r}: trying epochs: ".format(r=rsid) + str(epochs))
-                nexps = nexps_list[indx]
-                if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
-                    return True
+        allowed = self.assignments['allowed'][indx, :]
+        any_allowed = False
+        for eindx, epochs in enumerate(epochs_list):
+            all_allowed = allowed[epochs].min()
+            if(all_allowed > 0):
+                any_allowed = True
+                if(epoch_bad[epochs].max() == False):
+                    if(self.veryverbose):
+                        print("rsid={r}: trying epochs: ".format(r=rsid) + str(epochs))
+                    nexps = nexps_list[eindx]
+                    if(self.assign_epochs(rsid=rsid, epochs=epochs, nexps=nexps)):
+                        return True
+
+        if(any_allowed is False):
+            self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+        else:
+            self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
 
         if(self.veryverbose):
             print("rsid={r}: no epochs worked".format(r=rsid))
@@ -2355,6 +2469,10 @@ class Field(object):
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
             allindxs = self._equivindx[self._equivkey[indx]]
+
+            if(len(allindxs) == 1):
+                self.assignments['equivRobotID'][allindxs, :] = self.assignments['robotID'][allindxs, :]
+                continue
 
             for iexp in iexps:
                 robotIDs = self.assignments['robotID'][allindxs, iexp]
@@ -2526,6 +2644,7 @@ class Field(object):
         cadences = np.unique(self.targets['cadence'][indxs])
         singlebright = np.zeros(len(self.targets), dtype=bool)
         multibright = np.zeros(len(self.targets), dtype=bool)
+        multidark = np.zeros(len(self.targets), dtype=bool)
         for cadence in cadences:
             if(clist.cadence_consistency(cadence, '_field_single_1x1',
                                          return_solutions=False)):
@@ -2535,6 +2654,10 @@ class Field(object):
                                            return_solutions=False)):
                 icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
                 multibright[indxs[icad]] = True
+            elif(clist.cadence_consistency(cadence, '_field_dark_single_12x1',
+                                           return_solutions=False)):
+                icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
+                multidark[indxs[icad]] = True
 
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
@@ -2546,6 +2669,7 @@ class Field(object):
 
             iassign = np.where((singlebright[indxs] == False) &
                                (multibright[indxs] == False) &
+                               (multidark[indxs] == False) &
                                (self.assignments['satisfied'][indxs] == 0) &
                                (self.targets['priority'][indxs] == priority))[0]
 
@@ -2607,6 +2731,19 @@ class Field(object):
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
 
+            for icycle in range(1):
+                imultidark = np.where(multidark[indxs] &
+                                      (self.assignments['satisfied'][indxs] == 0) &
+                                      (self.targets['priority'][indxs] == priority))[0]
+                if(len(imultidark) > 0):
+                    if(self.verbose):
+                        print("fieldid {fid}:  - {n} assigning as multi dark (cycle {i})".format(n=len(imultidark), i=icycle, fid=self.fieldid), flush=True)
+                    self._assign_multidark(indxs=indxs[imultidark])
+                    success[imultidark] = self.assignments['satisfied'][indxs[imultidark]]
+
+                    if(self.verbose):
+                        print("fieldid {fid}:    (assigned {n})".format(n=success[imultidark].sum(), fid=self.fieldid), flush=True)
+
             self._competing_targets = None
 
         return(success)
@@ -2635,6 +2772,7 @@ class Field(object):
             robotIDs = robotIDs[np.argsort(hasApogee)]
 
             statusDict = dict()
+            succeed = False
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=iexps)
                 self.set_assignment_status(status=s)
@@ -2647,7 +2785,14 @@ class Field(object):
                                                reset_count=False,
                                                reset_satisfied=False,
                                                reset_has_spare=True)
+                    succeed = True
                     break
+
+            if(succeed is False):
+                if(self.assignments['allowed'][indx].sum() == 0):
+                    self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+                else:
+                    self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
 
         self._set_satisfied(rsids=rsids[inotsat])
         return
@@ -2677,23 +2822,23 @@ class Field(object):
             robotIDs = robotIDs[np.argsort(hasApogee)]
 
             statusDict = dict()
-            expList = [[] for _ in range(self.field_cadence.nexp_total)]
-            nexp = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
+            nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=iexpsall)
                 self.set_assignment_status(status=s)
                 statusDict[robotID] = s
                 for iexp in s.assignable_exposures():
-                    expList[iexp].append(robotID)
-                    nexp[iexp] = nexp[iexp] + 1
+                    expRobotIDs[iexp].append(robotID)
+                    nExpRobotIDs[iexp] = nExpRobotIDs[iexp] + 1
 
             # if number of exposures with at least one free robot is high
             # enough, go ahead
-            iexps = np.where(nexp > 0)[0]
+            iexps = np.where(nExpRobotIDs > 0)[0]
             if(len(iexps) >= nexp_cadence):
 
                 for iexp in iexps[0:nexp_cadence]:
-                    robotID = expList[iexp][0]
+                    robotID = expRobotIDs[iexp][0]
                     status = statusDict[robotID]
                     self.unassign_assignable(status=status, iexp=iexp,
                                              reset_count=False,
@@ -2702,12 +2847,91 @@ class Field(object):
                     self.assign_robot_exposure(robotID=robotID,
                                                rsid=rsid,
                                                iexp=iexp,
-                                               reset_satisfied=True,
-                                               reset_has_spare=True)
+                                               reset_satisfied=False,
+                                               reset_has_spare=False)
 
                 self._set_satisfied(rsids=[rsid])
                 if(self.nocalib is False):
                     self._set_has_spare_calib()
+
+            else:
+                if(self.assignments['allowed'][indx].sum() == 0):
+                    self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+                else:
+                    self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
+
+        return
+
+    def _assign_multidark(self, indxs=None):
+        """Assigns nx1 dark targets en masse
+
+        Parameters
+        ----------
+
+        indxs : ndarray of np.int32
+            indices into self.targets of targets to assign
+"""
+        rsids = self.targets['rsid'][indxs]
+        iexpsall = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
+        ok, epochs_list = clist.cadence_consistency('_field_dark_single_1x1', self.field_cadence.name)
+        iexpsall = np.array([self.field_cadence.epoch_indx[x[0]] +
+                             np.arange(self.field_cadence.nexp[x[0]],
+                                       dtype=int) for x in epochs_list],
+                            dtype=int).flatten()
+        tdict = self.mastergrid.targetDict
+
+        inotsat = np.where(self.assignments['satisfied'][indxs] == 0)[0]
+        for rsid in rsids[inotsat]:
+            indx = self.rsid2indx[rsid]
+            nexp_cadence = clist.cadences[self.targets['cadence'][indx]].nexp_total
+            robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
+            np.random.shuffle(robotIDs)
+            hasApogee = self.robotHasApogee[robotIDs - 1]
+            robotIDs = robotIDs[np.argsort(hasApogee)]
+
+            statusDict = dict()
+            expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
+            nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            for robotID in robotIDs:
+                s = AssignmentStatus(rsid=rsid, robotID=robotID,
+                                     iexps=iexpsall)
+                self.set_assignment_status(status=s)
+                statusDict[robotID] = s
+                for iexp in s.assignable_exposures():
+                    expRobotIDs[iexp].append(robotID)
+                    nExpRobotIDs[iexp] = nExpRobotIDs[iexp] + 1
+
+                iexps = np.where(nExpRobotIDs > 0)[0]
+                if(len(iexps) >= nexp_cadence):
+                    break
+
+            # if number of exposures with at least one free robot is high
+            # enough, go ahead
+            iexps = np.where(nExpRobotIDs > 0)[0]
+            if(len(iexps) >= nexp_cadence):
+
+                for iexp in iexps[0:nexp_cadence]:
+                    robotID = expRobotIDs[iexp][0]
+                    status = statusDict[robotID]
+                    self.unassign_assignable(status=status, iexp=iexp,
+                                             reset_count=False,
+                                             reset_satisfied=False,
+                                             reset_has_spare=True)
+                    self.assign_robot_exposure(robotID=robotID,
+                                               rsid=rsid,
+                                               iexp=iexp,
+                                               reset_satisfied=False,
+                                               reset_has_spare=False)
+
+                self._set_satisfied(rsids=[rsid])
+                if(self.nocalib is False):
+                    self._set_has_spare_calib()
+
+            else:
+                if(self.assignments['allowed'][indx].sum() == 0):
+                    self.set_flag(rsid=rsid, flagname='NONE_ALLOWED')
+                else:
+                    self.set_flag(rsid=rsid, flagname='NO_AVAILABILITY')
 
         return
 
@@ -2938,6 +3162,8 @@ class Field(object):
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
 
+        print(self.validate())
+
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
@@ -2946,6 +3172,9 @@ class Field(object):
         random.seed(self.fieldid)
         np.random.shuffle(iscience)
         self.assign_cadences(rsids=self.targets['rsid'][iscience])
+
+        self.decollide_unassigned()
+        print(self.validate())
 
         self._set_satisfied(rsids=self.targets['rsid'][iscience])
         self._set_count(reset_equiv=False)
@@ -2982,6 +3211,8 @@ class Field(object):
                 if rsid in coordinated_targets.keys():
                     if coordinated_targets[rsid]:
                         self.target_duplicated[id_idx] = 1
+                        self.set_flag(rsid=rsid,
+                                      flagname='ALREADY_ASSIGNED')
 
         # Assign calibration to one exposure to determine achievable
         # requirements and then unassign
@@ -3011,7 +3242,24 @@ class Field(object):
         iassigned = np.where(self.assignments['assigned'])[0]
         self.unassign(rsids=self.targets['rsid'][iassigned])
 
+        inotscience = np.where(self.targets['category'] != 'science')[0]
+        self.set_flag(rsid=self.targets['rsid'][inotscience],
+                      flagname='NOT_SCIENCE')
+
+        inotincadence = np.where(self.targets['incadence'] == 0)[0]
+        self.set_flag(rsid=self.targets['rsid'][inotincadence],
+                      flagname='NOT_INCADENCE')
+
+        inotrsassign = np.where(self.targets['rsassign'] == 0)[0]
+        self.set_flag(rsid=self.targets['rsid'][inotrsassign],
+                      flagname='NOT_TO_ASSIGN')
+
+        inotcovered = np.where(self.targets['within'] == 0)[0]
+        self.set_flag(rsid=self.targets['rsid'][inotcovered],
+                      flagname='NOT_COVERED')
+        
         iscience = np.where((self.targets['category'] == 'science') &
+                            (self.targets['within']) &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
                             (self.targets['rsassign'] != 0))[0]
@@ -3210,6 +3458,16 @@ class Field(object):
             iused_apogee = np.where((self._robot2indx[:, iexp] >= 0) &
                                     (hasApogee == True))[0]
             out = out + " {p}".format(p=len(iused_apogee))
+        out = out + "\n"
+
+        out = out + "\nSpare fibers per exposure (including spare calibs):\n"
+        nboss_spare, napogee_spare = self.count_spares()
+        out = out + " BOSS: "
+        for iexp in range(self.field_cadence.nexp_total):
+            out = out + " {p}".format(p=nboss_spare[iexp])
+        out = out + "\n APOGEE: "
+        for iexp in range(self.field_cadence.nexp_total):
+            out = out + " {p}".format(p=napogee_spare[iexp])
         out = out + "\n"
 
         out = out + "\nCarton completion:\n"
@@ -3431,7 +3689,77 @@ class Field(object):
                 print("rsid={rsid} : target assigned with wrong nepochs".format(rsid=target['rsid']))
                 nproblems += 1
 
+    def count_spares(self):
+        """Count spare fibers (accounting for spare calibrations)
 
+        Returns:
+        -------
+
+        nboss_spare : np.int32
+            Number of spare BOSS fibers (all, including APOGEE+BOSS robots)
+
+        napogee_spare : np.int32
+            Number of spare APOGEE fibers
+"""
+        hasApogee = np.array([self.mastergrid.robotDict[x + 1].hasApogee
+                              for x in range(500)])
+
+        iapogee = np.where(hasApogee)[0]
+        napogee_spare = len(iapogee)
+        nboss_spare = len(hasApogee)
+
+        if(self.assignments is not None):
+            nun_apogee = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            nun_boss = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+
+            # Count the ones with literally no assignment
+            for iexp in np.arange(self.field_cadence.nexp_total,
+                                  dtype=np.int32):
+                ina_apogee = np.where(self._robot2indx[iapogee, iexp] < 0)[0]
+                ina_boss = np.where(self._robot2indx[:, iexp] < 0)[0]
+                nun_apogee[iexp] = len(ina_apogee)
+                nun_boss[iexp] = len(ina_boss)
+        
+            nsp = collections.OrderedDict()
+            for calibration in self.calibrations:
+                nsp[calibration] = (self.calibrations[calibration] -
+                                    self.required_calibrations[calibration])
+                iz = np.where(nsp[calibration] < 0)[0]
+                nsp[calibration][iz] = 0
+
+            for bosscalib in ['standard_boss', 'sky_boss']:
+                nsp[bosscalib + '_wapogee'] = np.zeros(self.field_cadence.nexp_total,
+                                                       dtype=np.int32)
+                for iexp in np.arange(self.field_cadence.nexp_total,
+                                      dtype=np.int32):
+                    ia = np.where((self._robot2indx[:, iexp] >= 0) &
+                                  hasApogee)[0]
+                    if(len(ia) > 0):
+                        ia = self._robot2indx[ia, iexp]
+                        ic = np.where(self.targets['category'][ia] == bosscalib)[0]
+                        nc = len(ic)
+                    else:
+                        nc = 0
+                    if(nc < nsp[bosscalib][iexp]):
+                        nsp[bosscalib + '_wapogee'][iexp] = nc
+                    else:
+                        nsp[bosscalib + '_wapogee'][iexp] = nsp[bosscalib][iexp]
+
+            # The below is correct because every APOGEE robot is
+            # also potentially a BOSS robot, but not vice-versa.
+            nboss_spare = (nun_boss +
+                           nsp['standard_boss'] +
+                           nsp['sky_boss'] +
+                           nsp['standard_apogee'] +
+                           nsp['sky_apogee'])
+            napogee_spare = (nun_apogee +
+                             nsp['standard_apogee'] +
+                             nsp['sky_apogee'] + 
+                             nsp['standard_boss_wapogee'] +
+                             nsp['sky_boss_wapogee'])
+
+        return(nboss_spare, napogee_spare)
+        
     def _plot_robot(self, robot, color=None, ax=None):
         """Plot a single robot
 
@@ -3447,14 +3775,18 @@ class Field(object):
         ax : Axes object
             matplotlib Axes object to plot on
 """
-        xr = robot.xPos
-        yr = robot.yPos
-        xa = xr + _alphaLen * np.cos(robot.alpha / 180. * np.pi)
-        ya = yr + _alphaLen * np.sin(robot.alpha / 180. * np.pi)
-        xb = xa + _betaLen * np.cos((robot.alpha + robot.beta) / 180. * np.pi)
-        yb = ya + _betaLen * np.sin((robot.alpha + robot.beta) / 180. * np.pi)
-        ax.plot(np.array([xr, xa]), np.array([yr, ya]), color=color, alpha=0.5)
-        ax.plot(np.array([xa, xb]), np.array([ya, yb]), color=color, linewidth=3)
+        alphaPoint = robot.betaCollisionSegment[0]
+        betaPoint = robot.betaCollisionSegment[1]
+        alphaX = alphaPoint[0]
+        alphaY = alphaPoint[1]
+        betaX = betaPoint[0]
+        betaY = betaPoint[1]
+        xa = [robot.xPos, alphaX]
+        ya = [robot.yPos, alphaY]
+        xb = [alphaX, betaX]
+        yb = [alphaY, betaY]
+        ax.plot(np.array(xa), np.array(ya), color=color, alpha=0.5)
+        ax.plot(np.array(xb), np.array(yb), color=color, linewidth=2)
 
     def plot(self, iexp=None, robotID=False, catalogid=False):
         """Plot assignments of robots to targets for field
@@ -3484,65 +3816,47 @@ class Field(object):
         axfig = fig.add_axes([0., 0., 0.7, 1.])
         axleg = fig.add_axes([0.71, 0., 0.26, 1.])
 
+        itarget = np.where(self.targets['category'] == 'science')[0]
+        axfig.scatter(self.targets['x'][itarget],
+                      self.targets['y'][itarget], s=1, color='black',
+                      label='Science targets', alpha=0.2)
+        axleg.plot(self.targets['x'][itarget],
+                   self.targets['y'][itarget], linewidth=4, alpha=0.2, color='black',
+                   label='Science targets')
+
+        itarget = np.where(self.targets['category'] != 'science')[0]
+        axfig.scatter(self.targets['x'][itarget],
+                      self.targets['y'][itarget], s=1, color='blue',
+                      label='Calib targets', alpha=0.1)
+        axleg.plot(self.targets['x'][itarget],
+                   self.targets['y'][itarget], linewidth=4, alpha=0.2, color='blue',
+                   label='Calib targets')
+
         if(self.assignments is not None):
             target_got = np.zeros(len(self.targets), dtype=np.int32)
             target_robotid = np.zeros(len(self.targets), dtype=np.int32)
             itarget = np.where(self.assignments['robotID'][:, iexp] >= 1)[0]
             target_got[itarget] = 1
             target_robotid[itarget] = self.assignments['robotID'][itarget, iexp]
-            for indx in np.arange(len(target_cadences)):
-                itarget = np.where((target_got > 0) & (self.targets['cadence'] ==
-                                                       target_cadences[indx]))[0]
-
-                axfig.scatter(self.targets['x'][itarget],
-                              self.targets['y'][itarget], s=4)
-
-                icolor = indx % len(colors)
-                for i in itarget:
-                    robot = self.robotgrids[iexp].robotDict[target_robotid[i]]
-                    self._plot_robot(robot, color=colors[icolor], ax=axfig)
-
-        for indx in np.arange(len(target_cadences)):
-            itarget = np.where(self.targets['cadence'] == target_cadences[indx])[0]
-            icolor = indx % len(colors)
+            itarget = np.where(target_got > 0)[0]
+            
             axfig.scatter(self.targets['x'][itarget],
-                          self.targets['y'][itarget], s=2, color=colors[icolor],
-                          label=target_cadences[indx])
-            axleg.plot(self.targets['x'][itarget],
-                       self.targets['y'][itarget], linewidth=4, color=colors[icolor],
-                       label=target_cadences[indx])
+                          self.targets['y'][itarget], s=3, color='black')
 
-        xcen = np.array([self.robotgrids[iexp].robotDict[r].xPos
-                         for r in self.robotgrids[iexp].robotDict],
-                        dtype=np.float32)
-        ycen = np.array([self.robotgrids[iexp].robotDict[r].yPos
-                         for r in self.robotgrids[iexp].robotDict],
-                        dtype=np.float32)
-        robotid = np.array([str(r)
-                            for r in self.robotgrids[iexp].robotDict])
-        axfig.scatter(xcen, ycen, s=6, color='grey', label='Used robot')
-        axleg.plot(xcen, ycen, linewidth=4, color='grey', label='Used robot')
+            for i in itarget:
+                if(self.targets['category'][i] == 'science'):
+                    color='blue'
+                else:
+                    color='black'
+                robot = self.robotgrids[iexp].robotDict[target_robotid[i]]
+                self._plot_robot(robot, color=color, ax=axfig)
 
-        if(robotID):
-            for cx, cy, cr in zip(xcen, ycen, robotid):
-                plt.text(cx, cy, cr, color='grey', fontsize=8,
-                         clip_on=True)
-
-        if(catalogid):
-            for cx, cy, ct in zip(self.target_x, self.target_y,
-                                  self.target_catalogid):
-                plt.text(cx, cy, ct, fontsize=8, clip_on=True)
-
+        robotid = np.arange(500, dtype=int) + 1
         used = (self._robot2indx[:, iexp] >= 0)
-
         inot = np.where(used == False)[0]
-        axfig.scatter(xcen[inot], ycen[inot], s=20, color='grey',
-                      label='Unused robot')
-        axleg.plot(xcen[inot], ycen[inot], color='grey',
-                   linewidth=4, label='Unused robot')
         for i in robotid[inot]:
             self._plot_robot(self.robotgrids[iexp].robotDict[int(i)],
-                            color='grey', ax=axfig)
+                             color='grey', ax=axfig)
 
         plt.xlim([-370., 370.])
         plt.ylim([-370., 370.])
@@ -3653,8 +3967,9 @@ class FieldSpeedy(Field):
     Relative to Field, this class behaves as follows: 
      * nocalib is set True, so calibrations are skipped, which allows a
        a substantial simplification.
-     * Any 1x1 bright cadences are performed en masse
-     * Any cadences consistent with 12x1 bright cadences are performed en masse
+     * nocollide is set True, so collisions are not considered
+     * allgrids is set False, so that the robotgrid overhead
+       is avoided
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=2.,
@@ -3665,110 +3980,3 @@ class FieldSpeedy(Field):
                          verbose=verbose,
                          nocalib=True, nocollide=True, allgrids=False)
         return
-
-    def assign_cadences(self, rsids=None, check_satisfied=True):
-        """Assign a set of targets to robots
-
-        Parameters:
-        ----------
-
-        rsids : ndarray of np.int64
-            rsids of targets to assign
-
-        check_satisfied : bool
-            if True, do not try to reassign targets that are already satisfied
-
-        Returns:
-        --------
-
-        success : ndarray of bool
-            True if successful, False otherwise
-
-        Notes:
-        -----
-
-        Sorts cadences by priority for assignment.
-"""
-        success = np.zeros(len(rsids), dtype=bool)
-        indxs = np.array([self.rsid2indx[r] for r in rsids], dtype=np.int32)
-
-        # Find single bright cases
-        if(self.verbose):
-            print("fieldid {fid}: Finding single bright cases".format(fid=self.fieldid), flush=True)
-        cadences = np.unique(self.targets['cadence'][indxs])
-        singlebright = np.zeros(len(self.targets), dtype=bool)
-        for cadence in cadences:
-            if(clist.cadence_consistency(cadence, '_field_single_1x1',
-                                         return_solutions=False)):
-                icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
-                singlebright[indxs[icad]] = True
-
-        # Find multiple single exposure bright cases
-        if(self.verbose):
-            print("fieldid {fid}: Finding multi bright cases".format(fid=self.fieldid), flush=True)
-        multibright = np.zeros(len(self.targets), dtype=bool)
-        for cadence in cadences:
-            if(clist.cadence_consistency(cadence, '_field_single_12x1',
-                                         return_solutions=False)):
-                icad = np.where((self.targets['cadence'][indxs] == cadence) &
-                                (singlebright[indxs] == False))[0]
-                multibright[indxs[icad]] = True
-
-        priorities = np.unique(self.targets['priority'][indxs])
-        for priority in priorities:
-            if(self.verbose):
-                print("fieldid {fid}: Assigning priority {p}".format(p=priority, fid=self.fieldid), flush=True)
-
-            if(self.verbose):
-                print("fieldid {fid}: Set competing targets".format(fid=self.fieldid), flush=True)
-            iormore = np.where((self.targets['priority'][indxs] >= priority) &
-                               (self._is_calibration[indxs] == False))[0]
-            self._set_competing_targets(rsids[iormore])
-
-            if(self.verbose):
-                iall = np.where((self.assignments['satisfied'][indxs] == 0) &
-                                (self.targets['priority'][indxs] == priority))[0]
-                outstr = "fieldid {fid}: Includes cadences ".format(fid=self.fieldid)
-                pcads = np.unique(self.targets['cadence'][indxs[iall]])
-                for pcad in pcads:
-                    outstr = outstr + pcad + " "
-                print(outstr, flush=True)
-                    
-                outstr = "fieldid {fid}: Includes cartons ".format(fid=self.fieldid)
-                pcarts = np.unique(self.targets['carton'][indxs[iall]])
-                for pcart in pcarts:
-                    outstr = outstr + pcart + " "
-                print(outstr, flush=True)
-
-            # Since we are in speedy mode, skip the single-bright and
-            # multibright cases
-            iassign = np.where((singlebright[indxs] == False) &
-                               (multibright[indxs] == False) &
-                               (self.assignments['satisfied'][indxs] == 0) &
-                               (self.targets['priority'][indxs] == priority))[0]
-
-            if(len(iassign) > 0):
-
-                if(self.verbose):
-                    print("fieldid {fid}: Assign one by ones".format(fid=self.fieldid), flush=True)
-                success[iassign] = self._assign_one_by_one(rsids=rsids[iassign],
-                                                           check_satisfied=check_satisfied)
-
-            imultibright = np.where(multibright[indxs] &
-                                    (self.assignments['satisfied'][indxs] == 0) &
-                                    (self.targets['priority'][indxs] == priority))[0]
-            if(len(imultibright) > 0):
-                if(self.verbose):
-                    print("fieldid {fid}: Assign multibrights".format(fid=self.fieldid), flush=True)
-                self._assign_multibright(indxs=indxs[imultibright])
-
-            isinglebright = np.where(singlebright[indxs] &
-                                     (self.assignments['satisfied'][indxs] == 0) &
-                                     (self.targets['priority'][indxs] == priority))[0]
-            if(len(isinglebright) > 0):
-                if(self.verbose):
-                    print("fieldid {fid}: Assign singlebrights".format(fid=self.fieldid), flush=True)
-                self._assign_singlebright(indxs=indxs[isinglebright])
-
-            self._competing_targets = None
-        return(success)

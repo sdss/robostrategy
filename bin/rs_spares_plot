@@ -44,16 +44,37 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassign results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-X', '--final', dest='final',
+                        help='set to read final results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     opentargets = args.opentargets
+    filler = args.filler
+    reassign = args.reassign
+    final = args.final
 
     base = 'rsSpares'
     if(opentargets):
         base = 'rsSparesOpen'
-    infile = '{base}-{o}-{p}.fits'.format(o=observatory, p=plan, base=base)
+    if(filler):
+        base = 'rsSparesFiller'
+    if(reassign):
+        base = 'rsSparesReassign'
+    if(final):
+        base = 'rsSparesFinal'
+    infile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     spares = fitsio.read(infile)
 
     for fiberType in ['boss', 'apogee']:
@@ -64,7 +85,7 @@ if __name__ == '__main__':
                             celestial=True)
         xx, yy = convert_radec(m, spares['racen'], spares['deccen'])
         
-        png_file = '{base}-{o}-{p}-{fiberType}.png'.format(o=observatory,
+        png_file = '{base}-{p}-{o}-{fiberType}.png'.format(o=observatory,
                                                            p=plan,
                                                            base=base,
                                                            fiberType=fiberType)
@@ -78,15 +99,24 @@ if __name__ == '__main__':
         m.drawmapboundary()
 
         name = 'n{ft}_spare'.format(ft=fiberType)
-        spval = np.arcsinh(spares[name]) / np.log(10.)
-        plt.scatter(xx, yy, s=3, c=spval)
+        spval = np.float32(spares[name])
+        iz = np.where(spval == 0)[0]
+        spval[iz] = 0.1
+        spval = np.log10(spval)
+        plt.scatter(xx, yy, s=3, c=spval, vmin=-1., vmax=3.99)
         title = 'Spare {ft} (after science allocation)'
         if(opentargets):
             title = 'Spare {ft} (after open fiber allocation)'
+        if(filler):
+            title = 'Spare {ft} (after filler fiber allocation)'
+        if(reassign):
+            title = 'Spare {ft} (after reassignment)'
+        if(final):
+            title = 'Spare {ft} (final)'
         title = title.format(ft=fiberType.upper())
         plt.title(title)
 
-        colorbar_label = '$sinh^{-1} N / (ln 10)$'
+        colorbar_label = '$log_{10} N$'
         cb = plt.colorbar()
         cb.set_label(colorbar_label)
     

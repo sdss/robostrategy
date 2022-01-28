@@ -35,6 +35,10 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -43,6 +47,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     opentargets = args.opentargets
+    filler = args.filler
     reassign = args.reassign
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
@@ -53,6 +58,8 @@ if __name__ == '__main__':
         description_cfg.read(description_file)
         if(opentargets):
             carton_description = description_cfg['Open']
+        elif(filler):
+            carton_description = description_cfg['Filler']
         else:
             carton_description = description_cfg['Mapper']
     else:
@@ -64,6 +71,9 @@ if __name__ == '__main__':
     if(opentargets):
         html_file = os.path.join(html_path, 'rs-open-stats.html')
         stats_file = os.path.join(html_path, 'rsStatsOpen-{p}.fits'.format(p=plan))
+    elif(filler):
+        html_file = os.path.join(html_path, 'rs-filler-stats.html')
+        stats_file = os.path.join(html_path, 'rsStatsFiller-{p}.fits'.format(p=plan))
     else:
         html_file = os.path.join(html_path, 'rs-stats.html')
         stats_file = os.path.join(html_path, 'rsStats-{p}.fits'.format(p=plan))
@@ -86,6 +96,9 @@ if __name__ == '__main__':
     if(opentargets):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessOpen')
+    if(filler):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessFiller')
     if(reassign):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessReassign')

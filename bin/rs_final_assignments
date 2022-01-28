@@ -1,0 +1,108 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_final_assignments
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import shutil
+import multiprocessing
+import numpy as np
+import astropy.io.fits as fits
+import robostrategy.field
+import robostrategy.params as params
+import roboscheduler.cadence as cadence
+import sdss_access.path
+import fitsio
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def process_field(ifield):
+    field = fields[ifield]
+    infile = sdss_path.full('rsFieldAssignments', plan=plan,
+                            observatory=observatory, fieldid=field['rs_fieldid'])
+    if(reassign):
+        infile = infile.replace('rsFieldAssignments', 'rsFieldReassignments')
+    if(opentargets):
+        infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsOpen')
+    
+    outfile = sdss_path.full('rsFieldAssignments', plan=plan,
+                             observatory=observatory, fieldid=field['fieldid'])
+    outfile = outfile.replace('targets/rsFieldAssignments', 'final/rsFieldAssignmentsFinal')
+    
+    print("Copying field {rf} to {f}".format(rf=field['rs_fieldid'], 
+                                             f=field['fieldid']))
+    shutil.copyfile(infile, outfile)
+
+    hdulist = fits.open(outfile, mode='update')
+    hdulist[0].header['FCADENCE'] = hdulist[0].header['FCADENCE'] + '_' + version
+    hdulist.flush()
+    hdulist.close()
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final allocation file, splitting mixed cadences')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to use reassignment target results',
+                        default=False, required=False,
+                        action='store_true')
+
+    observatories = ['apo', 'lco']
+
+    args = parser.parse_args()
+    plan = args.plan
+    opentargets = args.opentargets
+    reassign = args.reassign
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            version = rsParams.cfg.get('CadenceVersions', 'version')
+
+    if(opentargets & reassign):
+        print("Cannot set --open and --reassign simultaneously!")
+
+    for observatory in observatories:
+        cadencelist = cadence.CadenceList()
+        cadencelist.reset()
+        cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                       observatory=observatory)
+        cadencelist.fromfits(filename=cadences_file, unpickle=False)
+
+        allocate_file = sdss_path.full('rsAllocationFinal', plan=plan,
+                                       observatory=observatory)
+        fields = fitsio.read(allocate_file, ext=1)
+        ufieldid, iunique = np.unique(fields['fieldid'], return_index=True)
+        fields = fields[iunique]
+
+        with multiprocessing.Pool() as pool:
+            pool.map(process_field, np.arange(len(fields), dtype=int))
+

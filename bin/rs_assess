@@ -43,12 +43,27 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassign results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-X', '--final', dest='final',
+                        help='set to read final results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     fieldid = args.fieldid
     opentargets = args.opentargets
+    filler = args.filler
+    final = args.final
+    reassign = args.reassign
 
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -61,7 +76,17 @@ if __name__ == '__main__':
     if(opentargets):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldAssignmentsOpen')
+    if(filler):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsFiller')
+    if(reassign):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldReassignments')
+    if(final):
+        field_target_file = field_target_file.replace('targets/rsFieldAssignments',
+                                                      'final/rsFieldAssignmentsFinal')
     f = field.Field(filename=field_target_file)
 
     print(f.assess())
-    print(f.validate())
+    nprob = f.validate()
+    print("Number of validation problems: {nprob}".format(nprob=nprob))

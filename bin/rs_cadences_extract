@@ -84,6 +84,9 @@ if __name__ == '__main__':
     for c in cadencelist.cadences:
         print(c)
 
+    schedule = rsParams.cfg['Allocation']['Schedule']
+    schedule_prefix = schedule.split('_')[0]
+
     cadence_change = dict()
     for c in rsParams.cfg['Cadences']:
         adjustment = rsParams.cfg.get('Cadences', c)
@@ -113,6 +116,19 @@ if __name__ == '__main__':
     copy_cadence('bright_single_99x1', 'bright_single_nx1')
     copy_cadence('bright_1x1', 'bright_single_1x1')
     copy_cadence('bright_2x1', 'bright_single_2x1')
+    copy_cadence('bright_single_4x1', 'dark_single_4x1')
+    cadencelist.cadences['dark_single_4x1'].delta[:] = -1
+    cadencelist.cadences['dark_single_4x1'].delta_min[:] = -1
+    cadencelist.cadences['dark_single_4x1'].delta_max[:] = -1
+    cadencelist.cadences['dark_single_4x1'].max_length[:] = 10000.
+    cadencelist.cadences['dark_single_4x1'].skybrightness[:] = cadencelist.cadences['dark_1x4'].skybrightness
+    cadencelist.cadences['dark_single_4x1'].min_moon_sep[:] = cadencelist.cadences['dark_1x4'].min_moon_sep
+    cadencelist.cadences['dark_single_4x1'].min_deltav_ks91[:] = cadencelist.cadences['dark_1x4'].min_deltav_ks91
+    cadencelist.cadences['dark_single_4x1'].min_twilight_ang[:] = cadencelist.cadences['dark_1x4'].min_twilight_ang
+    cadencelist.cadences['dark_single_4x1'].max_airmass[:] = cadencelist.cadences['dark_1x4'].max_airmass
+    cadencelist.cadences['dark_single_4x1'].obsmode_pk[:] = cadencelist.cadences['dark_1x4'].obsmode_pk
+    if(schedule_prefix == 'minimal'):
+        copy_cadence('dark_174x8', 'dark_138x8', nepochs=138)
     copy_cadence('mixed2_single_3x1', 'mixed2_single_2x1', nepochs=2)
 
 #
@@ -154,12 +170,17 @@ if __name__ == '__main__':
             print("{cn}: special case for consistency with RM fields".format(cn=cn))
             c = cadencelist.cadence_consistency(cn, 'dark_174x8')
             print(c[0])
+            if(schedule_prefix == 'minimal'):
+                c = cadencelist.cadence_consistency(cn, 'dark_138x8')
+                print(c[0])
             c = cadencelist.cadence_consistency(cn, 'dark_100x8')
             print(c[0])
         else:
             if('single' not in cn):
                 print("{cn}: treat as normal for consistency with RM fields".format(cn=cn))
                 c = cadencelist.cadence_consistency(cn, 'dark_174x8')
+                if(schedule_prefix == 'minimal'):
+                    c = cadencelist.cadence_consistency(cn, 'dark_138x8')
                 c = cadencelist.cadence_consistency(cn, 'dark_100x8')
 
     pkl_file = cadences_file + ".pkl"

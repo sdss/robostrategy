@@ -11,29 +11,24 @@
         </tr>
     </thead>
 		<tbody>
-			{% for priority in priorities %}
-			{% for carton in priority.cartons %}
-			{% for cadence in carton.cadences %}
+			{% for combo in combos %}
 			<tr>
-				{% if priority.priority == last_priority %}
-				<td></td>
+				{% if combo.first_priority %}
+				<td>{{ combo.priority }}</td>
 				{% else %}
-				<td>{{ priority.priority }}</td>
+				<td></td>
 				{% endif %}
-				{% if (priority.priority == last_priority) i %}
-				<td></td>
+				{% if combo.first_carton %}
+				<td>{{ combo.carton }}</td>
 				{% else %}
-				<td>{{ priority.priority }}</td>
+				<td></td>
 				{% endif %}
-				{% if priority.priority == last_priority %}
-				<td></td>
+				{% if combo.first_cadence %}
+				<td>{{ combo.cadence }}</td>
 				{% else %}
-				<td>{{ priority.priority }}</td>
+				<td></td>
 				{% endif %}
 			</tr>
-			{% set last_priority = priority.priority %}
-			{% set last_carton = carton.carton %}
-			{% set last_cadence = cadence.cadence %}
 			{% endfor %}
      </tbody}
 </table>

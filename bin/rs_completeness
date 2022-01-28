@@ -110,6 +110,10 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -125,12 +129,15 @@ if __name__ == '__main__':
         both = False
         observatories = [observatory]
     opentargets = args.opentargets
+    filler = args.filler
     reassign = args.reassign
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatories[0])
     if(opentargets):
         targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
+    if(filler):
+        targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
     targets = fitsio.read(targets_file)
     if(both):
         outtargets_dtype = np.dtype(targets.dtype.descr +
@@ -172,6 +179,8 @@ if __name__ == '__main__':
                                             targets_covered_base)
         if(opentargets):
             targets_covered_file = targets_covered_file.replace('rsTargets', 'rsTargetsOpen')
+        if(filler):
+            targets_covered_file = targets_covered_file.replace('rsTargets', 'rsTargetsFiller')
         targets_covered = fitsio.read(targets_covered_file)
         icovered = np.where(targets_covered['within_hex'] > 0)[0]
         outtargets['covered'][icovered] = outtargets['covered'][icovered] + 1
@@ -196,6 +205,9 @@ if __name__ == '__main__':
         if(opentargets):
             satisfied_file = satisfied_file.replace('rsSatisfied',
                                                     'rsSatisfiedOpen')
+        if(filler):
+            satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                    'rsSatisfiedFiller')
         if(reassign):
             satisfied_file = satisfied_file.replace('rsSatisfied',
                                                     'rsSatisfiedReassign')
@@ -263,6 +275,9 @@ if __name__ == '__main__':
     if(opentargets):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessOpen')
+    if(filler):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessFiller')
     if(reassign):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessReassign')
@@ -346,6 +361,9 @@ if __name__ == '__main__':
     if(opentargets):
         subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                             'rsCompletenessOpen')
+    if(filler):
+        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                            'rsCompletenessFiller')
     if(reassign):
         subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                             'rsCompletenessReassign')
@@ -462,6 +480,9 @@ if __name__ == '__main__':
         if(opentargets):
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessOpen')
+        if(filler):
+            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                                'rsCompletenessFiller')
         if(reassign):
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessReassign')
