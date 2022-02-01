@@ -1,0 +1,67 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_carton_list
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import astropy.io.ascii
+
+
+# iconv -f iso-8859-1 -t utf-8//TRANSLIT
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Field list creation for SDSS-V')
+
+    parser.add_argument('-i', '--input-file', dest='infile',
+                        type=str, help='input file')
+
+    parser.add_argument('-v', '--version', dest='version',
+                        type=str, help='version to give list')
+
+    args = parser.parse_args()
+    version = args.version
+    infile = args.infile
+
+    in_cartons = astropy.io.ascii.read(infile, delimiter='|')
+
+    out_cartons_dtype = [('carton', str, 100),
+                         ('plan', str, 100),
+                         ('category', str, 100),
+                         ('stage', str, 100),
+                         ('active', str, 100)]
+
+    out_cartons = np.zeros(len(in_cartons), dtype=out_cartons_dtype)
+    out_cartons['carton'] = in_cartons['carton']
+    out_cartons['plan'] = in_cartons['plan']
+    out_cartons['category'] = in_cartons['category_label']
+    out_cartons['active'] = ['y' if x == 'y' else 'n' for x in in_cartons['rs_active']]
+    out_cartons['stage'] = 'srd'
+    
+    icomm = np.where(in_cartons['program'] == 'commissioning')[0]
+    out_cartons['stage'][icomm] = 'none'
+    iops = np.where(in_cartons['program'] == 'ops')[0]
+    out_cartons['stage'][iops] = 'none'
+    iopen = np.where(in_cartons['program'] == 'open_fiber')[0]
+    out_cartons['stage'][iopen] = 'open'
+
+    outfile = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
+                           'cartons-{version}.txt'.format(version=version))
+    astropy.io.ascii.write(out_cartons, outfile, format='fixed_width',
+                           delimiter='|', overwrite=True)
