@@ -73,9 +73,9 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
 
         '''
-        nsuccess = np.zeros(len(rsids), dtype=np.int) #count how many extra epochs assigned
+        nsuccess = np.zeros(len(rsids), dtype=np.int)  # count how many extra epochs assigned
 
-        first = True # Only need the first available robot at each epoch?
+        first = True  # Only need the first available robot at each epoch?
         nexps_per_epoch = np.full(self.field_cadence.nepochs,nexps)
 
         for idx,rsid in enumerate(rsids):
