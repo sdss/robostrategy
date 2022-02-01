@@ -194,8 +194,10 @@ class Slots(object):
         self.slots, hdr = fitsio.read(filename, ext=ext, header=True)
         self.nlst = np.int32(hdr['NLST'])
         self.duration = np.float32(hdr['DURATION'])
-        self.exptime = np.float32(hdr['EXPTIME'])
-        self.exposure_overhead = np.float32(hdr['EXPOVER'])
+        if('EXPTIME' in hdr):
+            self.exptime = np.float32(hdr['EXPTIME'])
+        if('EXPOVER' in hdr):
+            self.exposure_overhead = np.float32(hdr['EXPOVER'])
         self.fclear = np.float32(hdr['FCLEAR'])
         self.observatory = hdr['OBSERVAT']
         self.nskybrightness = np.int32(hdr['NSB'])

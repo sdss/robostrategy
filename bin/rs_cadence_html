@@ -47,7 +47,7 @@ if __name__ == '__main__':
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    cadencelist = cadence.CadenceList()
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadencelist.reset()
     cadencelist.fromfits(cadences_file)
 

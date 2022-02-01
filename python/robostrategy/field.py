@@ -14,17 +14,19 @@ import fitsio
 import collections
 import matplotlib.pyplot as plt
 import ortools.sat.python.cp_model as cp_model
+import astropy.coordinates
+import astropy.units
 import roboscheduler
 import roboscheduler.cadence
 import kaiju
 import kaiju.robotGrid
+import mugatu.designmode
 import robostrategy
 import robostrategy.targets
 import robostrategy.header
 import robostrategy.obstime as obstime
 import coordio.time
 import coordio.utils
-import mugatu.designmode
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
@@ -42,6 +44,8 @@ def interlist(list1, list2):
 targets_dtype = robostrategy.targets.target_dtype
 targets_dtype = targets_dtype + [('x', np.float64),
                                  ('y', np.float64),
+                                 ('fiber_ra', np.float64),
+                                 ('fiber_dec', np.float64),
                                  ('within', np.int32),
                                  ('incadence', np.int32)]
 
@@ -191,6 +195,9 @@ class AssignmentStatus(object):
     collided : ndarray of bool
         is the fiber collided in exposure? (initialized to False)
 
+    bright_neighbor_allowed : ndarray of bool
+        is this free of a bright neighbor (initialized to True)
+
     spare : ndarray of bool
         is fiber already assigned a spare calibration target in exposure?
         (initialized to False)
@@ -210,6 +217,8 @@ class AssignmentStatus(object):
     These objects are used to track information about prospective assignments.
     They only make sense in the context of the Field class, which has
     several methods to manipulate these objects.
+
+    bright_neighbor checks both APOGEE and BOSS fiber
 """
     def __init__(self, rsid=None, robotID=None, iexps=None):
         if(rsid is not None):
@@ -222,6 +231,7 @@ class AssignmentStatus(object):
         self.expindx[iexps] = np.arange(len(iexps), dtype=np.int32)
         self.assignable = np.ones(len(self.iexps), dtype=bool)
         self.collided = np.zeros(len(self.iexps), dtype=bool)
+        self.bright_neighbor_allowed = np.ones(len(self.iexps), dtype=bool)
         self.spare = np.zeros(len(self.iexps), dtype=bool)
         self.spare_colliders = [np.zeros(0, dtype=np.int64)] * len(self.iexps)
         return
@@ -304,7 +314,7 @@ class Field(object):
         cadence associated with field
 
     design_mode : np.array of str
-        keys to DesignModeDict for each exposure
+        keys to DesignModeDict for each epoch
 
     collisionBuffer : float
         collision buffer for kaiju (in mm)
@@ -426,13 +436,19 @@ class Field(object):
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
-                 verbose=False, veryverbose=False):
+                 bright_neighbors=True, verbose=False, veryverbose=False):
         self.verbose = verbose
         self.veryverbose = veryverbose
         self.fieldid = fieldid
         self.nocalib = nocalib
         self.nocollide = nocollide
         self.allgrids = allgrids
+        self.bright_neighbors = bright_neighbors
+        if(self.bright_neighbors):
+            self.bright_stars = collections.OrderedDict()
+            self.bright_stars_coords = collections.OrderedDict()
+            self.bright_stars_rmax = collections.OrderedDict()
+            self.bright_neighbor_cache = dict()
         self.robotHasApogee = None
         self.collisionBuffer = collisionBuffer
         if(self.allgrids is False):
@@ -467,6 +483,7 @@ class Field(object):
             self.mastergrid = self._robotGrid()
             self.designModeDict = mugatu.designmode.allDesignModes() 
             if(self.designModeDict is None):
+                print("Using default design modes.")
                 default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                               'data',
                                               'default_designmodes.fits')
@@ -492,6 +509,150 @@ class Field(object):
         self._add_dummy_cadences()
         return
 
+    def query_bright_stars(self, design_mode=None,
+                           fiberType=None):
+        """Retrieve bright stars to avoid"""
+        desmode = self.designModeDict[design_mode]
+        bright = 'bright' in design_mode
+        if fiberType == 'BOSS':
+            # grab r_sdss limit for boss
+            if(bright): 
+                # no r_sdss for bright so do g band
+                # this is hacky and needs to be fixed!!!
+                mag_lim = desmode.bright_limit_targets['BOSS'][0][0]
+            else:
+                mag_lim = desmode.bright_limit_targets['BOSS'][1][0]
+        else:
+            # grab h 2mass mag for limit
+            mag_lim = desmode.bright_limit_targets['APOGEE'][6][0]
+
+        db_query = mugatu.designmode.build_brigh_neigh_query('designmode',
+                                                             fiberType,
+                                                             mag_lim,
+                                                             self.racen,
+                                                             self.deccen)
+
+        bright_stars_dtype = np.dtype([('ra', np.float64),
+                                       ('dec', np.float64),
+                                       ('mag', np.float32),
+                                       ('catalogid', np.int64),
+                                       ('r_exclude', np.float32)])
+
+        if len(db_query) > 0:
+            if isinstance(db_query, tuple):
+                ras, decs, mags, catalogids = db_query
+            else:
+                ras, decs, mags, catalogids = map(list, zip(*list(db_query.tuples())))
+
+            if(bright):
+                r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
+                                                                       mag_lim,
+                                                                       lunation='bright')
+            else:
+                r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
+                                                                       mag_lim,
+                                                                       lunation='dark')
+
+            bright_stars = np.zeros(len(ras), dtype=bright_stars_dtype)
+
+            bright_stars['ra'] = ras
+            bright_stars['dec'] = decs
+            bright_stars['mag'] = mags
+            bright_stars['catalogid'] = catalogids
+            bright_stars['r_exclude'] = r_exclude
+        else:
+            bright_stars = np.zeros(0, dtype=bright_stars_dtype)
+
+        return(bright_stars)
+
+    def set_bright_stars(self, design_mode=None,
+                         fiberType=None,
+                         bright_stars=None,
+                         reset=False):
+        """Retrieve bright stars to avoid"""
+        if(((design_mode, fiberType) in self.bright_stars.keys()) &
+           (reset is False)):
+            if(self.verbose):
+                print("Already got bright stars for {d}, {f}".format(d=design_mode, f=fiberType), flush=True)
+            return
+
+        if(self.verbose):
+            print("fieldid {fid}: Getting bright stars for {d}, {f}".format(fid=self.fieldid, d=design_mode, f=fiberType), flush=True)
+
+        if(bright_stars is None):
+            bright_stars = self.query_bright_stars(design_mode=design_mode,
+                                                   fiberType=fiberType)
+
+        if(self.verbose):
+            print("fieldid {fid}: found {n} bright stars".format(fid=self.fieldid, n=len(bright_stars)), flush=True)
+
+        if(len(bright_stars) > 0):
+            bright_stars_coords = astropy.coordinates.SkyCoord(bright_stars['ra'],
+                                                               bright_stars['dec'],
+                                                               frame='icrs',
+                                                               unit='deg')
+            bright_stars_rmax = bright_stars['r_exclude'].max()
+        else:
+            bright_stars_coords = None
+            bright_stars_rmax = None
+
+        self.bright_stars[(design_mode, fiberType)] = bright_stars
+        self.bright_stars_coords[(design_mode, fiberType)] = bright_stars_coords
+        self.bright_stars_rmax[(design_mode, fiberType)] = bright_stars_rmax
+        return
+
+    def _bright_allowed_direct(self, design_mode=None, targets=None):
+        bright_allowed = np.ones(len(targets), dtype=bool)
+        target_coords = astropy.coordinates.SkyCoord(targets['fiber_ra'],
+                                                     targets['fiber_dec'],
+                                                     frame='icrs',
+                                                     unit='deg')
+        for fiberType in ['APOGEE', 'BOSS']:
+            bright = self.bright_stars[(design_mode, fiberType)]
+            if(len(bright) > 0):
+                rmax = self.bright_stars_rmax[(design_mode, fiberType)]
+                bright_coords = self.bright_stars_coords[(design_mode, fiberType)]
+                itype = np.where(targets['fiberType'] == fiberType)[0]
+                ibright, itargets, d2d, d3d = astropy.coordinates.search_around_sky(bright_coords, target_coords[itype], rmax * astropy.units.arcsec)
+                itooclose = np.where(d2d < bright['r_exclude'][ibright] *
+                                     astropy.units.arcsec)[0]
+                bright_allowed[itype[itargets[itooclose]]] = 0
+        return(bright_allowed)
+
+    def _bright_allowed_robot(self, rsid=None, robotID=None,
+                              design_mode=None):
+        self.mastergrid.assignRobot2Target(robotID, rsid)
+        x = dict()
+        y = dict()
+        x['BOSS'] = self.mastergrid.robotDict[robotID].bossFiberPos[0]
+        y['BOSS'] = self.mastergrid.robotDict[robotID].bossFiberPos[1]
+        x['APOGEE'] = self.mastergrid.robotDict[robotID].apFiberPos[0]
+        y['APOGEE'] = self.mastergrid.robotDict[robotID].apFiberPos[1]
+
+        for fiberType in ['APOGEE', 'BOSS']:
+            bright = self.bright_stars[(design_mode, fiberType)]
+            if(len(bright) > 0):
+                ra_robo, dec_robo = self.xy2radec(x=np.array([x[fiberType],
+                                                              x[fiberType]]),
+                                                  y=np.array([y[fiberType],
+                                                              y[fiberType]]),
+                                                  fiberType=fiberType)
+                coords_robo = astropy.coordinates.SkyCoord(ra_robo[0],
+                                                           dec_robo[0],
+                                                           frame='icrs',
+                                                           unit='deg')
+                bright_coords = self.bright_stars_coords[(design_mode,
+                                                          fiberType)]
+                sep = coords_robo.separation(bright_coords)
+                itooclose = np.where(sep < bright['r_exclude'] *
+                                     astropy.units.arcsec)[0]
+                if(len(itooclose) > 0):
+                    self.mastergrid.unassignTarget(rsid)
+                    return(False)
+            
+        self.mastergrid.unassignTarget(rsid)
+        return(True)
+        
     def _add_dummy_cadences(self): 
         """Adds some dummy cadences necessary to check singlebright and multibright"""
         clist.add_cadence(name='_field_single_1x1',
@@ -592,11 +753,19 @@ class Field(object):
         or an rsFieldAssignments file (i.e. the output files from
         assignment).
 """
-        duf, hdr = fitsio.read(filename, ext=0, header=True)
+        f = fitsio.FITS(filename)
+        hdr = f[0].read_header()
         self.racen = np.float64(hdr['RACEN'])
         self.deccen = np.float64(hdr['DECCEN'])
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
+        if('BRIGHTN' in hdr):
+            self.bright_neighbors = hdr['BRIGHTN']
+        if(self.bright_neighbors):
+            self.bright_stars = collections.OrderedDict()
+            self.bright_stars_coords = collections.OrderedDict()
+            self.bright_stars_rmax = collections.OrderedDict()
+            self.bright_neighbor_cache = dict()
         if(self.collisionBuffer is None):
             self.collisionBuffer = hdr['CBUFFER']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
@@ -627,29 +796,32 @@ class Field(object):
         try:
             self.designModeDict = mugatu.designmode.allDesignModes(filename,
                                                                    ext='DESMODE')
-            named_ext = True
         except:
             default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                           'data',
                                           'default_designmodes.fits')
             self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
-            named_ext = False
+
+        nbs = 0
+        while('bs{n}'.format(n=nbs) in f.hdu_map):
+            nbs = nbs + 1
+        for ibs in range(nbs):
+            key = 'BS{ibs}'.format(ibs=ibs)
+            hdr = f[key].read_header()
+            bs = f[key].read()
+            design_mode = hdr['DESMODE']
+            fiberType = hdr['FIBERTY']
+            self.set_bright_stars(design_mode=design_mode,
+                                  fiberType=fiberType,
+                                  bright_stars=bs)
+
         self.set_field_cadence(field_cadence)
-        if(named_ext):
-            targets = fitsio.read(filename, ext='TARGET')
-        else:
-            targets = fitsio.read(filename, ext=1)
+        targets = f['TARGET'].read()
         self.targets_fromarray(target_array=targets)
-        if(named_ext):
-            try:
-                assignments = fitsio.read(filename, ext='ASSIGN')
-            except:
-                assignments = None
+        if('assign' in f.hdu_map):
+            assignments = f['ASSIGN'].read()
         else:
-            try:
-                assignments = fitsio.read(filename, ext=2)
-            except:
-                assignments = None
+            assignments = None
         if(assignments is not None):
             self.achievable_calibrations = collections.OrderedDict()
             for n in self.required_calibrations:
@@ -689,6 +861,7 @@ class Field(object):
             self._set_satisfied()
             self._set_count(reset_equiv=False)
             self.decollide_unassigned()
+
         return
 
     def clear_assignments(self):
@@ -827,7 +1000,11 @@ class Field(object):
                                                ('satisfied', np.int32),
                                                ('nexps', np.int32),
                                                ('nepochs', np.int32),
-                                               ('allowed', np.int32,
+                                               ('allowed', np.bool,
+                                                (self.field_cadence.nepochs,)),
+                                               ('mags_allowed', np.bool,
+                                                (self.field_cadence.nepochs,)),
+                                               ('bright_allowed', np.bool,
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
@@ -859,26 +1036,25 @@ class Field(object):
                 if(self.verbose):
                     print("Using heuristics for obsmode_pk", flush=True)
                 self.design_mode = np.array([''] *
-                                            self.field_cadence.nexp_total)
-                for iexp in np.arange(self.field_cadence.nexp_total):
-                    epoch = self.field_cadence.epochs[iexp]
+                                            self.field_cadence.nepochs)
+                for epoch in np.arange(self.field_cadence.nepochs):
                     if(self.field_cadence.skybrightness[epoch] >= 0.5):
-                        self.design_mode[iexp] = 'bright_time'
+                        self.design_mode[epoch] = 'bright_time'
                     else:
                         if(('dark_100x8' in self.field_cadence.name) |
                            ('dark_174x8' in self.field_cadence.name)):
-                            self.design_mode[iexp] = 'dark_rm'
+                            self.design_mode[epoch] = 'dark_rm'
                         elif(('dark_10x4' in self.field_cadence.name) |
                              ('dark_2x4' in self.field_cadence.name) |
                              ('dark_3x4' in self.field_cadence.name)):
-                            self.design_mode[iexp] = 'dark_monit'
+                            self.design_mode[epoch] = 'dark_monit'
                         elif(('dark_1x1' in self.field_cadence.name) |
                              ('dark_1x2' in self.field_cadence.name) |
                              ('dark_2x1' in self.field_cadence.name) |
                              ('mixed2' in self.field_cadence.name)):
-                            self.design_mode[iexp] = 'dark_plane'
+                            self.design_mode[epoch] = 'dark_plane'
                         else:
-                            self.design_mode[iexp] = 'dark_faint'
+                            self.design_mode[epoch] = 'dark_faint'
                     
             if(self.nocalib is False):
                 dms = self.design_mode[self.field_cadence.epochs]
@@ -896,7 +1072,21 @@ class Field(object):
                                                     dtype=np.int32)
                 for c in self.calibrations:
                     self.achievable_calibrations[c] = self.required_calibrations[c].copy()
+
+            if(self.bright_neighbors):
+                if(self.verbose):
+                    print("fieldid {fieldid}: Find bright stars".format(fieldid=self.fieldid), flush=True)
+                umode = np.unique(self.design_mode)
+                for design_mode in umode:
+                    for fiberType in ['APOGEE', 'BOSS']:
+                        self.set_bright_stars(design_mode=design_mode,
+                                              fiberType=fiberType)
+
+            if(self.verbose):
+                print("fieldid {fieldid}: Setup targets".format(fieldid=self.fieldid), flush=True)
             self.targets = self._setup_targets_for_cadence(self.targets)
+            if(self.verbose):
+                print("fieldid {fieldid}: Setup assignments".format(fieldid=self.fieldid), flush=True)
             self.assignments = self._setup_assignments_for_cadence(self.targets)
             if(self.nocalib is False):
                 self._set_has_spare_calib()
@@ -910,7 +1100,6 @@ class Field(object):
                 self.robotgrids = None
             self.assignments_dtype = None
             self._has_spare_calib = None
-
         return
 
     def set_flag(self, rsid=None, flagname=None):
@@ -1146,6 +1335,8 @@ class Field(object):
             print("fieldid {fieldid}: Setting up targets for cadence".format(fieldid=self.fieldid))
 
         # Determine if it is within the field cadence
+        if(self.verbose):
+            print("fieldid {fieldid}: Check cadences".format(fieldid=self.fieldid), flush=True)
         for itarget, target_cadence in enumerate(targets['cadence']):
             if(self.veryverbose):
                   print("fieldid {fieldid}: Checking {rsid} with cadence {c}".format(fieldid=self.fieldid, rsid=targets['rsid'][itarget], c=targets['cadence'][itarget]))
@@ -1156,6 +1347,8 @@ class Field(object):
                 targets['incadence'][itarget] = ok
 
         if(self.allgrids):
+            if(self.verbose):
+                print("fieldid {fieldid}: Setup all grids".format(fieldid=self.fieldid), flush=True)
             for rg in self.robotgrids:
                 self._targets_to_robotgrid(targets=targets,
                                            robotgrid=rg)
@@ -1174,12 +1367,30 @@ class Field(object):
         field_skybrightness = self.field_cadence.skybrightness[self.field_cadence.epochs]
         assignments['field_skybrightness'] = np.outer(np.ones(len(targets)),
                                                       field_skybrightness)
+        
+        if(self.verbose):
+            print("fieldid {fieldid}: Setup allowed".format(fieldid=self.fieldid), flush=True)
+        umode = np.unique(self.design_mode)
+        mags_allowed = dict()
+        bright_allowed = dict()
+        for mode in umode:
+            dm = self.designModeDict[mode]
+            mags_allowed[mode] = self._mags_allowed(designMode=dm,
+                                                    targets=targets)
+            if(self.bright_neighbors):
+                bright_allowed[mode] = self._bright_allowed_direct(design_mode=mode,
+                                                                   targets=targets)
+            else:
+                bright_allowed[mode] = np.ones(len(targets), dtype=bool)
 
         for epoch, mode in enumerate(self.design_mode):
-            dm = self.designModeDict[mode]
-            assignments['allowed'][:, epoch] = self._mags_allowed(designMode=dm,
-                                                                  targets=targets)
+            assignments['mags_allowed'][:, epoch] = mags_allowed[mode]
+            assignments['bright_allowed'][:, epoch] = bright_allowed[mode]
+            assignments['allowed'][:, epoch] = (mags_allowed[mode] &
+                                                bright_allowed[mode])
 
+        if(self.verbose):
+            print("fieldid {fieldid}: assign inputs".format(fieldid=self.fieldid), flush=True)
         if(assignment_array is None):
             assignments['fiberType'] = targets['fiberType']
             assignments['robotID'] = -1
@@ -1233,6 +1444,11 @@ class Field(object):
                                                    delta_dec=targets['delta_dec'],
                                                    fiberType=targets['fiberType'])
 
+        # Convert back to RA/Dec
+        targets['fiber_ra'], targets['fiber_dec'] = self.xy2radec(x=targets['x'],
+                                                                  y=targets['y'],
+                                                                  fiberType=targets['fiberType'])
+
         # Add targets to robotGrids
         if(self.verbose):
             print("Assign targets to robot grid", flush=True)
@@ -1270,7 +1486,11 @@ class Field(object):
 
         # If field_cadence is set, set up potential outputs
         if(self.field_cadence is not None):
+            if(self.verbose):
+                print("fieldid {fieldid}: Setup targets".format(fieldid=self.fieldid), flush=True)
             targets = self._setup_targets_for_cadence(targets)
+            if(self.verbose):
+                print("fieldid {fieldid}: Setup assignments".format(fieldid=self.fieldid), flush=True)
             assignments = self._setup_assignments_for_cadence(targets,
                                                               assignment_array)
         else:
@@ -1369,6 +1589,9 @@ class Field(object):
         hdr.append({'name':'PA',
                     'value':self.pa,
                     'comment':'position angle (deg E of N)'})
+        hdr.append({'name':'BRIGHTN',
+                    'value':self.bright_neighbors,
+                    'comment':'account for bright neighbor constraints'})
         if(self.field_cadence is not None):
             hdr.append({'name':'FCADENCE',
                         'value':self.field_cadence.name,
@@ -1444,28 +1667,45 @@ class Field(object):
                 robots['hasBoss'][indx] = self.mastergrid.robotDict[robotID].hasBoss
                 robots['hasApogee'][indx] = self.mastergrid.robotDict[robotID].hasApogee
                 if(self.field_cadence.nexp_total == 1):
-                    robots['rsid'][indx] = self.robotgrids[0].robotDict[robotID].assignedTargetID
-                    if(robots['rsid'][indx] == -1):
-                        robots['itarget'][indx] = -1
+                    robots['itarget'][indx] = self._robot2indx[robotID - 1, 0]
+                    if(robots['itarget'][indx] == -1):
+                        robots['rsid'][indx] = -1
                         robots['catalogid'][indx] = -1
                         robots['fiberType'][indx] = ''
                     else:
-                        robots['itarget'][indx] = self.rsid2indx[robots['rsid'][indx]]
+                        robots['rsid'][indx] = self.targets['rsid'][robots['itarget'][indx]]
                         robots['catalogid'][indx] = self.targets['catalogid'][robots['itarget'][indx]]
                         robots['fiberType'][indx] = self.targets['fiberType'][robots['itarget'][indx]]
                 else:
                     for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
-                        robots['rsid'][indx, iexp] = self.robotgrids[iexp].robotDict[robotID].assignedTargetID
-                        if(robots['rsid'][indx, iexp] == -1):
-                            robots['itarget'][indx, iexp] = -1
+                        robots['itarget'][indx, iexp] = self._robot2indx[robotID - 1, iexp]
+                        if(robots['itarget'][indx, iexp] == -1):
+                            robots['rsid'][indx, iexp] = -1
                             robots['catalogid'][indx, iexp] = -1
                             robots['fiberType'][indx, iexp] = ''
                         else:
-                            robots['itarget'][indx, iexp] = self.rsid2indx[robots['rsid'][indx, iexp]]
+                            robots['rsid'][indx, iexp] = self.targets['rsid'][robots['itarget'][indx, iexp]]
                             robots['catalogid'][indx, iexp] = self.targets['catalogid'][robots['itarget'][indx, iexp]]
                             robots['fiberType'][indx, iexp] = self.targets['fiberType'][robots['itarget'][indx, iexp]]
 
             fitsio.write(filename, robots, extname='ROBOTS')
+
+        if(self.bright_neighbors):
+            if(len(self.bright_stars) > 0):
+                nbs = 0
+                for design_mode, fiberType in self.bright_stars.keys():
+                    hdr = robostrategy.header.rsheader()
+                    hdr.append({'name':'DESMODE',
+                                'value':design_mode,
+                                'comment':'Bright stars for this design mode'})
+                    hdr.append({'name':'FIBERTY',
+                                'value':fiberType,
+                                'comment':'Bright stars for this fiber type'})
+                    fitsio.write(filename, self.bright_stars[(design_mode,
+                                                              fiberType)],
+                                 header=hdr,
+                                 extname='BS{n}'.format(n=nbs))
+                    nbs = nbs + 1
                     
         return
 
@@ -1510,7 +1750,21 @@ class Field(object):
         if(status.rsid is not None):
             for iexp in status.assignable_exposures():
                 self.set_collided_status(status=status, iexp=iexp)
+                if(self.bright_neighbors):
+                    self.set_bright_neighbor_status(status=status, iexp=iexp)
+                    i = status.expindx[iexp]
+                    status.assignable[i] = status.assignable[i] & status.bright_neighbor_allowed[i]
 
+        return
+
+    def set_bright_neighbor_status(self, status=None, iexp=None):
+        epoch = self.field_cadence.epochs[iexp]
+        design_mode = self.design_mode[epoch]
+        key = (status.rsid, status.robotID, design_mode)
+        if(key not in self.bright_neighbor_cache):
+            self.bright_neighbor_cache[key] = self._bright_allowed_robot(rsid=status.rsid, robotID=status.robotID, design_mode=design_mode)
+        i = status.expindx[iexp]
+        status.bright_neighbor_allowed[i] = self.bright_neighbor_cache[key]
         return
 
     def set_collided_status(self, status=None, iexp=None):
@@ -3267,8 +3521,9 @@ class Field(object):
             print("fieldid {fieldid}: Assigning calibrations to determine achievable".format(fieldid=self.fieldid), flush=True)
         # Uniquify design modes here
         udesign_mode = np.unique(self.design_mode)
+        epochs = self.field_cadence.epochs
         for design_mode in udesign_mode:
-            iexpall = np.where(self.design_mode == design_mode)[0]
+            iexpall = np.where(self.design_mode[epochs] == design_mode)[0]
             iexp = iexpall[0]
             for c in self.required_calibrations:
                 icalib = np.where(self.targets['category'] != 'science')[0]
