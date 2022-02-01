@@ -38,8 +38,66 @@ target_dtype = [('rsassign', np.int32),
                 ('tag', np.unicode_, 8)]
 
 
-def get_targets(carton=None, version=None, justcount=False, c2c=None):
+def read_cartons(version=None, filename=None):
+    """Read in cartons
 
+    Parameters:
+    ----------
+
+    version : str
+        version of carton file
+
+    filename : str
+        explicit file name of carton file
+
+    Returns:
+    -------
+
+    cartons : Table
+        table with carton information
+
+
+    Notes:
+    -----
+
+    Reads file as fixed_width, |-delimited file with astropy.io.ascii
+
+    If filename is specified, reads in that file.
+
+    If not, and version is specified, reads in $RSCONFIG_DIR/etc/cartons-[version].txt
+"""
+    if((version is None) and (filename is None)):
+        print("Must specify either version or filename!")
+        return
+
+    if(filename is None):
+        filename = os.path.join(os.getenv('RSCONFIG_DIR'),
+                                'etc', 'cartons-{version}.txt')
+        filename = filename.format(version=version)
+
+    cartons = astropy.io.ascii.read(filename, format='fixed_width',
+                                    delimiter='|')
+    return(cartons)
+
+
+def get_targets(carton=None, version=None, justcount=False, c2c=None):
+    """Pull targets from the targetdb
+
+    Parameters:
+    ----------
+
+    cartons : str
+        label of carton to pull
+
+    version : str
+        plan of carton to pull
+
+    justcount : bool
+        if True, just return the count (default False)
+
+    c2c : config
+        if not None, maps cartons to fiber type and cadences (default None)
+"""
     if(justcount):
         print("Counting carton {p}, version {v}".format(p=carton,
                                                         v=version))
