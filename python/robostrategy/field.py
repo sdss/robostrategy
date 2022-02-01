@@ -71,8 +71,33 @@ Dependencies:
 clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
+def read_cadences(plan=None, observatory=None, unpickle=False):
+    """Convenience function to read a run's cadence list
+
+    Parameters:
+    ----------
+
+    plan : str
+        plan name
+
+    observatory : str
+        observatory name ('apo' or 'lco')
+
+    Returns: 
+    -------
+
+    clist : CadenceList
+        CadenceList object with cadences (singleton)
+"""
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    clist.fromfits(filename=cadences_file, unpickle=unpickle)
+    return clist
+
+
 def read_field(plan=None, observatory=None, fieldid=None,
-               version='', targets=False, speedy=False, verbose=False):
+               version='', targets=False, speedy=False, verbose=False,
+               unpickle=False):
     """Convenience function to read a field object
 
     Parameters:
@@ -101,7 +126,7 @@ def read_field(plan=None, observatory=None, fieldid=None,
 """
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    clist.fromfits(filename=cadences_file, unpickle=False)
+    clist.fromfits(filename=cadences_file, unpickle=unpickle)
 
     base = 'rsFieldAssignments'
     if(targets):
@@ -1117,8 +1142,14 @@ class Field(object):
         if(targets is None):
             return(None)
 
+        if(self.verbose):
+            print("fieldid {fieldid}: Setting up targets for cadence".format(fieldid=self.fieldid))
+
         # Determine if it is within the field cadence
         for itarget, target_cadence in enumerate(targets['cadence']):
+            if(self.veryverbose):
+                  print("fieldid {fieldid}: Checking {rsid} with cadence {c}".format(fieldid=self.fieldid, rsid=targets['rsid'][itarget], c=targets['cadence'][itarget]))
+                  
             if(target_cadence in clist.cadences):
                 ok, solns = clist.cadence_consistency(target_cadence,
                                                       self.field_cadence.name)
@@ -2528,10 +2559,26 @@ class Field(object):
         for rsid in set_rsids:
             indx = self.rsid2indx[rsid]
             iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
-            if(self.targets['cadence'][indx] != ''):
-                sat = clist.exposure_consistency(self.targets['cadence'][indx],
-                                                 self.field_cadence.name, iexp)
-                self.assignments['satisfied'][indx] = sat
+            target_cadence = self.targets['cadence'][indx]
+
+            if(target_cadence != ''):
+
+                # if the target cadence is really just a suite of single
+                # bright exposures, just set on basis of number of
+                # exposures
+                if(clist.cadence_consistency(target_cadence,
+                                             '_field_single_12x1',
+                                             return_solutions=False)):
+                    if(len(iexp) >=
+                       clist.cadences[target_cadence].nexp_total):
+                        self.assignments['satisfied'][indx] = 1
+                    else:
+                        self.assignments['satisfied'][indx] = 0
+                else:
+                    # if not, check consistency in detail
+                    sat = clist.exposure_consistency(self.targets['cadence'][indx],
+                                                     self.field_cadence.name, iexp)
+                    self.assignments['satisfied'][indx] = sat
             else:
                 self.assignments['satisfied'][indx] = 0
 
@@ -3979,4 +4026,5 @@ class FieldSpeedy(Field):
                          collisionBuffer=collisionBuffer, fieldid=fieldid,
                          verbose=verbose,
                          nocalib=True, nocollide=True, allgrids=False)
+
         return
