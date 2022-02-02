@@ -759,8 +759,6 @@ class Field(object):
         self.deccen = np.float64(hdr['DECCEN'])
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
-        if('BRIGHTN' in hdr):
-            self.bright_neighbors = hdr['BRIGHTN']
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
             self.bright_stars_coords = collections.OrderedDict()
@@ -4279,7 +4277,8 @@ class FieldSpeedy(Field):
         super().__init__(filename=filename, racen=racen, pa=pa,
                          observatory=observatory, field_cadence=field_cadence,
                          collisionBuffer=collisionBuffer, fieldid=fieldid,
-                         verbose=verbose,
+                         verbose=verbose, bright_neighbors=False,
                          nocalib=True, nocollide=True, allgrids=False)
+        print("bright_neighbors={b}".format(b=self.bright_neighbors))
 
         return

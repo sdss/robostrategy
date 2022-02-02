@@ -22,7 +22,6 @@ import multiprocessing
 import datetime
 import numpy as np
 import roboscheduler.cadence as cadence
-import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
 import pdb
@@ -38,11 +37,11 @@ noclobber = False
 def prep_field(indx):
     import robostrategy.field as field
 
-    fieldid = allocate.field_array['fieldid'][indx]
+    fieldid = allocate['fieldid'][indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
 
-    field_cadence = allocate.field_array['cadence'][indx].strip()
+    field_cadence = allocate['cadence'][indx].strip()
     
     print("Reading target file", flush=True)
     field_target_file = sdss_path.full('rsFieldTargets',
@@ -117,13 +116,12 @@ if __name__ == '__main__':
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
+    allocate = fitsio.read(allocate_file, ext='ALLOCATE')
 
     if(end < 0):
-        end = allocate.field_array['fieldid'].max()
-    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
-                     (allocate.field_array['fieldid'] <= end))[0]
+        end = allocate['fieldid'].max()
+    ikeep = np.where((allocate['fieldid'] >= start) &
+                     (allocate['fieldid'] <= end))[0]
 
     np.random.shuffle(ikeep)
     if(nomultiprocess):

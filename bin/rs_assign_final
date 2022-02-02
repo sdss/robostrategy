@@ -233,7 +233,8 @@ if __name__ == '__main__':
         for i in sequential_ids:
             assign_field(i)
     else:
-        np.random.shuffle(ikeep)
+        isort = np.flip(np.argsort(allocate.field_array['needed'][ikeep]))
+        ikeep = ikeep[isort]
         if(nomultiprocess):
             for i in ikeep:
                 assign_field(i)
