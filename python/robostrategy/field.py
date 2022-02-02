@@ -1039,8 +1039,6 @@ class Field(object):
             epoch_jd = None
         raoff, decoff = self._offset_radec(ra=ra, dec=dec, delta_ra=delta_ra,
                                            delta_dec=delta_dec)
-        pmra = np.zeros(len(raoff), dtype=np.float64) # BECAUSE PM FAILS!!
-        pmdec = np.zeros(len(raoff), dtype=np.float64)
         radVel = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
         parallax = np.zeros(len(raoff), dtype=np.float64) + 1.e-4
         x, y, warn, ha, pa = coordio.utils.radec2wokxy(raoff, decoff, epoch_jd,
