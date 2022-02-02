@@ -39,10 +39,20 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    opentargets = args.opentargets
+    filler = args.filler
 
     cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -60,45 +70,50 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
-    nt = 0
-    for carton in rsParams.cfg['Cartons']:
-        version = rsParams.cfg['Cartons'][carton]
-        nt = nt + robostrategy.targets.get_targets(carton, version,
-                                                   justcount=True, c2c=c2c)
+    cartons_version = rsParams.cfg['Cartons']['version']
+    cartons = robostrategy.targets.read_cartons(version=version)
+    stage = 'srd'
+    if(opentargets):
+        stage = 'open'
+    if(filler):
+        stage = 'filler'
+    istage = np.where(cartons['stage'] == stage)[0]
+    cartons = cartons[istage]
 
-    for carton in rsParams.cfg['CartonsExtra']:
-        version = rsParams.cfg['CartonsExtra'][carton]
-        if(carton in rsParams.cfg['Cartons']):
-            print("Duplicate carton in CartonsExtra! Ignoring!")
-            continue
-        nt = nt + robostrategy.targets.get_targets(carton, version,
+    adjust = dict()
+    if(stage == 'open'):
+        if('CartonsOpenPriorityAdjust' in rsParams.cfg):
+            for carton in rsParams.cfg['CartonsOpenPriorityAdjust']:
+                adjust[carton] = np.float32(rsParams.cfg.get('CartonsOpenPriorityAdjust',
+                                                             carton))
+    
+    nt = 0
+    for carton in cartons:
+        name = carton['carton']
+        version = cartons['plan']
+        nt = nt + robostrategy.targets.get_targets(name, version,
                                                    justcount=True, c2c=c2c)
 
     targets = np.zeros(nt, dtype=robostrategy.targets.target_dtype)
 
     nt = 0
-    for carton in rsParams.cfg['Cartons']:
-        version = rsParams.cfg['Cartons'][carton]
-        tmp_targets = robostrategy.targets.get_targets(carton, version, c2c=c2c)
+    for carton in cartons:
+        name = carton['carton']
+        version = cartons['plan']
+        tmp_targets = robostrategy.targets.get_targets(name, version, c2c=c2c)
         if(tmp_targets is not None):
-            tmp_targets['rsassign'] = 1
-            targets[nt:nt + len(tmp_targets)] = tmp_targets
-            nt = nt + len(tmp_targets)
-
-    for carton in rsParams.cfg['CartonsExtra']:
-        version = rsParams.cfg['CartonsExtra'][carton]
-        if(carton in rsParams.cfg['Cartons']):
-            print("Duplicate carton in CartonsExtra! Ignoring!")
-            continue
-        tmp_targets = robostrategy.targets.get_targets(carton, version, c2c=c2c)
-        if(tmp_targets is not None):
-            tmp_targets['rsassign'] = 0
+            if(carton in adjust):
+                tmp_targets['priority'] = (tmp_targets['priority'] +
+                                           adjust[carton])
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
     if(nt != len(targets)):
         print("Lost some targets ... hope that is expected!")
         targets.resize(nt)
+
+    # Set the stage
+    targets['stage'] = stage
 
     # FUDGE dark_1x4 to dark_2x2
     i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
@@ -110,8 +125,20 @@ if __name__ == '__main__':
         print("Recategorizing {n} targets from open_fiber to science".format(n=len(iopen)))
         targets['category'][iopen] = 'science'
 
+    ifix = np.where((targets['carton'] == 'bhm_colr_galaxies_lsdr8')
+                    & (targets['cadence'] == 'dark_1x4'))[0]
+    targets['cadence'][ifix] = 'dark_single_4x1'
+
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
+
+    if(stage == 'open'):
+        targets_file = targets_file.replace('rsTargets', 
+                                            'rsTargetsOpen')
+
+    if(stage == 'filler'):
+        targets_file = targets_file.replace('rsTargets', 
+                                            'rsTargetsFiller')
 
     hd = dict()
     hd['STRATVER'] = robostrategy.__version__

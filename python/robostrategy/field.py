@@ -1424,13 +1424,13 @@ class Field(object):
             if(n in target_array.dtype.names):
                 targets[n] = target_array[n]
 
-        # Default value of 1 for priority, value, and rsassign
+        # Default values for priority, value, and stage
         if('value' not in target_array.dtype.names):
             targets['value'] = 1.
         if('priority' not in target_array.dtype.names):
             targets['priority'] = 1.
-        if('rsassign' not in target_array.dtype.names):
-            targets['rsassign'] = 1
+        if('stage' not in target_array.dtype.names):
+            targets['stage'] = 'srd'
 
         # Convert ra/dec to x/y
         if(self.verbose):
@@ -3406,15 +3406,21 @@ class Field(object):
                     rg.decollideRobot(robotID)
         return
 
-    def assign_calibrations(self):
+    def assign_calibrations(self, stage='srd'):
         """Assign all calibration targets
+
+        Parameters:
+        ----------
+
+        stage : str
+            stage of targets to use (default 'srd')
 
         Notes
         -----
 
         This assigns all targets with 'category' set to one of 
-        the required calibrations for this Field and with 'rsassign' 
-        set to 1.
+        the required calibrations for this Field and with stage
+        as specified. 
 
         It calls assign_cadences(), which will assign the targets
         in order of their priority value. The order of assignment is
@@ -3428,7 +3434,7 @@ class Field(object):
             print("fieldid {fid}: Assigning calibrations".format(fid=self.fieldid), flush=True)
         
         icalib = np.where(self._is_calibration &
-                          (self.targets['rsassign'] != 0))[0]
+                          (self.targets['stage'] == stage))[0]
         np.random.shuffle(icalib)
         self.assign_cadences(rsids=self.targets['rsid'][icalib])
 
@@ -3440,20 +3446,20 @@ class Field(object):
             print("fieldid {fid}:   (done assigning calibrations)".format(fid=self.fieldid), flush=True)
         return
 
-    def assign_science(self, rsassign=1):
+    def assign_science(self, stage='srd'):
         """Assign all science targets
         
         Parameters:
         ----------
 
-        rsassign : int, np.int32
-            value of rsassign for selecting targets (default 1)
+        stage : str
+            stage of assignment to use
 
         Notes
         -----
 
         This assigns all targets with 'category' set to 'science'
-        and with 'rsassign' set to selected value
+        and with 'stage' set to selected value
 
         It calls assign_cadences(), which will assign the targets
         in order of their priority value. The order of assignment is
@@ -3468,7 +3474,7 @@ class Field(object):
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
-                            (self.targets['rsassign'] == rsassign))[0]
+                            (self.targets['stage'] == stage))[0]
         np.random.seed(self.fieldid)
         random.seed(self.fieldid)
         np.random.shuffle(iscience)
@@ -3552,9 +3558,9 @@ class Field(object):
         self.set_flag(rsid=self.targets['rsid'][inotincadence],
                       flagname='NOT_INCADENCE')
 
-        inotrsassign = np.where(self.targets['rsassign'] == 0)[0]
-        self.set_flag(rsid=self.targets['rsid'][inotrsassign],
-                      flagname='NOT_TO_ASSIGN')
+        inotstage = np.where(self.targets['stage'] == 'none')[0]
+        self.set_flag(rsid=self.targets['rsid'][inotstage],
+                      flagname='STAGE_IS_NONE')
 
         inotcovered = np.where(self.targets['within'] == 0)[0]
         self.set_flag(rsid=self.targets['rsid'][inotcovered],
@@ -3564,7 +3570,7 @@ class Field(object):
                             (self.targets['within']) &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
-                            (self.targets['rsassign'] != 0))[0]
+                            (self.targets['stage'] == stage))[0]
         np.random.shuffle(iscience)
 
         assigned_exposure_calib = collections.OrderedDict()
@@ -3591,7 +3597,7 @@ class Field(object):
                     print("   ... {c}".format(c=c))
                 iexps = np.where(assigned_exposure_calib[c] == False)[0]
                 icalib = np.where((self.targets['category'] == c) &
-                                  (self.targets['rsassign'] != 0))[0]
+                                  (self.targets['stage'] == stage))[0]
                 np.random.shuffle(icalib)
                 for i in icalib:
                     self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps)
@@ -3620,7 +3626,7 @@ class Field(object):
                     if(self.verbose):
                         print("   ... {c}".format(c=c))
                     icalib = np.where((self.targets['category'] == c) &
-                                      (self.targets['rsassign'] != 0))[0]
+                                      (self.targets['stage'] == stage))[0]
                     np.random.shuffle(icalib)
                     for i in icalib:
                         self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps)

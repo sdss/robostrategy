@@ -10,7 +10,7 @@ import sdss_access.path
 from sdssdb.peewee.sdss5db import database
 database.set_profile('operations')
 
-target_dtype = [('rsassign', np.int32),
+target_dtype = [('stage', np.unicode_, 6),
                 ('rsid', np.int64), # set equal to carton_to_target_pk
                 ('carton_to_target_pk', np.int64), # from carton_to_target
                 ('priority', np.int32),
@@ -184,7 +184,7 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
         problems = []
         for indx, t in enumerate(ts):
             for n in tmp_targets.dtype.names:
-                if((n != 'rsid') & (n != 'rsassign') & (n != 'magnitude')):
+                if((n != 'rsid') & (n != 'stage') & (n != 'magnitude')):
                     if(t[n] is not None):
                         tmp_targets[n][indx] = castn[n](t[n])
                     else:

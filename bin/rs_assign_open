@@ -62,7 +62,7 @@ def assign_field(indx):
     f.targets_fromarray(opentargets)
 
     print("fieldid={f}: Assign open targets".format(f=fieldid), flush=True)
-    f.assign_science(rsassign=2)
+    f.assign_science(stage='open')
 
     print("fieldid={f}: Write assignments".format(f=fieldid), flush=True)
     field_out_file = field_assigned_file_orig.replace('rsFieldAssignments',
