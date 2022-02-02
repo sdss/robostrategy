@@ -437,6 +437,7 @@ class Field(object):
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  bright_neighbors=True, verbose=False, veryverbose=False):
+        self._add_dummy_cadences()
         self.verbose = verbose
         self.veryverbose = veryverbose
         self.fieldid = fieldid
@@ -506,7 +507,6 @@ class Field(object):
         self._competing_targets = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
-        self._add_dummy_cadences()
         return
 
     def query_bright_stars(self, design_mode=None,
@@ -4279,6 +4279,5 @@ class FieldSpeedy(Field):
                          collisionBuffer=collisionBuffer, fieldid=fieldid,
                          verbose=verbose, bright_neighbors=False,
                          nocalib=True, nocollide=True, allgrids=False)
-        print("bright_neighbors={b}".format(b=self.bright_neighbors))
 
         return
