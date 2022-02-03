@@ -59,7 +59,7 @@ def assign_field(indx):
     f.targets_fromarray(fillertargets)
 
     print("fieldid={f}: Assign filler targets".format(f=fieldid), flush=True)
-    f.assign_science(rsassign=3)
+    f.assign_science(stage='filler')
 
     print("fieldid={f}: Write assignments".format(f=fieldid), flush=True)
     field_out_file = field_assigned_file_orig.replace('rsFieldAssignments',

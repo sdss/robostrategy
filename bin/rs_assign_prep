@@ -1,0 +1,135 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_assign_prep
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import datetime
+import numpy as np
+import roboscheduler.cadence as cadence
+import robostrategy.params as params
+import sdss_access.path
+import pdb
+import fitsio
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+cadencelist = cadence.CadenceList(skybrightness_only=True)
+
+noclobber = False
+
+def prep_field(indx):
+    import robostrategy.field as field
+
+    fieldid = allocate['fieldid'][indx]
+    if((fieldid % 1) == 0):
+        print(fieldid, flush=True)
+
+    field_cadence = allocate['cadence'][indx].strip()
+    
+    print("Reading target file", flush=True)
+    field_target_file = sdss_path.full('rsFieldTargets',
+                                       plan=plan, observatory=observatory,
+                                       fieldid=fieldid)
+
+    field_prep_file = field_target_file.replace('rsFieldTargets',
+                                                'rsFieldPrep')
+
+    if((noclobber is True) & os.path.isfile(field_prep_file)):
+        print("Fieldid {f} exists already".format(f=fieldid))
+        return
+
+    f = field.Field(filename=field_target_file, verbose=True,
+                    fieldid=fieldid, collisionBuffer=collisionBuffer,
+                    bright_neighbors=True, allgrids=False)
+
+    print("Set field cadence")
+    icalib = np.where(f.targets['category'] != 'science')[0]
+    f.targets['cadence'][icalib] = field_cadence
+    f.set_field_cadence(field_cadence)
+
+    print("Write prepped file", flush=True)
+    f.tofits(field_prep_file)
+
+    print("Done fieldid={f}".format(f=fieldid), flush=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Prep file cadences based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+                        help='do not clobber', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
+                        help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    noclobber = args.noclobber
+    nomultiprocess = args.nomultiprocess
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    collisionBuffer = 2.
+    if('Assignment' in rsParams.cfg):
+        if('collisionBuffer' in rsParams.cfg['Assignment']):
+            collisionBuffer = np.float32(rsParams.cfg['Assignment']['collisionBuffer'])
+
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate = fitsio.read(allocate_file, ext='ALLOCATE')
+
+    if(end < 0):
+        end = allocate['fieldid'].max()
+    ikeep = np.where((allocate['fieldid'] >= start) &
+                     (allocate['fieldid'] <= end))[0]
+
+    np.random.shuffle(ikeep)
+    if(nomultiprocess):
+        for i in ikeep:
+            prep_field(i)
+    else:
+        with multiprocessing.Pool(8) as pool:
+            pool.map(prep_field, ikeep)
+
+    print('DONE: rs_assign_prep')
+    print(time.ctime(time.time()))

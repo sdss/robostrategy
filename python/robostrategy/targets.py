@@ -1,6 +1,8 @@
+import os
 import numpy as np
 import fitsio
 import peewee
+import astropy.io.ascii
 import robostrategy
 import roboscheduler.cadence
 import robostrategy.params as params
@@ -10,7 +12,7 @@ import sdss_access.path
 from sdssdb.peewee.sdss5db import database
 database.set_profile('operations')
 
-target_dtype = [('rsassign', np.int32),
+target_dtype = [('stage', np.unicode_, 6),
                 ('rsid', np.int64), # set equal to carton_to_target_pk
                 ('carton_to_target_pk', np.int64), # from carton_to_target
                 ('priority', np.int32),
@@ -38,8 +40,66 @@ target_dtype = [('rsassign', np.int32),
                 ('tag', np.unicode_, 8)]
 
 
-def get_targets(carton=None, version=None, justcount=False, c2c=None):
+def read_cartons(version=None, filename=None):
+    """Read in cartons
 
+    Parameters:
+    ----------
+
+    version : str
+        version of carton file
+
+    filename : str
+        explicit file name of carton file
+
+    Returns:
+    -------
+
+    cartons : Table
+        table with carton information
+
+
+    Notes:
+    -----
+
+    Reads file as fixed_width, |-delimited file with astropy.io.ascii
+
+    If filename is specified, reads in that file.
+
+    If not, and version is specified, reads in $RSCONFIG_DIR/etc/cartons-[version].txt
+"""
+    if((version is None) and (filename is None)):
+        print("Must specify either version or filename!")
+        return
+
+    if(filename is None):
+        filename = os.path.join(os.getenv('RSCONFIG_DIR'),
+                                'etc', 'cartons-{version}.txt')
+        filename = filename.format(version=version)
+
+    cartons = astropy.io.ascii.read(filename, format='fixed_width',
+                                    delimiter='|')
+    return(cartons)
+
+
+def get_targets(carton=None, version=None, justcount=False, c2c=None):
+    """Pull targets from the targetdb
+
+    Parameters:
+    ----------
+
+    cartons : str
+        label of carton to pull
+
+    version : str
+        plan of carton to pull
+
+    justcount : bool
+        if True, just return the count (default False)
+
+    c2c : config
+        if not None, maps cartons to fiber type and cadences (default None)
+"""
     if(justcount):
         print("Counting carton {p}, version {v}".format(p=carton,
                                                         v=version))
@@ -126,7 +186,7 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
         problems = []
         for indx, t in enumerate(ts):
             for n in tmp_targets.dtype.names:
-                if((n != 'rsid') & (n != 'rsassign') & (n != 'magnitude')):
+                if((n != 'rsid') & (n != 'stage') & (n != 'magnitude')):
                     if(t[n] is not None):
                         tmp_targets[n][indx] = castn[n](t[n])
                     else:

@@ -53,7 +53,13 @@ if __name__ == '__main__':
         rotate = False
         paname = ''
 
-    cadencelist = cadence.CadenceList()
+    if('EpochOverhead' in rsParams.cfg['Allocation']):
+        epoch_overhead = np.float32(rsParams.cfg.get('Allocation',
+                                                     'EpochOverhead'))
+    else:
+        epoch_overhead = 5.
+
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
@@ -188,7 +194,8 @@ if __name__ == '__main__':
                               dark_prefer=dark_prefer,
                               cartons=focartons,
                               cadences=focadences,
-                              minimum_ntargets=minimum_ntargets)
+                              minimum_ntargets=minimum_ntargets,
+                              epoch_overhead=epoch_overhead)
     allocate.construct()
     status = allocate.solve()
 

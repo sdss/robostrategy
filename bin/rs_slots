@@ -16,6 +16,7 @@ from __future__ import unicode_literals
 import os
 import sys
 import argparse
+import numpy as np
 import robostrategy.slots
 import robostrategy.params as params
 import sdss_access.path
@@ -48,8 +49,21 @@ if __name__ == '__main__':
     else:
         fclear = rsParams.cfg.get('Allocation', 'fClearLCO')
 
+    if('ExposureTime' in rsParams.cfg['Allocation']):
+        exptime = np.float32(rsParams.cfg.get('Allocation', 'ExposureTime'))
+    else:
+        exptime = 15.
+
+    if('ExposureOverhead' in rsParams.cfg['Allocation']):
+        exposure_overhead = np.float32(rsParams.cfg.get('Allocation',
+                                                        'ExposureOverhead'))
+    else:
+        exposure_overhead = 3.
+
     slots = robostrategy.slots.Slots(observatory=observatory,
-                                     schedule=schedule, fclear=fclear)
+                                     schedule=schedule, fclear=fclear,
+                                     exptime=exptime / 60.,
+                                     exposure_overhead=exposure_overhead / 60.)
     slots.fill()
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
     slots.tofits(filename=slots_file)

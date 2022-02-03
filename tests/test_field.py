@@ -424,10 +424,10 @@ def test_satisfied_1():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
-    targets(f, nt=1)
-    targets(f, nt=1, rsid_start=1, ra=f.targets['ra'][0:1], dec=f.targets['dec'][0:1])
-    targets(f, nt=1, rsid_start=2, ra=f.targets['ra'][0:1], dec=f.targets['dec'][0:1])
-    targets(f, nt=1, rsid_start=3, ra=f.targets['ra'][0:1], dec=f.targets['dec'][0:1])
+    targets(f, nt=2)
+    targets(f, nt=2, rsid_start=2, ra=f.targets['ra'][0:2], dec=f.targets['dec'][0:2])
+    targets(f, nt=2, rsid_start=4, ra=f.targets['ra'][0:2], dec=f.targets['dec'][0:2])
+    targets(f, nt=2, rsid_start=6, ra=f.targets['ra'][0:2], dec=f.targets['dec'][0:2])
 
     # Should be [109, 110, 127]
     rids = f.mastergrid.targetDict[0].validRobotIDs
@@ -437,53 +437,53 @@ def test_satisfied_1():
 
     assert f.assignments['robotID'][0, 0] == rid
     assert f.assignments['equivRobotID'][0, 0] == rid
-    assert f.assignments['equivRobotID'][1, 0] == rid
     assert f.assignments['equivRobotID'][2, 0] == rid
-    assert f.assignments['equivRobotID'][3, 0] == rid
+    assert f.assignments['equivRobotID'][4, 0] == rid
+    assert f.assignments['equivRobotID'][6, 0] == rid
     
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] > 0
 
     f.unassign(rsids=[0])
 
     assert f.assignments['robotID'][0, 0] == -1
     assert f.assignments['equivRobotID'][0, 0] == -1
-    assert f.assignments['equivRobotID'][1, 0] == -1
     assert f.assignments['equivRobotID'][2, 0] == -1
-    assert f.assignments['equivRobotID'][3, 0] == -1
+    assert f.assignments['equivRobotID'][4, 0] == -1
+    assert f.assignments['equivRobotID'][6, 0] == -1
 
     assert f.assignments['satisfied'][0] == 0
-    assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
-    f.assign_robot_exposure(rsid=2, robotID=rid, iexp=0)
+    f.assign_robot_exposure(rsid=4, robotID=rid, iexp=0)
 
-    assert f.assignments['robotID'][2, 0] == rid
+    assert f.assignments['robotID'][4, 0] == rid
     assert f.assignments['equivRobotID'][0, 0] == rid
-    assert f.assignments['equivRobotID'][1, 0] == rid
     assert f.assignments['equivRobotID'][2, 0] == rid
-    assert f.assignments['equivRobotID'][3, 0] == rid
+    assert f.assignments['equivRobotID'][4, 0] == rid
+    assert f.assignments['equivRobotID'][6, 0] == rid
     
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] > 0
 
-    f.unassign(rsids=[2])
+    f.unassign(rsids=[4])
 
     assert f.assignments['robotID'][0, 0] == -1
     assert f.assignments['equivRobotID'][0, 0] == -1
-    assert f.assignments['equivRobotID'][1, 0] == -1
     assert f.assignments['equivRobotID'][2, 0] == -1
-    assert f.assignments['equivRobotID'][3, 0] == -1
+    assert f.assignments['equivRobotID'][4, 0] == -1
+    assert f.assignments['equivRobotID'][6, 0] == -1
 
     assert f.assignments['satisfied'][0] == 0
-    assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
     return
 
@@ -505,75 +505,75 @@ def test_satisfied_2():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
-    targets(f, nt=1, cadence='single_1x1')
-    targets(f, nt=1, rsid_start=1, ra=f.targets['ra'][0:1],
-            dec=f.targets['dec'][0:1], cadence='single_1x2')
-    targets(f, nt=1, rsid_start=2, ra=f.targets['ra'][0:1],
-            dec=f.targets['dec'][0:1], cadence='single_2x1')
-    targets(f, nt=1, rsid_start=3, ra=f.targets['ra'][0:1],
-            dec=f.targets['dec'][0:1], cadence='single_2x2')
+    targets(f, nt=2, cadence='single_1x1')
+    targets(f, nt=2, rsid_start=2, ra=f.targets['ra'][0:2],
+            dec=f.targets['dec'][0:2], cadence='single_1x2')
+    targets(f, nt=2, rsid_start=4, ra=f.targets['ra'][0:2],
+            dec=f.targets['dec'][0:2], cadence='single_2x1')
+    targets(f, nt=2, rsid_start=6, ra=f.targets['ra'][0:2],
+            dec=f.targets['dec'][0:2], cadence='single_2x2')
 
     # Should be [109, 110, 127]
     rids = f.mastergrid.targetDict[0].validRobotIDs
 
     rid = rids[0]
-    f.assign_robot_exposure(rsid=1, robotID=rid, iexp=0)
+    f.assign_robot_exposure(rsid=2, robotID=rid, iexp=0)
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
-    f.assign_robot_exposure(rsid=2, robotID=rid, iexp=1)
-
-    assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
-    assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
-
-    f.assign_robot_exposure(rsid=3, robotID=rid, iexp=2)
+    f.assign_robot_exposure(rsid=4, robotID=rid, iexp=1)
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
+
+    f.assign_robot_exposure(rsid=6, robotID=rid, iexp=2)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] == 0
 
     f.assign_robot_exposure(rsid=0, robotID=rid, iexp=3)
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] > 0
 
     assert f.validate() == 0
-
-    f.unassign(rsids=[1])
-
-    assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
-    assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] == 0
 
     f.unassign(rsids=[2])
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
-    assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] == 0
 
-    f.unassign(rsids=[3])
+    f.unassign(rsids=[4])
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
+
+    f.unassign(rsids=[6])
+
+    assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
     f.unassign(rsids=[0])
 
     assert f.assignments['satisfied'][0] == 0
-    assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
     assert f.validate() == 0
 
@@ -597,74 +597,75 @@ def test_satisfied_3():
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_2x2')
 
-    targets(f, nt=1, cadence='single_1x1')
-    targets(f, nt=1, rsid_start=1, ra=f.targets['ra'][0:1],
-            dec=f.targets['dec'][0:1], cadence='single_1x2')
-    targets(f, nt=1, rsid_start=2, ra=f.targets['ra'][0:1],
-            dec=f.targets['dec'][0:1], cadence='single_2x1')
-    targets(f, nt=1, rsid_start=3, ra=f.targets['ra'][0:1],
-            dec=f.targets['dec'][0:1], cadence='single_2x2')
+    targets(f, nt=2, cadence='single_1x1', seed=102)
+    targets(f, nt=2, rsid_start=2, ra=f.targets['ra'][0:2],
+            dec=f.targets['dec'][0:2], cadence='single_1x2')
+    targets(f, nt=2, rsid_start=4, ra=f.targets['ra'][0:2],
+            dec=f.targets['dec'][0:2], cadence='single_2x1')
+    targets(f, nt=2, rsid_start=6, ra=f.targets['ra'][0:2],
+            dec=f.targets['dec'][0:2], cadence='single_2x2')
 
     # Should be [109, 110, 127]
     rids = f.mastergrid.targetDict[0].validRobotIDs
 
-    f.assign_robot_exposure(rsid=1, robotID=rids[0], iexp=0)
+    f.assign_robot_exposure(rsid=2, robotID=rids[0], iexp=0)
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
-    f.assign_robot_exposure(rsid=2, robotID=rids[2], iexp=1)
-
-    assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
-    assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
-
-    f.assign_robot_exposure(rsid=3, robotID=rids[1], iexp=2)
+    print(rids)
+    f.assign_robot_exposure(rsid=4, robotID=rids[2], iexp=1)
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
+
+    f.assign_robot_exposure(rsid=6, robotID=rids[1], iexp=2)
+
+    assert f.assignments['satisfied'][0] > 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] == 0
 
     f.assign_robot_exposure(rsid=0, robotID=rids[2], iexp=3)
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
     assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] > 0
 
     assert f.validate() == 0
-
-    f.unassign(rsids=[1])
-
-    assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
-    assert f.assignments['satisfied'][2] > 0
-    assert f.assignments['satisfied'][3] == 0
 
     f.unassign(rsids=[2])
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] > 0
-    assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][4] > 0
+    assert f.assignments['satisfied'][6] == 0
 
-    f.unassign(rsids=[3])
+    f.unassign(rsids=[4])
 
     assert f.assignments['satisfied'][0] > 0
-    assert f.assignments['satisfied'][1] == 0
+    assert f.assignments['satisfied'][2] > 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
+
+    f.unassign(rsids=[6])
+
+    assert f.assignments['satisfied'][0] > 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
     f.unassign(rsids=[0])
 
     assert f.assignments['satisfied'][0] == 0
-    assert f.assignments['satisfied'][1] == 0
     assert f.assignments['satisfied'][2] == 0
-    assert f.assignments['satisfied'][3] == 0
+    assert f.assignments['satisfied'][4] == 0
+    assert f.assignments['satisfied'][6] == 0
 
     assert f.validate() == 0
 

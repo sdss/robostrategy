@@ -83,12 +83,23 @@ if __name__ == '__main__':
     rsParams = params.RobostrategyParams(plan=plan)
 
     cadence_hdr = dict()
+    spares = dict()
     for obs in observatories:
         field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
                                                              plan=plan,
                                                              observatory=obs))
         cadence_mask, tmp_cadence_hdr = fitsio.read(field_cadence_file, header=True)
         cadence_hdr[obs] = tmp_cadence_hdr
+
+        spares_file = field_cadence_file.replace('FieldCadences',
+                                                 'Spares')
+        if(opentargets):
+            spares_file = spares_file.replace('rsSpares', 'rsSparesOpen')
+        if(filler):
+            spares_file = spares_file.replace('rsSpares', 'rsSparesFiller')
+        if(reassign):
+            spares_file = spares_file.replace('rsSpares', 'rsSparesReassign')
+        spares[obs] = fitsio.read(spares_file)
 
     completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
                                                         plan=plan,
@@ -215,6 +226,14 @@ if __name__ == '__main__':
             cg['description'] = ''
 
         rsinfo['cartons'].append(cg)
+
+    rsinfo['spares'] = dict()
+    rsinfo['spares']['apo'] = dict()
+    rsinfo['spares']['apo']['boss'] = spares['apo']['nboss_spare'].sum()
+    rsinfo['spares']['apo']['apogee'] = spares['apo']['napogee_spare'].sum()
+    rsinfo['spares']['lco'] = dict()
+    rsinfo['spares']['lco']['boss'] = spares['lco']['nboss_spare'].sum()
+    rsinfo['spares']['lco']['apogee'] = spares['lco']['napogee_spare'].sum()
 
     template = env.get_template('rs-template.html')
     page = template.render(rsinfo)

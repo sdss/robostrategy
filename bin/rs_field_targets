@@ -29,7 +29,7 @@ import robostrategy.params as params
 import roboscheduler.cadence as cadence
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
-cadencelist = cadence.CadenceList()
+cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 
 if __name__ == '__main__':

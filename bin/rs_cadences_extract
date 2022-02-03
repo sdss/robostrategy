@@ -24,11 +24,30 @@ import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdss_access.path
 import pickle
+import json
+import re
 
 from sdssdb.peewee.sdss5db import database
 database.set_profile('operations')
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def add_to_cache(one, two, return_solutions=False,
+                 merge_epochs=True, skybrightness_only=True,
+                 ok=True, epochs_list=None, nexps_list=None):
+    epoch_level = True
+    cache_key = (one, two, epoch_level, return_solutions,
+                 merge_epochs, skybrightness_only)
+    if(return_solutions is False):
+        cadencelist._cadence_consistency[cache_key] = ok
+        return
+    if(merge_epochs is False):
+        cadencelist._cadence_consistency[cache_key] = (ok, epochs_list)
+        return
+    cadencelist._cadence_consistency[cache_key] = (ok, epochs_list,
+                                                   nexps_list)
+    return
 
 
 def copy_cadence(from_cadence, to_cadence, nepochs=None):
@@ -116,9 +135,27 @@ if __name__ == '__main__':
     copy_cadence('bright_single_99x1', 'bright_single_nx1')
     copy_cadence('bright_1x1', 'bright_single_1x1')
     copy_cadence('bright_2x1', 'bright_single_2x1')
+    copy_cadence('bright_single_4x1', 'dark_single_4x1')
+    cadencelist.cadences['dark_single_4x1'].delta[:] = -1
+    cadencelist.cadences['dark_single_4x1'].delta_min[:] = -1
+    cadencelist.cadences['dark_single_4x1'].delta_max[:] = -1
+    cadencelist.cadences['dark_single_4x1'].max_length[:] = 10000.
+    cadencelist.cadences['dark_single_4x1'].skybrightness[:] = cadencelist.cadences['dark_1x4'].skybrightness
+    cadencelist.cadences['dark_single_4x1'].min_moon_sep[:] = cadencelist.cadences['dark_1x4'].min_moon_sep
+    cadencelist.cadences['dark_single_4x1'].min_deltav_ks91[:] = cadencelist.cadences['dark_1x4'].min_deltav_ks91
+    cadencelist.cadences['dark_single_4x1'].min_twilight_ang[:] = cadencelist.cadences['dark_1x4'].min_twilight_ang
+    cadencelist.cadences['dark_single_4x1'].max_airmass[:] = cadencelist.cadences['dark_1x4'].max_airmass
+    cadencelist.cadences['dark_single_4x1'].obsmode_pk[:] = cadencelist.cadences['dark_1x4'].obsmode_pk
     if(schedule_prefix == 'minimal'):
         copy_cadence('dark_174x8', 'dark_138x8', nepochs=138)
     copy_cadence('mixed2_single_3x1', 'mixed2_single_2x1', nepochs=2)
+
+    for n in range(2, 7):
+        name = 'bright_flexible_{n}x1'.format(n=n)
+        copy_cadence('bright_{n}x1'.format(n=n), name)
+        cadencelist.cadences[name].delta[:] = -1.
+        cadencelist.cadences[name].delta_min[:] = -1.
+        cadencelist.cadences[name].delta_max[:] = -1.
 
 #
 #    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
@@ -153,7 +190,9 @@ if __name__ == '__main__':
     # all of the possibilities in RM fields; instead, we will 
     # assume very strict target cadences.
     for cn in cadencelist.cadences:
-        if((cadencelist.cadences[cn].nepochs >= 5) & ('single' not in cn)):
+        if((cadencelist.cadences[cn].nepochs >= 5) &
+           ('single' not in cn) &
+           ('flexible' not in cn)):
             cadencelist.cadences[cn].delta_min = cadencelist.cadences[cn].delta - 0.5
             cadencelist.cadences[cn].delta_max = cadencelist.cadences[cn].delta + 1.
             print("{cn}: special case for consistency with RM fields".format(cn=cn))
@@ -165,12 +204,54 @@ if __name__ == '__main__':
             c = cadencelist.cadence_consistency(cn, 'dark_100x8')
             print(c[0])
         else:
-            if('single' not in cn):
+            if(('single' not in cn) and
+               ('flexible' not in cn)):
                 print("{cn}: treat as normal for consistency with RM fields".format(cn=cn))
                 c = cadencelist.cadence_consistency(cn, 'dark_174x8')
                 if(schedule_prefix == 'minimal'):
                     c = cadencelist.cadence_consistency(cn, 'dark_138x8')
                 c = cadencelist.cadence_consistency(cn, 'dark_100x8')
+
+    # Now really hack the cache!
+    fp = open(os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
+                           'cadence-consistency-0.1.0.json'), "r")
+    ccs = fp.read()
+    fp.close()
+    ccl = json.loads(ccs)
+    for cc in ccl:
+        if(cc['target_cadence'] not in cadencelist.cadences):
+            print("{c} not in CadenceList".format(c=cc['target_cadence']))
+            continue
+        nexp_total_target = cadencelist.cadences[cc['target_cadence']].nexp_total
+        for field_cadence in cadencelist.cadences:
+            nexp_total_field = cadencelist.cadences[cc['target_cadence']].nexp_total
+            if((re.match(cc['field_cadence'], field_cadence) is None) or
+               (nexp_total_target > nexp_total_field)):
+                continue
+            add_to_cache(cc['target_cadence'], field_cadence,
+                         return_solutions=False, merge_epochs=False,
+                         skybrightness_only=cadencelist.skybrightness_only,
+                         ok=cc['ok'] > 0)
+            if(cc['epochs_list'] == [[]]):
+                epochs_list = None
+            else:
+                epochs_list = cc['epochs_list']
+            add_to_cache(cc['target_cadence'], field_cadence,
+                         return_solutions=True, merge_epochs=False,
+                         skybrightness_only=cadencelist.skybrightness_only,
+                         ok=cc['ok'] > 0, epochs_list=epochs_list)
+            if(cc['merged_epochs_list'] == [[]]):
+                merged_epochs_list = None
+                merged_nexps_list = None
+            else:
+                merged_epochs_list = cc['merged_epochs_list']
+                merged_nexps_list = cc['merged_nexps_list']
+            add_to_cache(cc['target_cadence'], field_cadence,
+                         return_solutions=True, merge_epochs=True,
+                         skybrightness_only=cadencelist.skybrightness_only,
+                         ok=cc['ok'] > 0,
+                         epochs_list=merged_epochs_list,
+                         nexps_list=merged_nexps_list)
 
     pkl_file = cadences_file + ".pkl"
     fp = open(pkl_file, 'wb')

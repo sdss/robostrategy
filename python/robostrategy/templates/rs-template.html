@@ -222,5 +222,28 @@ on <a href="https://github.com/sdss/rsconfig/blob/master/etc/robostrategy-{{plan
 	{% endfor %}
 </table>
 
+<h2>Spare Fibers</h2>
+
+<table>
+	{% for obs in observatories %}
+	<tr>
+		<td><b>{% filter upper %}{{obs}}{% endfilter %}</b></td>
+		<td>BOSS<br/> n<sub>spare</sub> = {{spares[obs].boss}}</td>
+		<td>
+			<a href='rsSpares{{stage}}-{{plan}}-{{obs}}-boss.png'>
+				<img src='rsSpares{{stage}}-{{plan}}-{{obs}}-boss.png' width=300px/>
+			</a>
+		</td>
+		<td></td>
+		<td>APOGEE<br/> n<sub>spare</sub> = {{spares[obs].apogee}}</td>
+		<td>
+			<a href='rsSpares{{stage}}-{{plan}}-{{obs}}-apogee.png'>
+				<img src='rsSpares{{stage}}-{{plan}}-{{obs}}-apogee.png' width=300px/>
+			</a>
+		</td>
+	</tr>
+	{% endfor %}
+</table>
+
 </body>
 </html>
