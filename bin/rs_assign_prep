@@ -128,7 +128,7 @@ if __name__ == '__main__':
         for i in ikeep:
             prep_field(i)
     else:
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(8) as pool:
             pool.map(prep_field, ikeep)
 
     print('DONE: rs_assign_prep')
