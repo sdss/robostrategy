@@ -50,7 +50,7 @@ targets_dtype = targets_dtype + [('x', np.float64),
                                  ('incadence', np.int32)]
 
 # Dictionary defining meaning of flags
-_flagdict = {'NOT_TO_ASSIGN':1,
+_flagdict = {'STAGE_IS_NONE':1,
              'NOT_SCIENCE':2,
              'NOT_INCADENCE': 4,
              'NOT_COVERED': 8,
