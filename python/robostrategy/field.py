@@ -598,8 +598,10 @@ class Field(object):
             print("fieldid {fid}: Getting bright stars for {d}, {f}".format(fid=self.fieldid, d=design_mode, f=fiberType), flush=True)
 
         if(bright_stars is None):
+            print("fieldid {f}: Start bright star queries {t}".format(f=self.fieldid, t=datetime.datetime.today()), flush=True)
             bright_stars = self.query_bright_stars(design_mode=design_mode,
                                                    fiberType=fiberType)
+            print("fieldid {f}: Finish bright star queries {t}".format(f=self.fieldid, t=datetime.datetime.today()), flush=True)
 
         if(self.verbose):
             print("fieldid {fid}: found {n} bright stars".format(fid=self.fieldid, n=len(bright_stars)), flush=True)
@@ -642,10 +644,10 @@ class Field(object):
         self.mastergrid.assignRobot2Target(robotID, rsid)
         x = dict()
         y = dict()
-        x['BOSS'] = self.mastergrid.robotDict[robotID].bossFiberPos[0]
-        y['BOSS'] = self.mastergrid.robotDict[robotID].bossFiberPos[1]
-        x['APOGEE'] = self.mastergrid.robotDict[robotID].apFiberPos[0]
-        y['APOGEE'] = self.mastergrid.robotDict[robotID].apFiberPos[1]
+        x['BOSS'] = self.mastergrid.robotDict[robotID].bossWokXYZ[0]
+        y['BOSS'] = self.mastergrid.robotDict[robotID].bossWokXYZ[1]
+        x['APOGEE'] = self.mastergrid.robotDict[robotID].apWokXYZ[0]
+        y['APOGEE'] = self.mastergrid.robotDict[robotID].apWokXYZ[1]
 
         for fiberType in ['APOGEE', 'BOSS']:
             bright = self.bright_stars[(design_mode, fiberType)]
