@@ -100,7 +100,7 @@ def read_cadences(plan=None, observatory=None, unpickle=False):
 
 
 def read_field(plan=None, observatory=None, fieldid=None,
-               version='', targets=False, speedy=False, verbose=False,
+               stage='', targets=False, speedy=False, verbose=False,
                unpickle=False):
     """Convenience function to read a field object
 
@@ -113,14 +113,23 @@ def read_field(plan=None, observatory=None, fieldid=None,
     observatory : str
         observatory name ('apo' or 'lco')
 
-    version : str
-        version of assignments ('', 'Open', 'Filler', 'Reassign')
+    fieldid : int
+        field id
+
+    stage : str
+        stage of assignments ('', 'Open', 'Filler', 'Reassign')
 
     targets : bool
         if True, read rsFieldTargets file, do not set cadence (default False)
 
-    fieldid : int
-        field id
+    speedy : bool
+        if set, return a FieldSpeedy object (default False)
+
+    unpickle : bool
+        if set, read in pickled cadence_consistency cache  (default False)
+
+    verbose : bool
+        if set, be verbose (default False)
 
     Returns:
     -------
@@ -139,14 +148,14 @@ def read_field(plan=None, observatory=None, fieldid=None,
     field_file = sdss_path.full(base,
                                 plan=plan, observatory=observatory,
                                 fieldid=fieldid)
-    if(version == 'Reassign'):
+    if(stage.capitalize() == 'Reassign'):
         field_file = field_file.replace('rsFieldAssignments',
                                         'rsFieldReassignments')
-    if(version == 'Open'):
+    if(stage.capitalize() == 'Open'):
         field_file = field_file.replace(base, base + 'Open')
-    if(version == 'Filler'):
+    if(stage.capitalize() == 'Filler'):
         field_file = field_file.replace(base, base + 'Filler')
-    if(version == 'Final'):
+    if(stage.capitalize() == 'Final'):
         field_file = field_file.replace('targets/' + base,
                                         'final/' + base + 'Final')
 
@@ -214,11 +223,12 @@ class AssignmentStatus(object):
     Notes:
     -----
 
-    These objects are used to track information about prospective assignments.
-    They only make sense in the context of the Field class, which has
-    several methods to manipulate these objects.
+    These objects are used to track information about prospective
+    assignments. They only make sense in the context of the Field
+    class, which has several methods to manipulate these objects.
 
-    bright_neighbor checks both APOGEE and BOSS fiber
+    bright_neighbor checks both the APOGEE and BOSS fibers on the 
+    robot.
 """
     def __init__(self, rsid=None, robotID=None, iexps=None):
         if(rsid is not None):
@@ -288,12 +298,15 @@ class Field(object):
 
     nocollide : bool
         if True,  do not check collisions (default False)
+    
+    bright_neighbors : bool
+        if True, check bright neighbor conditions (default False)
 
     verbose : bool
-        if True, issue a lot of output statements
+        if True, issue a lot of output statements (default False)
 
     veryverbose : bool
-        if True, really issue a lot of output statements
+        if True, really issue a lot of output statements (default False)
 
     Attributes:
     ----------
@@ -755,6 +768,8 @@ class Field(object):
 """
         f = fitsio.FITS(filename)
         hdr = f[0].read_header()
+        if('FIELDID' in hdr):
+            self.fieldid = np.int32(hdr['FIELDID'])
         self.racen = np.float64(hdr['RACEN'])
         self.deccen = np.float64(hdr['DECCEN'])
         self.pa = np.float32(hdr['PA'])
@@ -1575,6 +1590,9 @@ class Field(object):
         HDU1 has assignments array
 """
         hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'FIELDID',
+                    'value':self.fieldid,
+                    'comment':'field identification number'})
         hdr.append({'name':'RACEN',
                     'value':self.racen,
                     'comment':'RA J2000 center of field (deg)'})
@@ -3488,14 +3506,19 @@ class Field(object):
             print("fieldid {fid}:   (done assigning science)".format(fid=self.fieldid), flush=True)
         return
 
-    def assign_science_and_calibs(self, coordinated_targets=None):
+    def assign_science_and_calibs(self, stage='srd',
+                                  coordinated_targets=None):
         """Assign all science targets and calibrations
 
         Parameters:
         ----------
 
+        stage : str
+            stage of assignment (default 'srd')
+
         coordinated_targets : dict
             dictionary of coordinated targets (keys are rsids, values are bool)
+            [ DEPRECATED ]
 
 
         Notes:
