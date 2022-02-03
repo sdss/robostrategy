@@ -71,13 +71,14 @@ if __name__ == '__main__':
     rsParams = params.RobostrategyParams(plan=plan)
 
     cartons_version = rsParams.cfg['Cartons']['version']
-    cartons = robostrategy.targets.read_cartons(version=version)
+    cartons = robostrategy.targets.read_cartons(version=cartons_version)
     stage = 'srd'
     if(opentargets):
         stage = 'open'
     if(filler):
         stage = 'filler'
-    istage = np.where(cartons['stage'] == stage)[0]
+    istage = np.where((cartons['stage'] == stage) &
+                      (cartons['active'] == 'y'))[0]
     cartons = cartons[istage]
 
     adjust = dict()
@@ -90,7 +91,7 @@ if __name__ == '__main__':
     nt = 0
     for carton in cartons:
         name = carton['carton']
-        version = cartons['plan']
+        version = carton['plan']
         nt = nt + robostrategy.targets.get_targets(name, version,
                                                    justcount=True, c2c=c2c)
 
@@ -99,10 +100,10 @@ if __name__ == '__main__':
     nt = 0
     for carton in cartons:
         name = carton['carton']
-        version = cartons['plan']
+        version = carton['plan']
         tmp_targets = robostrategy.targets.get_targets(name, version, c2c=c2c)
         if(tmp_targets is not None):
-            if(carton in adjust):
+            if(name in adjust):
                 tmp_targets['priority'] = (tmp_targets['priority'] +
                                            adjust[carton])
             targets[nt:nt + len(tmp_targets)] = tmp_targets

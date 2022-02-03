@@ -1,6 +1,8 @@
+import os
 import numpy as np
 import fitsio
 import peewee
+import astropy.io.ascii
 import robostrategy
 import roboscheduler.cadence
 import robostrategy.params as params
