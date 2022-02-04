@@ -116,7 +116,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
             nsuccess[idx] = n_assign
 
-            self.assignments['extra'][self.rsid2indx[rsid]] = n_assign
+            self.assignments['extra'][self.rsid2indx[rsid]] += n_assign
 
         self.decollide_unassigned()
 
