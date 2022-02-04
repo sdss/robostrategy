@@ -237,7 +237,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
     def assign_partial(self, make_report=False):
         '''
         Code for assigning MWM targets with secondary science goals achievable
-        if < than the full cadence is obtained. Just YSOs for now
+        if < than the full cadence is obtained: mwm_tess_planet, as a stop gap
+        for fixing "flexible cadence" implementation; then YSOs.
 
         Parameters:
         ----------
@@ -246,6 +247,50 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         '''
 
         any_extra = False
+
+        # Find NOT-gotten mwm_tess_planet and swap cadence from 1xN to Nx1
+        iextra = np.where((self.targets['carton'] == 'mwm_tess_planet') &
+                          (self.assignments['satisfied'] == 0))[0]
+
+        if len(iextra) > 0:
+            # Group by cadence to max out at requested N
+            ucad = np.unique(self.targets['cadence'][iextra])
+
+            for icad in ucad:
+                subset = np.where(self.targets['cadence'][iextra] == icad)[0]
+                nexps = clist.cadences[icad].nexp[0]
+                nepochs = clist.cadences[icad].nepochs
+
+                # for this target class, cadences are currently in 1xN format but
+                # may change back to Nx1. For assign_spares, want requested exposures
+                # = 1 and requsted epochs = N
+                nexps_need = 1
+               
+                if nexps > 1:
+                    if nepochs > 1:
+                        raise ValueError("Did not expect mwm_tess_planet cadence to have both nexp and nepoch > 1")
+                    nepochs_need = nexps
+                else:
+                    nepochs_need = nepochs
+         
+
+                extra_rsids = self.targets['rsid'][iextra[subset]]
+                nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=nepochs_need,
+                                             nexps=nexps_need)
+                if len(nsuccess[nsuccess > 0]) > 0:
+                    any_extra = True
+                uextra,ctextra = np.unique(nsuccess, return_counts=True)
+
+                if make_report:
+                    print(f'\nPartial Epochs (TESS Planet): {icad}')
+                    print('--------------------')
+                    print('Number attempted: {}'.format(len(subset)))
+                    print('Number successful: ')
+                    for iex,ict in zip(uextra,ctextra):
+                        print(f'   {ict} stars - {iex} extra epochs')
+                    print(extra_rsids)
+                    print(nsuccess)
+
 
         # Find NOT-gotten YSOs and try to get some epochs
         iextra = np.where((self.targets['program'] == 'mwm_yso') &
@@ -260,7 +305,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 nexps = clist.cadences[icad].nexp[0] #This is an array of length nepoch, but assign_extra expects int
                 nepochs = clist.cadences[icad].nepochs
                 extra_rsids = self.targets['rsid'][iextra[subset]]
-                nsuccess = self.assign_extra(rsids=extra_rsids, max_extra = nepochs, nexps=nexps)
+                nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=nepochs, nexps=nexps)
                 if len(nsuccess[nsuccess > 0]) > 0:
                     any_extra = True
                 uextra,ctextra = np.unique(nsuccess, return_counts=True)
@@ -278,8 +323,11 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
     def assign_bright_extra(self, make_report=False):
         '''
-        Code for assigning extra epochs to MWM bright time targets. Identify previously
-        "satisfied" objects in the OB carton.
+        Code for assigning extra epochs to MWM bright time targets:
+         * Previously "satisfied" targets in TESS Planet
+         * Previous "partial" targets in TESS planet (b/c they were not allowed
+           over N requested at the partial completion stage)
+         * Previously "satisfied" objects in the OB carton.
 
         Then assign first partial then extra EXPOSURES for BHM
 
@@ -288,8 +336,25 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         make_report: bool
             if True print out a report of what happened
         '''
-        max_extra = 99 #get as many as you can, but for testing start with 1
+        max_extra = 99 #get as many as you can
         any_extra = False # initialize
+
+        # Find TESS planet targets that are 'satisfied' or that previously got
+        # extra, since extra was originally capped at N epochs but at this
+        # later stage they are now eligible for extra epochs
+        iextra = np.where((self.targets['program'] == 'mwm_planet') &
+                         ((self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0)))[0]
+
+        if len(iextra) > 0:
+            extra_rsids = self.targets['rsid'][iextra]
+            nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra)
+            if len(nsuccess[nsuccess > 0]) > 0:
+                any_extra = True
+            if make_report:
+                print('TESS Planet stars')
+                print('------------')
+                print('Number attempted: {}'.format(len(iextra)))
+                print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
         # Find gotten OB stars and try to get extra epochs. Do whole program
         iextra = np.where((self.targets['program'] == 'mwm_ob') &
@@ -305,6 +370,5 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number attempted: {}'.format(len(iextra)))
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
-        # Find BRIGHT unsatisfied targets in BHM
 
         return any_extra
