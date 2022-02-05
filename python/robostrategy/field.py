@@ -188,7 +188,7 @@ class AssignmentStatus(object):
         prospective exposure numbers
 
     expindx : ndarray of np.int32
-        mapping of iexp to index of iexps array
+        mapping of iexp (exposure within field cadence) to index of iexps array
 
     assignable : ndarray of bool
         is the fiber free to assign and uncollided in exposure? 
@@ -302,8 +302,8 @@ class Field(object):
 
     achievable_calibrations : OrderedDict
         dictionary of lists with number of achievable calibration
-        sources specified for 'sky_boss', 'standard_boss',
-        'sky_apogee', 'standard_apogee' (i.e. equal to
+        sources for each exposure specified for 'sky_boss',
+        'standard_boss', 'sky_apogee', 'standard_apogee' (i.e. equal to
         required_calibrations if they all can be achieved even without
         science targets, or the maximum possible if less than that).
 
@@ -390,7 +390,8 @@ class Field(object):
 
     required_calibrations : OrderedDict
         dictionary with numbers of required calibration sources specified
-        for 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee'
+        for each exposure, for 'sky_boss', 'standard_boss', 'sky_apogee',
+        'standard_apogee'
 
     robotIDs : ndarray of np.int32
         robotID values in order given by RobotGrid object's robotDict dictionary
@@ -562,7 +563,29 @@ class Field(object):
 
     def query_bright_stars(self, design_mode=None,
                            fiberType=None):
-        """Retrieve bright stars to avoid"""
+        """Retrieve bright stars to avoid
+
+        Parameters:
+        ----------
+
+        design_mode : str
+            name of design mode
+
+        fiberType : str
+            fiber type ('APOGEE' or 'BOSS')
+
+        Returns:
+        -------
+
+        bright_stars : ndarray
+            array of bright stars, with columns 'ra', 'dec', 'mag',
+            'catalogid', 'r_exclude'
+
+        Notes:
+        -----
+
+        r_exclude is the radius of the exclusion zone for each star
+"""
         desmode = self.designModeDict[design_mode]
         bright = 'bright' in design_mode
         if fiberType == 'BOSS':
@@ -620,7 +643,43 @@ class Field(object):
                          fiberType=None,
                          bright_stars=None,
                          reset=False):
-        """Retrieve bright stars to avoid"""
+        """Records in attributes which bright stars to avoid
+
+        Parameters:
+        ----------
+
+        design_mode : str
+            design mode
+
+        fiberType : str
+            fiber type ('APOGEE' or 'BOSS')
+
+        bright_stars : ndarray
+            bright stars, if setting explicitly (default None) 
+
+        reset : bool
+            force a reset if dictionary element already set
+
+        Notes:
+        -----
+
+        Adds an element to dictionaries bright_stars, 
+        bright_stars_coords, and bright_stars_rmax, corresponding
+        to this design_mode and fiberType
+
+        If an element with the key (design_mode, fiberType) already
+        exists, will only reset it if reset=True; otherwise it just 
+        leaves it alone.
+
+        If the input bright_stars is None, the method query_bright_stars() 
+        is used to retrieve bright stars from targetdb and put into a 
+        value in the bright_stars dictionary. If the input bright_stars is 
+        not None, it will be used as that value instead.
+
+        The SkyCoord version of the coordinates and the maximum r_exclude
+        are stored in the bright_stars_coords and bright_stars_rmax
+        dictionaries.
+"""
         if(((design_mode, fiberType) in self.bright_stars.keys()) &
            (reset is False)):
             if(self.verbose):
@@ -655,6 +714,32 @@ class Field(object):
         return
 
     def _bright_allowed_direct(self, design_mode=None, targets=None):
+        """Report which input targets are not too close to a bright neighbor
+
+        Parameters:
+        ----------
+
+        design_mode : str
+            design mode to make determination for
+
+        targets : ndarray
+            some elements of the targets ndarray
+
+        Returns:
+        -------
+
+        bright_allowed : ndarray of bool
+            for each element of targets, True if allowed, False otherwise
+
+        Notes:
+        -----
+
+        This bright allowance only checks the fiber used for the target.
+        This method is appropriate to use to check targets before they 
+        are assigned a specific robot. Once a specific robotID is under
+        consideration, the other fiber on the robot needs to be checked
+        too (with _bright_allowed_robot).
+"""
         bright_allowed = np.ones(len(targets), dtype=bool)
         target_coords = astropy.coordinates.SkyCoord(targets['fiber_ra'],
                                                      targets['fiber_dec'],
@@ -674,6 +759,27 @@ class Field(object):
 
     def _bright_allowed_robot(self, rsid=None, robotID=None,
                               design_mode=None):
+        """Reports if bright neighbor considerations allow an assignment
+
+        Parameters:
+        ----------
+
+        rsid : np.int64
+            rsid of target in assignment
+        
+        robotID : int
+            robotID of robot in assignment
+
+        design_mode : str
+            design mode to consider
+
+        Returns:
+        -------
+
+        allowed : bool
+            True if the assignment is allowed by bright neighbor considerations
+            and False if not
+"""
         self.mastergrid.assignRobot2Target(robotID, rsid)
         x = dict()
         y = dict()
@@ -707,7 +813,7 @@ class Field(object):
         return(True)
         
     def _add_dummy_cadences(self): 
-        """Adds some dummy cadences necessary to check singlebright and multibright"""
+        """Adds some dummy cadences for singlebright and multibright"""
         clist.add_cadence(name='_field_single_1x1',
                           nepochs=1,
                           skybrightness=[1.],
@@ -770,36 +876,41 @@ class Field(object):
         Comments:
         --------
 
-        Expects HDU0 header to contain keywords:
+        Expects header keywords:
+       
+          FIELDID
+          RACEN
+          DECCEN
+          PA
+          OBS
 
-           RACEN (J2000 deg)
-           DECCEN (J2000 deg)
-           PA (position each deg E of N)
-           OBS ('apo' or 'lco')
-           CBUFFER ("collision buffer")
-           FCADENCE  ("field cadence", can be 'none')
-           RCNAME# (name of a required calibration category)
-           RCNUM# (required calibration number)
+        If NOCALIB is in header and the nocalib attribute is 
+        False, nocalib will be set according to the keyword.
 
-        If NOCALIB is in header, the Field will be initialized
-        with nocalib= True.
+        If FCADENCE is not 'none', field cadence will be set
 
-        IF ACNAME# and ACNUM# are set in header (and HDU2 is present)
-        these are interpreted as the "achievable calibrations".
+        Required calibrations are stored in RCNAME# and RCNUM#
+        keywords. Each RCNAME# (RCNAME0, RCNAME1, etc) will have 
+        the names of the calibration type. Each RCNUM# will have 
+        a set of white-space-separated numbers with the number 
+        of required calibrations for each exposure.
 
-        Expects HDU1 data to be a table containing targets. See
-        targets_fromarray() method for expectations about its structure.
+        IF ACNAME# and ACNUM# are set in header (and HDU named
+        ASSIGN is present) these are interpreted as the "achievable 
+        calibrations" and stored in achievable_calibrations.
 
-        If HDU2 is present, it is expected to be the assignments
-        table.  This table should have a row for each target that is
-        parallel with the targets table, and at least one column
-        called 'robotID', which should be an array of length
-        field_cadence.nexp_total with an np.int32 for each exposure
-        containing the number for the assigned robot (or -1 if the
-        target is not assigned in that exposure). This method does
-        not copy the assignments table directly, it adds the assignments
-        using assign_robot_exposure(), so all columns in HDU2 other
-        than 'robotID' are ignored.
+        Expects HDUs named as follows:
+
+        TARGET - has the targets array (usable by targets_fromarray())
+        ASSIGN - if it exists, has the assignments array with assignments 
+                 for each target and exposure
+        DESMODE - if it exists, has the definitions of design modes
+        BS# - bright stars for neighbor checks (with DESMODE & FIBERTY
+              specified in header)
+
+        This method does not copy the assignments table directly, it adds 
+        the assignments using assign_robot_exposure(), so all columns in 
+        that HDU other than 'robotID' and 'rsflags' are ignored.
 
         In the context of a robostrategy run, this method can read in
         an rsFieldTargets file (i.e. the input files to assignment)
@@ -849,8 +960,7 @@ class Field(object):
             self.achievable_calibrations = collections.OrderedDict()
             for n in self.required_calibrations:
                 self.achievable_calibrations[n] = self.required_calibrations[n].copy()
-        self.designModeDict = mugatu.designmode.allDesignModes(filename,
-                                                               ext='DESMODE')
+
         try:
             self.designModeDict = mugatu.designmode.allDesignModes(filename,
                                                                    ext='DESMODE')
@@ -987,7 +1097,15 @@ class Field(object):
         return np.zeros(length, dtype=dtype) + quantity
 
     def _robotGrid(self):
-        """Return a RobotGridAPO or RobotGridLCO instance, with all robots at home"""
+        """Return a RobotGridAPO or RobotGridLCO instance
+
+        Notes:
+        -----
+
+        Sets all robots to home position.
+
+        When first called, sets robotHasApogee attribute.
+"""
         if(self.observatory == 'apo'):
             rg = kaiju.robotGrid.RobotGridAPO(stepSize=0.05)
         if(self.observatory == 'lco'):
@@ -1020,16 +1138,21 @@ class Field(object):
         Notes:
         ------
 
-        Sets the field cadence. This can only be done once, and note that
-        if the object is instantiated with parameters including field_cadence,
-        this routine is called in the initialization. If the object is
-        instantiated with a file name, if the file header has the FCADENCE
-        keyword set to anything but 'none', this routine will be called.
+        Sets the field cadence. 
+
+        If the object is instantiated with parameters including 
+        field_cadence, this routine is called in the initialization. 
+        If the object is instantiated with a file name, if the file 
+        header has the FCADENCE keyword set to anything but 'none', 
+        this routine will be called.
 
         The cadence must be one in the CadenceList singleton. Upon
         setting the field cadence with this routine, the robotgrids,
         assignments_dtype, assignments, calibrations, and
-        field_cadence attributes.  be configured.
+        field_cadence attributes are configured.
+
+        You can reset the field cadence, but first you must call
+        clear_field_cadence(). Obviously this deletes all the assignments.
 """
         if(self.allgrids):
             if(len(self.robotgrids) > 0):
@@ -1282,6 +1405,55 @@ class Field(object):
 
     def radec2xyz(self, ra=None, dec=None, epoch=None, pmra=None,
                   pmdec=None, delta_ra=0., delta_dec=0., fiberType=None):
+        """Converts ra and dec to wok x, y, and z
+
+        Parameters:
+        ----------
+
+        ra : ndarray of np.float64
+            right ascensions in J2000 deg
+
+        dec : ndarray of np.float64
+            declinations in J2000 deg
+
+        epoch : ndarray of np.float32
+            epoch of ra and dec in years (e.g. 2015.5)
+
+        pmra : ndarray of np.float32
+            RA proper motion in mas/year
+
+        pmdec : ndarray of np.float32
+            Dec proper motion in mas/year
+
+        delta_ra : ndarray of np.float32
+            RA offset to apply for fibers in arcsec (default 0)
+
+        delta_dec : ndarray of np.float32
+            Dec offset to apply for fibers in arcsec (default 0)
+
+        fiberType : str, list of str, or ndarray of str
+            fiber type ('APOGEE' or 'BOSS')
+
+        Returns:
+        -------
+
+        x : ndarray of np.float64
+            X position in wok (mm)
+
+        y : ndarray of np.float64
+            Y position in wok (mm)
+
+        z : ndarray of np.float64
+            Z position in wok (mm)
+
+        Notes:
+        -----
+
+        delta_ra and delta_dec are proper angular distances.
+
+        Z is just returned as a constant value (equal to 
+        coordio.defaults.POSITIONER_HEIGHT).
+"""
         if(isinstance(fiberType, str)):
             wavename = fiberType.capitalize()
         else:
@@ -1315,7 +1487,29 @@ class Field(object):
         return(x, y, z)
 
     def xy2radec(self, x=None, y=None, fiberType=None):
-        """X and Y back to RA, Dec, without proper motions or deltas"""
+        """X and Y back to RA, Dec, without proper motions or deltas
+
+        Parameters:
+        ----------
+
+        x : ndarray of np.float64
+            X position in wok (mm)
+
+        y : ndarray of np.float64
+            Y position in wok (mm)
+
+        fiberType : str, list of str, or ndarray of str
+            fiber type ('APOGEE' or 'BOSS')
+
+        Returns:
+        -------
+
+        ra : ndarray of np.float64
+            right ascensions in J2000 deg
+
+        dec : ndarray of np.float64
+            declinations in J2000 deg
+"""
         if(isinstance(fiberType, str)):
             wavename = fiberType.capitalize()
         else:
@@ -1338,12 +1532,34 @@ class Field(object):
 
         filename : str
             file name to read from
+
+        Notes:
+        -----
+
+        Just reads extension 1. Then calls targets_fromarray()
 """
         t = fitsio.read(filename, ext=1)
         self.targets_fromarray(t)
         return
 
     def _mags_allowed(self, targets=None, designMode=None):
+        """Report whether magnitude limits allow targets
+
+        Parameters:
+        ----------
+
+        targets : ndarray
+            elements of targets array
+
+        designMode : DesignMode object
+            design mode to test against
+
+        Returns:
+        -------
+
+        allowed : ndarray of bool
+            For each target, True if magnitude limits allow, False otherwise
+"""
         fiberTypes = ['BOSS', 'APOGEE']
         categories = ['science', 'standard']
         target_category = np.array([x.split('_')[0]
@@ -1374,6 +1590,17 @@ class Field(object):
         return(target_allowed)
 
     def _targets_to_robotgrid(self, targets=None, robotgrid=None):
+        """Assign targets to a RobotGrid object
+
+        Parameters:
+        ----------
+
+        targets : ndarray
+            targets array
+
+        robotgrid : RobotGrid object
+            robot grid to assign to
+"""
         for indx, target in enumerate(targets):
             if(target['fiberType'] == 'APOGEE'):
                 fiberType = kaiju.cKaiju.ApogeeFiber
@@ -1388,6 +1615,30 @@ class Field(object):
         return
 
     def _setup_targets_for_cadence(self, targets=None):
+        """Set up targets for a particular cadence
+
+        Parameters:
+        ----------
+        
+        targets : ndarray
+            array of targets
+
+        Returns:
+        -------
+
+        targets : ndarray
+            adjusted array of targets
+
+        Notes:
+        -----
+
+        Assumes field cadence is defined.
+
+        Sets 'incadence' column in targets array, according to whether this 
+        target can be satisfied in the field cadence.
+
+        Adds targets to each RobotGrid object in robotgrids list.
+"""
         if(targets is None):
             return(None)
 
@@ -1417,6 +1668,33 @@ class Field(object):
 
     def _setup_assignments_for_cadence(self, targets=None,
                                        assignment_array=None):
+        """Sets up the assignments array for a given cadence
+
+        Parameters:
+        ----------
+
+        targets : ndarray
+            array of targets
+
+        assignments : ndarray
+            assignments array
+
+        Returns:
+        -------
+
+        assignments : ndarray
+            adjusted assignments array
+
+        Notes:
+        -----
+        
+        Using field cadence, appropriately sets:
+
+          field_skybrightness
+          mags_allowed (is it allowed by magnitude limits)
+          bright_allowed (is it allowed by bright neighbor limits)
+          allowed
+"""
         if(targets is None):
             return(None)
 
@@ -1625,18 +1903,16 @@ class Field(object):
         Notes:
         -----
 
-        HDU0 header has keywords:
+        Writes out a file readable by fromfits(). Has header keywords
+        defining field, and HDUs:
 
-            RACEN
-            DECCEN
-            PA
-            OBS
-            FCADENCE (field cadence)
-            RCNAME0 .. RNAMEN (required calibrations names)
-            RCNUM0 .. RNUMN (required calibrations numbers)
-
-        HDU1 has targets array
-        HDU1 has assignments array
+        TARGET - has the targets array (usable by targets_fromarray())
+        ASSIGN - if it exists, has the assignments array with assignments 
+                 for each target and exposure
+        DESMODE - if it exists, has the definitions of design modes
+        BS# - bright stars for neighbor checks (with DESMODE & FIBERTY
+              specified in header)
+        ROBOTS - targets assigned for each robot
 """
         hdr = robostrategy.header.rsheader()
         hdr.append({'name':'FIELDID',
@@ -1784,6 +2060,28 @@ class Field(object):
         return
 
     def set_assignment_status(self, status=None, isspare=None):
+        """Set parameters of status object
+
+        Parameters:
+        ----------
+
+        status : AssignmentStatus object
+            object to set attributes of 
+
+        isspare : ndarray of bool
+            is rsid of this AssignmentStatus a spare calibration fiber
+            in each exposure (default all False)
+
+        Notes:
+        -----
+
+        For each exposure, sets the corresponding element in the attributes:
+        
+         spare - is this robotID assigned to a spare calib fiber
+         assignable - is this robotID assignable to this rsid
+         collided - would this assignment cause a collision
+         bright_neighbor_allowed - is it allowed from a bright neighbor POV?
+"""
         if(isspare is None):
             isspare = np.zeros(len(status.iexps), dtype=bool)
         robotindx = self.robotID2indx[status.robotID]
@@ -1823,6 +2121,23 @@ class Field(object):
         return
 
     def set_bright_neighbor_status(self, status=None, iexp=None):
+        """Set the bright_neighbor_allowed attribute of status
+
+        Parameters:
+        ----------
+        status : AssignmentStatus object
+            object to set attributes of 
+
+        iexp : int
+            exposure index (0-indexed within field cadence)
+
+        Notes:
+        -----
+
+        Sets bright_neighbor_allowed[status.expindx[iexp]] to True
+        if there isn't a bright neighbor problem caused by either fiber
+        if this assignment is made.
+"""
         epoch = self.field_cadence.epochs[iexp]
         design_mode = self.design_mode[epoch]
         key = (status.rsid, status.robotID, design_mode)
@@ -1833,6 +2148,28 @@ class Field(object):
         return
 
     def set_collided_status(self, status=None, iexp=None):
+        """Set the collded attribute of status
+
+        Parameters:
+        ----------
+        status : AssignmentStatus object
+            object to set attributes of 
+
+        iexp : int
+            exposure index (0-indexed within field cadence)
+
+        Notes:
+        -----
+
+        Sets collided[status.expindx[iexp]] to True if this assignment
+        would cause a collision in the given exposure.
+
+        If the collision involves a spare calibration fiber, account
+        for this when deciding if the exposure is assignable, and 
+        store collided object in spare_colliders.
+
+        Updates assignable attribute (setting to False for collisions).
+"""
         i = status.expindx[iexp]
 
         # not relevant if there is no rsid
@@ -1901,6 +2238,26 @@ class Field(object):
     def unassign_assignable(self, status=None, iexp=None,
                             reset_satisfied=True, reset_has_spare=True,
                             reset_count=True):
+        """Unassign spare calibrations to allow an assignment to happen
+
+        Parameters:
+        ----------
+
+        status : AssignmentStatus object
+            assignment status object 
+
+        iexp : int
+            exposure in question (0-indexed within field cadence)
+
+        reset_satisfied : bool
+            reset satisified parameter? (default True)
+
+        reset_has_spare : bool
+            reset spare calibration parameter? (default True)
+
+        reset_count : bool
+            reset exposure count parameter? (default True)
+"""
         i = status.expindx[iexp]
         if(status.assignable[i] is False):
             return
@@ -1923,35 +2280,35 @@ class Field(object):
 
         return
 
-    def collide_robot_exposure(self):
-        """TODO GET THIS BACK
-        collide : bool
-            True if it causes a collision, False if not
-
-        Notes:
-        -----
-
-        If there is no RobotGrid to check collisions and/or nocollide
-        is set for this object, it doesn't actually check collisions.
-        However, it does report a collision if any OTHER equivalent 
-        target was assigned.
-"""
-        if((not self.allgrids) |
-           (self.nocollide)):
-            indx = self.rsid2indx[rsid]
-            allindxs = set(self._equivindx[self._equivkey[indx]])
-            if(len(allindxs) > 1):
-                allindxs.discard(indx)
-                allindxs = np.array(list(allindxs), dtype=np.int32)
-                if(self.assignments['robotID'][allindxs, iexp].max() >= 0):
-                    return(True)
-                else:
-                    return(False)
-            else:
-                return(False)
-
-        rg = self.robotgrids[iexp]
-        return rg.wouldCollideWithAssigned(robotID, rsid)[0]
+#    def collide_robot_exposure(self):
+#        """Depreca
+#        collide : bool
+#            True if it causes a collision, False if not
+#
+#        Notes:
+#        -----
+#
+#        If there is no RobotGrid to check collisions and/or nocollide
+#        is set for this object, it doesn't actually check collisions.
+#        However, it does report a collision if any OTHER equivalent 
+#        target was assigned.
+#"""
+#        if((not self.allgrids) |
+#           (self.nocollide)):
+#            indx = self.rsid2indx[rsid]
+#            allindxs = set(self._equivindx[self._equivkey[indx]])
+#            if(len(allindxs) > 1):
+#                allindxs.discard(indx)
+#                allindxs = np.array(list(allindxs), dtype=np.int32)
+#                if(self.assignments['robotID'][allindxs, iexp].max() >= 0):
+#                    return(True)
+#                else:
+#                    return(False)
+#            else:
+#                return(False)
+#
+#        rg = self.robotgrids[iexp]
+#        return rg.wouldCollideWithAssigned(robotID, rsid)[0]
 
     def available_robot_epoch(self, rsid=None,
                               robotID=None, epoch=None, nexp=None,
@@ -2063,7 +2420,7 @@ class Field(object):
             f.unassign_assignable(status=status, iexp=iexp)
             f.assign_robot_exposure(robotID=robotID, rsid=rsid, iexp=iexp)
 
-        """
+"""
         iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
         status = AssignmentStatus(rsid=rsid, robotID=robotID,
                                   iexps=iexps)
@@ -2071,6 +2428,23 @@ class Field(object):
         return(status)
 
     def _is_spare(self, rsid=None, iexps=None):
+        """Is this rsid a spare calibration in these exposures?
+
+        Parameters:
+        ----------
+
+        rsid : np.int64
+            rsid to consider
+
+        iexps : ndarray of np.int32
+            exposures of field to check (default all field exposures)
+
+        Returns:
+        -------
+
+        isspare : ndarray of bool
+            whether this rsid is a spare calibration fiber in each exposure
+"""
         if(iexps is None):
             iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
         return(self._has_spare_calib[self._calibration_index[self.rsid2indx[rsid] + 1], iexps] > 0)
@@ -2115,9 +2489,6 @@ class Field(object):
 
         success : bool
             True if successful, False otherwise
-
-        Comments:
-        --------
 """
         # Only try to assign if you can.
         if(rsid not in self.mastergrid.robotDict[robotID].validTargetIDs):
@@ -2329,6 +2700,20 @@ class Field(object):
         return done
 
     def _set_assigned(self, itarget=None):
+        """Set assigned flag
+    
+        Parameters:
+        ----------
+
+        itarget : np.int32 or int
+            0-indexed position of target in targets array
+
+        Notes:
+        -----
+
+        Sets 'assigned' in assigments array if any exposure has robotID set
+        in the assignments array.
+"""
         if(itarget is None):
             print("Must specify a target.")
         self.assignments['assigned'][itarget] = (self.assignments['robotID'][itarget, :] >= 0).sum() > 0
@@ -2737,8 +3122,6 @@ class Field(object):
 
         success : bool
             True if successful, False otherwise
-
-        Coments
 """
         indx = self.rsid2indx[rsid]
         target_cadence = self.targets['cadence'][indx]
@@ -2983,7 +3366,7 @@ class Field(object):
         Notes:
         -----
 
-        Performs assigment in order given
+        Performs assigment in order rsids are given.
 """
         success = np.zeros(len(rsids), dtype=bool)
         for i, rsid in enumerate(rsids):
@@ -3015,11 +3398,37 @@ class Field(object):
         -----
 
         Sorts cadences by priority for assignment.
+
+        Then it identifies the targets that:
+
+          - Are not assignable as "single bright", "multi bright", or
+            "multi dark" (see below); these will be assigned with the
+            method _assign_one_by_one()
+
+          - Are assignable as "single bright" -- i.e. just need a 
+            single bright exposures; these will be assigned with the 
+            method _assign_singlebright()
+
+          - Are assignable as "multi bright" -- i.e. just need a 
+            bunch of bright exposures with no particular cadence 
+            (up to 12); these will be assigned with the method 
+            _assign_multibright()
+
+          - Are assignable as "multi dark" -- i.e. just need a 
+            bunch of bright or dark exposures with no particular
+            cadence (up to 12); these will be assigned with the 
+            method _assign_multidark()
+
+        Within each priority level, it assigns the targets in those
+        categories in that order.  The reason to separate them is that
+        _assign_one_by_one() is the slowest method, whereas a bunch of
+        shortcuts are possible if the exposures don't need a
+        particular cadence.
 """
         success = np.zeros(len(rsids), dtype=bool)
         indxs = np.array([self.rsid2indx[r] for r in rsids], dtype=np.int32)
 
-        # Find single bright cases
+        # Find single bright, multibright, multidark cases
         cadences = np.unique(self.targets['cadence'][indxs])
         singlebright = np.zeros(len(self.targets), dtype=bool)
         multibright = np.zeros(len(self.targets), dtype=bool)
@@ -3038,6 +3447,7 @@ class Field(object):
                 icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
                 multidark[indxs[icad]] = True
 
+        # Sort by priority
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
             if(self.verbose):
@@ -3046,6 +3456,7 @@ class Field(object):
                                (self._is_calibration[indxs] == False))[0]
             self._set_competing_targets(rsids[iormore])
 
+            # Choose the ones to assign 1-by-1
             iassign = np.where((singlebright[indxs] == False) &
                                (multibright[indxs] == False) &
                                (multidark[indxs] == False) &
@@ -3078,6 +3489,7 @@ class Field(object):
                 if(self.verbose):
                     print("fieldid {fid}:    (assigned {n})".format(n=success[iassign].sum(), fid=self.fieldid), flush=True)
 
+            # Assign single bright, which we do in two cycles.
             # It is always affordable to run through the single bright
             # cases twice. Why does it matter? Because when they displace
             # calibration targets on the first cycle, that can change the
@@ -3097,6 +3509,8 @@ class Field(object):
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[isinglebright].sum(), fid=self.fieldid), flush=True)
 
+
+            # Assign multi-bright cases (one cycle)
             for icycle in range(1):
                 imultibright = np.where(multibright[indxs] &
                                         (self.assignments['satisfied'][indxs] == 0) &
@@ -3110,6 +3524,7 @@ class Field(object):
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
 
+            # Assign multi-dark cases (one cycle)
             for icycle in range(1):
                 imultidark = np.where(multidark[indxs] &
                                       (self.assignments['satisfied'][indxs] == 0) &
@@ -3508,6 +3923,9 @@ class Field(object):
         in order of their priority value. The order of assignment is
         randomized within each priority value. The random seed is 
         set according to the fieldid.
+
+        This is usually not used, since calibrations are assigned
+        in the assign_science_and_calibrations() method.
 """
         if(self.nocalib):
             return
@@ -3547,6 +3965,9 @@ class Field(object):
         in order of their priority value. The order of assignment is
         randomized within each priority value. The random seed is 
         set according to the fieldid.
+
+        This is usually used for stages after SRD, since it does not
+        assign calibrations.
 """
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
@@ -3591,7 +4012,6 @@ class Field(object):
             dictionary of coordinated targets (keys are rsids, values are bool)
             [ DEPRECATED ]
 
-
         Notes:
         -----
 
@@ -3626,7 +4046,8 @@ class Field(object):
             for c in self.required_calibrations:
                 icalib = np.where(self.targets['category'] != 'science')[0]
                 np.random.shuffle(icalib)
-                isort = np.argsort(self.targets['priority'][icalib])
+                isort = np.argsort(self.targets['priority'][icalib],
+                                   kind='stable')
                 icalib = icalib[isort]
                 for i in icalib:
                     self.assign_exposures(rsid=self.targets['rsid'][i],
@@ -3691,6 +4112,9 @@ class Field(object):
                 icalib = np.where((self.targets['category'] == c) &
                                   (self.targets['stage'] == stage))[0]
                 np.random.shuffle(icalib)
+                isort = np.argsort(self.targets['priority'][icalib],
+                                   kind='stable')
+                icalib = icalib[isort]
                 for i in icalib:
                     self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps)
 
@@ -3720,6 +4144,9 @@ class Field(object):
                     icalib = np.where((self.targets['category'] == c) &
                                       (self.targets['stage'] == stage))[0]
                     np.random.shuffle(icalib)
+                    isort = np.argsort(self.targets['priority'][icalib],
+                                       kind='stable')
+                    icalib = icalib[isort]
                     for i in icalib:
                         self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps)
                     assigned_exposure_calib[c][iexps] = True
@@ -3774,6 +4201,8 @@ class Field(object):
 
         Does not try to assign any targets for which
         coordinated_targets[rsid] is True.
+
+        Normally not called.
 """
 
         # Deal with any targets duplicated
@@ -3795,9 +4224,6 @@ class Field(object):
 
     def assess(self):
         """Assess the current results of assignment in field
-
-        Parameters
-        ----------
 
         Returns
         -------
@@ -4046,6 +4472,8 @@ class Field(object):
         Prints nature of problems identified to stdout
 
         Checks that assigned targets got the right number and type of epochs.
+
+        Not tested recently.
 """
         nproblems = 0
         for indx, target in enumerate(self.targets):

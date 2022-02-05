@@ -5,8 +5,6 @@
 import numpy as np
 from robostrategy.field import Field
 import roboscheduler.cadence
-from robostrategy.field import targets_dtype as targets_dtype
-import pdb
 
 
 # Establish access to the CadenceList singleton
