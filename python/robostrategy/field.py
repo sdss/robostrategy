@@ -62,14 +62,6 @@ _flagdict = {'STAGE_IS_NONE':1,
 __all__ = ['Field']
 
 """Field module class.
-
-Dependencies:
-
- numpy
- fitsio
- matplotlib
- roboscheduler
- kaiju
 """
 
 # Establish access to the CadenceList singleton
@@ -283,11 +275,6 @@ class Field(object):
     observatory : str
         observatory field observed from, 'apo' or 'lco' (default 'apo')
     
-    collisionBuffer : float or np.float32
-        collision buffer to send to kaiju in mm (default 2)
-        (if set, will override setting in rsFieldTargets)
-        IGNORED
-
     field_cadence : str
         field cadence (default 'none')
 
@@ -313,65 +300,6 @@ class Field(object):
     Attributes:
     ----------
 
-    racen : np.float64
-        boresight RA, J2000 deg
-
-    deccen : np.float64
-        boresight Dec, J2000 deg
-
-    pa : np.float32
-        position angle of field (deg E of N)
-
-    observatory : str
-        observatory field observed from ('apo' or 'lco')
-
-    field_cadence : Cadence object
-        cadence associated with field
-
-    design_mode : np.array of str
-        keys to DesignModeDict for each epoch
-
-    collisionBuffer : float
-        collision buffer for kaiju (in mm)
-        IGNORED
-
-    radius : np.float32
-        distance from racen, deccen to search for for targets (deg);
-        set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
-
-    flagdict : Dict
-        dictionary of assignment flag values
-
-    rsid2indx : Dict
-        dictionary linking rsid (key) to index of targets and assignments arrays.
-        (values). E.g. targets['rsid'][f.rsid2indx[rsid]] == rsid
-
-    mastergrid : RobotGrid object
-        robotGrid used to inquire about robots & targets (not for assignment)
-
-    robotgrids : list of RobotGrid objects
-        robotGrids associated with each exposure
-
-    targets : ndarray
-        array of targets, including 'ra', 'dec', 'x', 'y', 'within',
-        'priority', 'category', 'cadence', 'catalogid', 'rsid', 'fiberType'
-
-    target_duplicated : ndarray of np.int32
-        [len(targets)] initially 0s; set in assign() if there are
-        coordinated targets which have already been assigned
-
-    assignments : ndarray or None
-        [len(targets)] array with 'assigned', 'satisfied', 
-          'robotID', 'rsflags', 'fiberType'
-        for each target; set to None prior to definition of field_cadence
-
-    designModeDict : dict of DesignMode objects
-        possible design modes
-
-    required_calibrations : OrderedDict
-        dictionary with numbers of required calibration sources specified
-        for 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee'
-
     achievable_calibrations : OrderedDict
         dictionary of lists with number of achievable calibration
         sources specified for 'sky_boss', 'standard_boss',
@@ -379,44 +307,120 @@ class Field(object):
         required_calibrations if they all can be achieved even without
         science targets, or the maximum possible if less than that).
 
+    allgrids : bool
+        if True, keep track of all robotgrids (default True); if False
+        automatically sets nocollide to True
+
+    assignments_dtype : dtype
+        structure for assignments array (depends on field cadence)
+
+    assignments : ndarray or None
+        [len(targets)] array; set to None prior to set_field_cadence() call
+
+    bright_neighbors : bool
+        True if checking for bright neighbor
+
+    bright_stars : OrderedDict
+        dictionary with keys (designmode, instrument), and 
+        values which are ndarrays with bright star information
+
+    bright_stars_coords : OrderedDict
+        dictionary with keys (design_mode, fiberType), and 
+        values which are SkyCoord objects with bright stars coords
+
+    bright_stars_rmax : OrderedDict
+        dictionary with keys (design_mode, fiberType), and 
+        values which are the maximum exclusion radius in 
+        the corresponding bright_stars entry
+
+    bright_neighbor_cache : Dict
+        dictionary with keys (rsid, robotID, design_mode) caching
+        whether the given combination is allowed
+
     calibrations : OrderedDict
         dictionary of lists with numbers of calibration sources assigned
         for each epoch for 'sky_boss', 'standard_boss', 'sky_apogee',
         'standard_apogee'
 
+    collisionBuffer : float
+        collision buffer for kaiju (in mm) IGNORED
+
+    deccen : np.float64
+        boresight Dec, J2000 deg
+
+    designModeDict : dict of DesignMode objects
+        possible design modes
+
+    design_mode : np.array of str
+        keys to DesignModeDict for each epoch
+
+    field_cadence : Cadence object
+        cadence associated with field (set to None prior to set_field_cadence()
+
+    flagdict : Dict
+        dictionary of assignment flag values
+
+    methods : Dict
+        dictionary to set methods within assignment (not to be used)
+
+    mastergrid : RobotGrid object
+        robotGrid used to inquire about robots & targets (not for assignment)
+
+    nocalib : bool
+        if True, do not account for calibrations
+
+    nocollide : bool
+        if True,  do not check collisions
+
+    observatory : str
+        observatory field observed from ('apo' or 'lco')
+
     obstime : coordio Time object
         nominal time of observation to use for calculating x/y
 
-    nocalib : bool
-        if True, do not account for calibrations (default False)
+    pa : np.float32
+        position angle of field (deg E of N)
 
-    allgrids : bool
-        if True, keep track of all robotgrids (default True); if False
-        automatically sets nocollide to True
+    racen : np.float64
+        boresight RA, J2000 deg
 
-    nocollide : bool
-        if True,  do not check collisions (default False)
+    radius : np.float32
+        distance from racen, deccen to search for for targets (deg);
+        set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
+
+    required_calibrations : OrderedDict
+        dictionary with numbers of required calibration sources specified
+        for 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee'
+
+    robotIDs : ndarray of np.int32
+        robotID values in order given by RobotGrid object's robotDict dictionary
+
+    robotID2indx : Dict
+        for each key robotID, the value is its 0-indexed position in robotDict
+        (i.e. inverse of robotIDs)
+
+    robotgrids : list of RobotGrid objects
+        robotGrids associated with each exposure
+
+    robotHasApogee : ndarray of bool
+        whether each robotID has an APOGEE fiber
+
+    rsid2indx : Dict
+        dictionary linking rsid (key) to index of targets and assignments arrays.
+        (values). E.g. targets['rsid'][f.rsid2indx[rsid]] == rsid
+
+    targets : ndarray
+        array of targets
+
+    target_duplicated : ndarray of np.int32
+        [len(targets)] initially 0s; set in assign() if there are
+        coordinated targets which have already been assigned
 
     verbose : bool
         if True, issue a lot of output statements
 
     veryverbose : bool
         if True, really issue a lot of output statements
-
-    _robot2indx : ndarray of int32 or None
-        [nrobots, nexp_total] array of indices into targets from robots
-
-    _robotnexp : ndarray of int32 or None
-        [nrobots, nepochs] array of number of exposures available per epoch
-
-    _is_calibration : ndarray of bool
-        [len(targets)] list of whether the target is a calibration target
-
-    _has_spare_calib : 2D ndarray of bool
-        [len(targets) + 1, nexp_total] indicates whether a particular target
-        is a spare calibration target in this exposure. The first axis should
-        be referenced with rsid2indx + 1; the 0th element is there to deal
-        with unassigned cases "-1".
 
     _calibration_index : ndarray of np.int32
         [len(targets)] indicates which type of calibration target this object
@@ -427,8 +431,37 @@ class Field(object):
         [nrobots] count of how many targets are competing for a given
         robot; used only in certain methods of assignment.
 
+    _equivindx : OrderedDict
+        keys are tuples (catalogid, fiberType, lambda_eff, delta_ra, 
+        delta_dec), values are ndarray of np.int32, with 0-indexed 
+        positions in targets of all targets with those settings
+
+    _equivkey : OrderedDict
+        keys are 0-indexed positions in targets, values are tuples of
+        that target's (catalogid, fiberType, lamdda_eff, delta_ra,
+        delta_dec), to quickly reference _equivindx
+
+    _has_spare_calib : 2D ndarray of bool
+        [len(targets) + 1, nexp_total] indicates whether a particular target
+        is a spare calibration target in this exposure. The first axis should
+        be referenced with rsid2indx + 1; the 0th element is there to deal
+        with unassigned cases "-1".
+
+    _is_calibration : ndarray of bool
+        [len(targets)] list of whether the target is a calibration target
+
     _ot : ObsTime object
         observing time object for convenience
+
+    _robot2indx : ndarray of int32 or None
+        [nrobots, nexp_total] array of indices into targets from robots
+
+    _robotnexp : ndarray of int32 or None
+        [nrobots, nepochs] array of number of exposures unused per epoch
+
+    _robotnexp_max : ndarray of int32 or None
+        [nrobots, nepochs] array of number of exposures unused by science
+        fibers in each epoch
 
     _unique_catalogids : ndarray of np.int64
         list of unique catalogids for convenience
@@ -1023,6 +1056,7 @@ class Field(object):
                 self._robotnexp_max[:, i] = n
             self.assignments_dtype = np.dtype([('assigned', np.int32),
                                                ('satisfied', np.int32),
+                                               ('extra', np.int32),
                                                ('nexps', np.int32),
                                                ('nepochs', np.int32),
                                                ('allowed', np.bool,
@@ -1051,7 +1085,7 @@ class Field(object):
 
             if(obsmode_pk[0] != ''):
                 if(self.verbose):
-                    print("obsmode_pk has been set", flush=True)
+                    print("fieldid {f}: obsmode_pk has been set".format(f=self.fieldid), flush=True)
                 if((type(obsmode_pk) == list) |
                    (type(obsmode_pk) == np.ndarray)):
                     self.design_mode = np.array(obsmode_pk)
@@ -1059,7 +1093,7 @@ class Field(object):
                     self.design_mode = np.array([obsmode_pk])
             else:
                 if(self.verbose):
-                    print("Using heuristics for obsmode_pk", flush=True)
+                    print("fieldid {f}: Using heuristics for obsmode_pk".format(f=self.fieldid), flush=True)
                 self.design_mode = np.array([''] *
                                             self.field_cadence.nepochs)
                 for epoch in np.arange(self.field_cadence.nepochs):
@@ -1460,7 +1494,7 @@ class Field(object):
 
         # Convert ra/dec to x/y
         if(self.verbose):
-            print("Convert targets coords to x/y", flush=True)
+            print("fieldid {f}: Convert targets coords to x/y".format(f=self.fieldid), flush=True)
         (targets['x'],
          targets['y'],
          targets['z']) = self.radec2xyz(ra=targets['ra'],
@@ -1479,13 +1513,13 @@ class Field(object):
 
         # Add targets to robotGrids
         if(self.verbose):
-            print("Assign targets to robot grid", flush=True)
+            print("fieldid {f}: Assign targets to robot grid".format(f=self.fieldid), flush=True)
         self._targets_to_robotgrid(targets=targets,
                                    robotgrid=self.mastergrid)
 
         # Determine if within
         if(self.verbose):
-            print("Check whether targets are within grid", flush=True)
+            print("fieldid {f}: Check whether targets are within grid".format(f=self.fieldid), flush=True)
         self.masterTargetDict = self.mastergrid.targetDict
         for itarget, rsid in enumerate(targets['rsid']):
             t = self.masterTargetDict[rsid]
@@ -3529,7 +3563,12 @@ class Field(object):
         self.assign_cadences(rsids=self.targets['rsid'][iscience])
 
         self.decollide_unassigned()
-        print(self.validate())
+        nproblems = self.validate()
+        if(nproblems == 0):
+            print("fieldid {f}: No problems".format(f=self.fieldid))
+        else:
+            print("fieldid {f}: {n} problems!!!".format(f=self.fieldid,
+                                                        n=nproblems))
 
         self._set_satisfied(rsids=self.targets['rsid'][iscience])
         self._set_count(reset_equiv=False)
@@ -3985,7 +4024,7 @@ class Field(object):
         if(len(inotallowed) > 0):
             nproblems = nproblems + len(inotallowed)
             uinotallowed = np.unique(inotallowed)
-            print("Unallowed exposures observed {n} times".format(n=len(inotallowed)))
+            print("Unallowed exposures observed {n} times".format(n=len(uinotallowed)))
 
         return(nproblems)
 
@@ -4172,11 +4211,6 @@ class Field(object):
             print("Cannot plot if allgrids is False")
             return
 
-        target_cadences = np.sort(np.unique(self.targets['cadence']))
-
-        colors = ['black', 'green', 'blue', 'cyan', 'purple', 'red',
-                  'magenta', 'grey']
-
         fig = plt.figure(figsize=(10 * 0.7, 7 * 0.7))
         axfig = fig.add_axes([0., 0., 0.7, 1.])
         axleg = fig.add_axes([0.71, 0., 0.26, 1.])
@@ -4234,101 +4268,13 @@ class Field(object):
 class FieldSpeedy(Field):
     """FieldSpeedy class
 
-    Parameters:
-    ----------
-
-    filename : str
-        if set, reads from file (ignores other inputs)
-
-    fieldid : np.int32
-        field ID number
-
-    racen : np.float64
-        boresight RA, J2000 deg
-
-    deccen : np.float64
-        boresight Dec, J2000 deg
-
-    pa : np.float32
-        position angle of field (deg E of N)
-
-    observatory : str
-        observatory field observed from, 'apo' or 'lco' (default 'apo')
-
-    field_cadence : str
-        field cadence (default 'none')
-
-    nocalib : bool
-        if True, do not account for calibrations (default False)
-
-    speedy : bool
-        if True, perform approximations for speed up (default False)
-
-    Attributes:
-    ----------
-
-    racen : np.float64
-        boresight RA, J2000 deg
-
-    deccen : np.float64
-        boresight Dec, J2000 deg
-
-    pa : np.float32
-        position angle of field (deg E of N)
-
-    observatory : str
-        observatory field observed from ('apo' or 'lco')
-
-    field_cadence : Cadence object
-        cadence associated with field
-
-    collisionBuffer : float
-        collision buffer for kaiju (in mm)
-
-    radius : np.float32
-        distance from racen, deccen to search for for targets (deg);
-        set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
-
-    flagdict : Dict
-        dictionary of assignment flag values
-
-    rsid2indx : Dict
-        dictionary linking rsid (key) to index of targets and assignments arrays.
-        (values). E.g. targets['rsid'][f.rsid2indx[rsid]] == rsid
-
-    targets : ndarray
-        array of targets, including 'ra', 'dec', 'x', 'y', 'within',
-        'priority', 'category', 'cadence', 'catalogid', 'rsid', 'fiberType'
-
-    assignments : ndarray or None
-        [len(targets)] array with 'assigned', 'satisfied', 
-          'robotID', 'rsflags', 'fiberType'
-        for each target; set to None prior to definition of field_cadence
-
-    required_calibrations : OrderedDict
-        dictionary with numbers of required calibration sources specified
-        for 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee'
-
-    calibrations : OrderedDict
-        dictionary of lists with numbers of calibration sources assigned
-        for each epoch for 'sky_boss', 'standard_boss', 'sky_apogee',
-        'standard_apogee'
-
-    _robot2indx : ndarray of int32 or None
-        [nrobots, nexp_total] array of indices into targets
-
-    _robotnexp : ndarray of int32 or None
-        [nrobots, nepochs] array of number of exposures available per epoch
-
-    _is_calibration : ndarray of bool
-        [len(targets)] list of whether the target is a calibration target
-
     Notes:
     -----
 
-    This class internally assumes that robotIDs are sequential integers starting at 1.
+    Subclass of Field, with all the same attributes and methods.
 
     Relative to Field, this class behaves as follows: 
+     * bright_neighbors is set to False
      * nocalib is set True, so calibrations are skipped, which allows a
        a substantial simplification.
      * nocollide is set True, so collisions are not considered

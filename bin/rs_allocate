@@ -131,10 +131,6 @@ if __name__ == '__main__':
                 field_options['valuegot'][indx] = (
                     field_options['valuegot_pct'][indx, :] *
                     scales_pct).sum()
-            # for f in field_options:
-             #    print("{c} : {v}",format(c=field_options['cadence'],
-             #                             v=field_options['valuegot']),
-             #          flush=True)
     except KeyError:
         print("No ValueRescale")
 

@@ -18,12 +18,9 @@ import os
 import sys
 import numpy as np
 import fitsio
-import kaiju
-import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy
 import robostrategy.header
-import robostrategy.field as field
 import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path

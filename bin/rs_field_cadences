@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: rs_field_cadences_straw
+# @Filename: rs_field_cadences
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -13,7 +13,6 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import configparser
 import argparse
 import os
 import sys
@@ -22,10 +21,8 @@ import astropy.coordinates as coords
 import astropy.units as u
 import fitsio
 import sdss_access.path
-import roboscheduler
 import robostrategy
 import robostrategy.header
-import robostrategy.field as field
 import robostrategy.params as params
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
@@ -53,7 +50,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Field assignment test for Galactic Genesis')
+        description='Make list of cadences to try for each field')
 
     parser.add_argument('-n', '--ncadence', dest='ncadence',
                         type=np.int32, help='max number of cadences',
@@ -70,19 +67,8 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
-    if('DarkPlane' in rsParams.cfg['Fields']):
-        pars = np.array(rsParams.cfg['Fields']['DarkPlane'].split())
-        darkPlaneObs = pars[2:]
-        if(observatory in darkPlaneObs):
-            darkPlane = True
-            darkPlaneNum = np.int32(pars[0])
-            darkPlaneLat = np.float64(pars[1])
-        else:
-            darkPlane = False
-            darkPlaneLat = 0
-    else:
-        darkPlane = False
-        darkPlaneLat = 0
+    darkPlane = False
+    darkPlaneLat = 0
 
     if('forceTessOB' in rsParams.cfg['Fields']):
         print("Forcing TESS OB fields")
@@ -116,7 +102,7 @@ if __name__ == '__main__':
         fieldid = fields_entry['fieldid']
         fieldtype = fields_entry['type'].strip()
 
-        print(fieldid, flush=True)
+        print("fieldid {f}: Setting cadences".format(f=fieldid), flush=True)
 
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
@@ -134,11 +120,6 @@ if __name__ == '__main__':
             field_cadences = []
         for cadence in cadences[cadences != 'FromTargets']:
             field_cadences.append(cadence)
-            if('bhm_aqmes_medium' in cadence):
-                print(fieldtype)
-                print(cadence)
-                print(target_cadences)
-                print(field_cadences)
 
         if(darkPlane & (np.abs(fields_b[ifield]) < darkPlaneLat)):
             field_cadences = ['mixed2_single_n2x1']
@@ -151,7 +132,6 @@ if __name__ == '__main__':
                     field_cadences = ['bright_8x2']
                 if('bright_8x1' in field_cadences):
                     field_cadences = ['bright_8x1']
-                print(field_cadences)
 
         all_field_cadences.append(np.array(field_cadences))
 

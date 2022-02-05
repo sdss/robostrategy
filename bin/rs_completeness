@@ -22,8 +22,6 @@ import fitsio
 import sdss_access.path
 import robostrategy
 import robostrategy.header
-import roboscheduler
-import kaiju
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -143,11 +141,13 @@ if __name__ == '__main__':
         outtargets_dtype = np.dtype(targets.dtype.descr +
                                     np.dtype([('satisfied_lco', np.int32),
                                               ('assigned_lco', np.int32),
+                                              ('extra_lco', np.int32),
                                               ('covered_lco', np.int32),
                                               ('allowed_lco', np.int32),
                                               ('incadence_lco', np.int32),
                                               ('satisfied_apo', np.int32),
                                               ('assigned_apo', np.int32),
+                                              ('extra_apo', np.int32),
                                               ('covered_apo', np.int32),
                                               ('allowed_apo', np.int32),
                                               ('incadence_apo', np.int32),
@@ -155,6 +155,7 @@ if __name__ == '__main__':
                                               ('nexps', np.int32),
                                               ('nepochs', np.int32),
                                               ('assigned', np.int32),
+                                              ('extra', np.int32),
                                               ('allowed', np.int32),
                                               ('incadence', np.int32),
                                               ('covered', np.int32)]).descr)
@@ -164,6 +165,7 @@ if __name__ == '__main__':
                                               ('nexps', np.int32),
                                               ('nepochs', np.int32),
                                               ('assigned', np.int32),
+                                              ('extra', np.int32),
                                               ('allowed', np.int32),
                                               ('incadence', np.int32),
                                               ('covered', np.int32)]).descr)
@@ -221,6 +223,8 @@ if __name__ == '__main__':
                                  satisfied['nepochs'])
         outtargets['assigned'] = (outtargets['assigned'] +
                                   satisfied['assigned'])
+        outtargets['extra'] = (outtargets['extra'] +
+                               satisfied['extra'])
         outtargets['allowed'] = (outtargets['allowed'] +
                                  satisfied['allowed'])
         outtargets['incadence'] = (outtargets['incadence'] +
@@ -235,6 +239,8 @@ if __name__ == '__main__':
                                  satisfied['satisfied'])
             outtargets[aname] = (outtargets[aname] +
                                  satisfied['assigned'])
+            outtargets[aname] = (outtargets[aname] +
+                                 satisfied['extra'])
             outtargets[lname] = (outtargets[lname] +
                                  satisfied['allowed'])
             outtargets[iname] = (outtargets[iname] +

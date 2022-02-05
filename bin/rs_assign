@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: rs_assign_ggsp
+# @Filename: rs_assign
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -13,18 +13,13 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import time
 import argparse
 import os
 import sys
 import numpy as np
-import astropy.coordinates as coordinates
-import astropy.units as units
 import fitsio
-import kaiju
 import robostrategy
 import robostrategy.header
-import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import robostrategy.params as params
@@ -37,8 +32,51 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 noclobber = False
 
+
 def make_assign_entry(f, fields_entry, field_cadence, utcadences,
                       utcartons, assign_dtype, nfield=False):
+    """Make an entry in the assignment table based on results
+
+    Parameters:
+    ----------
+
+    f : Field object
+        results for field
+
+    fields_entry : ndarray element
+        field information
+
+    field_cadence : str
+        cadence name for this entry
+
+    utcadences : ndarray of str
+        unique target cadence
+
+    utcartons : ndarray of str
+        unique target cartons
+
+    assign_dtype : numpy dtype
+        array definition for output
+
+    nfield : bool
+        is this an "nx1" field (default False)
+
+    Returns:
+    -------
+
+    assign_entry : ndarray element
+        assignment information
+
+    Notes:
+    -----
+
+    Figures out total value and number of targets satisfied, and those numbers
+    when separated by cadence, and when separated by carton.
+
+    For an nx1 field, makes sure it only counts a target as satisfied 
+    if there are enough exposures in this specific choice of n for 
+    field_cadence.
+"""
     assign_entry = np.zeros(1, dtype=assign_dtype)
 
     assign_entry['fieldid'] = fields_entry['fieldid']
@@ -49,6 +87,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     assign_entry['nvisit'] = nvisit
     assign_entry['ntargets'] = len(f.targets)
     target_got = np.zeros(len(f.targets), dtype=np.int32)
+
     if(nfield):
         target_assigned = np.zeros((len(f.targets), nvisit),
                                    dtype=np.int32)
@@ -96,11 +135,23 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
 
 
 def field_options(ifield):
+    """Check cadence options for this field
+
+    Parameters:
+    ----------
+
+    ifield : int
+        index into fields_array global variable
+
+    Notes:
+    -----
+
+    Writes rsFieldOptions file for the field
+"""
     assign_array = np.zeros(0, dtype=assign_dtype)
     fields_entry = fields_array[ifield]
     fieldid = fields_entry['fieldid']
-    if((fieldid % 1) == 0):
-        print(fieldid, flush=True)
+    print("fieldid {f}: Checking options ...".format(f=fieldid), flush=True)
 
     tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
                               observatory=observatory,
@@ -120,15 +171,10 @@ def field_options(ifield):
     f = field.FieldSpeedy(filename=field_target_file,
                           verbose=True, fieldid=fieldid)
 
-    try:
-        icadences = np.where(cadence_mask[ifield, :] != 0)[0]
-    except:
-        print(ifield, flush=True)
-        print(cadence_mask.shape)
-        sys.exit(1)
+    icadences = np.where(cadence_mask[ifield, :] != 0)[0]
     field_cadences = all_cadences[icadences]
 
-    print(field_cadences, flush=True)
+    print("fieldid {f}: Trying cadences: {fc}".format(f=fieldid, fc=field_cadences), flush=True)
 
     for full_field_cadence in field_cadences:
         last = full_field_cadence.split('_')[-1]
@@ -146,20 +192,23 @@ def field_options(ifield):
             field_cadence_base = ''
             field_cadence = full_field_cadence
 
-        print("{fc} {fi}".format(fc=field_cadence, fi=fieldid), flush=True)
+        print("fieldid {fi}: - on cadence {fc}".format(fc=field_cadence, fi=fieldid), flush=True)
 
+        print("fieldid {fi}: Assigning".format(fi=fieldid), flush=True)
         f.set_field_cadence(field_cadence)
         f.assign_science()
         f.decollide_unassigned()
 
-        print("assigned {fi}".format(fi=fieldid), flush=True)
-
+        print("fieldid {fi}: Making field-cadence entry(ies)".format(fi=fieldid), flush=True)
         last = field_cadence.split('-')[-1]
         if(n_field_cadence):
-            print("n_field_cadence", flush=True)
+            print("fieldid {fi}: {fc} is an nx1 case".format(fc=field_cadence, fi=fieldid), flush=True)
             assign_entries = np.zeros(ncadence - minn + 1, dtype=assign_dtype)
+
+            # 21x1 and longer, just take the results for the full cadence
+            # solution
             for indx in np.arange(21, ncadence + 1, dtype=np.int32):
-                print("indx={indx}".format(indx=indx), flush=True)
+                print("fieldid {fi}: {fc} indx={indx}".format(fc=field_cadence, fi=fieldid, indx=indx), flush=True)
                 fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
                                                  n=indx)
                 assign_entry = make_assign_entry(f, fields_entry,
@@ -174,7 +223,7 @@ def field_options(ifield):
             # case, but then you lose it for (say) 6x1. This here
             # assumes our longest cadenced nx1 case is 18x1
             for indx in np.arange(minn, 21, dtype=np.int32):
-                print("indx={indx}".format(indx=indx), flush=True)
+                print("fieldid {fi}: {fc} indx={indx}".format(fc=field_cadence, fi=fieldid, indx=indx), flush=True)
                 f.clear_field_cadence()
                 fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
                                                  n=indx)
@@ -186,7 +235,6 @@ def field_options(ifield):
                                                  utcartons, assign_dtype,
                                                  nfield=True)
                 assign_entries[indx - minn] = assign_entry
-                
 
             if(assign_entries['ngot'].max() == 0):
                 ikeep = 0
@@ -218,7 +266,7 @@ def field_options(ifield):
 
         f.clear_field_cadence()
 
-    # Write out at each field to allow resumption
+    # Write out at each field to allow parallelization
     hd = robostrategy.header.rsheader()
     fitsio.write(options_file, assign_array, header=hd, clobber=True)
 
@@ -239,7 +287,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Field assignment test for Galactic Genesis')
+        description='Generate outcomes for all cadence options for all fields')
 
     parser.add_argument('-n', '--ncadence', dest='ncadence',
                         type=np.int32, help='max number of cadences',
@@ -249,7 +297,7 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--start', dest='start',
                         type=np.int32, help='field to start', required=False,
                         default=0)
-    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
     parser.add_argument('-e', '--end', dest='end',
@@ -279,7 +327,7 @@ if __name__ == '__main__':
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
     fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
-    fgot_carton = 'mwm_gg_core'
+    fgot_carton = 'mwm_galactic_core'
 
     if('Rotate' in rsParams.cfg['Fields']):
         rotate = True

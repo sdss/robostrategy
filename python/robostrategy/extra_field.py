@@ -15,25 +15,9 @@ clist = roboscheduler.cadence.CadenceList()
 
 class extra_Field(Field):  #inherit all Field-defined stuff.
 
-    def _redefine_assignments(self):
-        # Expand dtype of assignments to include an 'extra' column
-
-        new_dtype = np.dtype(self.assignments_dtype.descr + [('extra',np.int32)])
-        new_assignments = np.zeros(len(self.assignments),dtype=new_dtype)
-        for name in self.assignments_dtype.names:
-            new_assignments[name] = self.assignments[name]
-
-        self.assignments_dtype = new_dtype
-        self.assignments = new_assignments
-
-        return
-
     def assign_spares(self):
         ''' This is the main code that defines all the reassignment that will happen
         in a certain order'''
-
-        # First, redefine assignments to include 'extra'
-        self._redefine_assignments()
 
         # Make the assignments.
         # Return value is either True if any extra assignments occurred or False if not

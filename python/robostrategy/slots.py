@@ -32,8 +32,18 @@ class Slots(object):
     observatory : str
         observatory to calculate slots for, 'apo' or 'lco' (default 'apo')
 
-    duration : float, np.float32
-        duration of a single nominal exposures, in hours (default 18. / 60.)
+    exptime : float, np.float32
+        duration of a single nominal exposure, in hours (default 15. / 60.)
+
+    exposure_overhead : float, np.float32
+        overhead of a single exposure, in hours (default 3. / 60.)
+
+    schedule : str
+        name of schedule to use (default 'normal')
+
+    fclear : float, np.float32
+        fraction of clear time; note this does not change the numbers in the
+        slots array (default 0.5 if observatory='apo', 0.7 if observatory='lco')
 
     Attributes:
     ----------
@@ -53,11 +63,21 @@ class Slots(object):
     observatory : str
         observatory to calculate slots for, 'apo' or 'lco'
 
-    duration : float, np.float32
-        duration of a single nominal exposures, in hours
+    exptime : float, np.float32
+        duration of a single nominal exposure, in hours
+
+    exposure_overhead : float, np.float32
+        overhead of a single exposure, in hours
+
+    schedule : str
+        name of schedule to use
 
     fclear : float, np.float32
-        clear fraction to assume (0.5 for 'apo', 0.7 for 'lco')
+        fraction of clear time; note this does not change the numbers in the
+        slots array
+
+    duration : float, np.float32
+        duration of a single nominal exposure plus overhead, in hours
 
     slots : ndarray of np.float32
         number of available hours in LST, sky brightness slots
@@ -74,12 +94,11 @@ class Slots(object):
     -----
 
     fclear is not applied to the number of hours in slots. It is there
-    just as a place to set the assumption of clear hours. This perhaps
-    better lives in roboscheduler somewhere.
-
+    just as a place to set the assumption of clear hours for the allocation
+    code to consult.
 """
     def __init__(self, nlst=24, skybrightness=[0., 0.35, 1.],
-                 observatory='apo', exptime=15./60.,
+                 observatory='apo', exptime=15. / 60.,
                  exposure_overhead=3. / 60.,
                  schedule='normal', fclear=None):
         self.nlst = nlst
@@ -111,9 +130,10 @@ class Slots(object):
         shape (nlst, nskybrightness).
 
         Uses roboscheduler to step through every night of the survey
-        and count the number of hours per LST and skybrightness. (Does NOT
-        apply the fclear factor).
-        """
+        and count the number of hours per LST and skybrightness.
+
+        Does NOT apply the fclear factor.
+"""
         self.slots = np.zeros((self.nlst, self.nskybrightness),
                               dtype=np.float32)
         scheduler = roboscheduler.scheduler.Scheduler(observatory=self.observatory,
@@ -159,7 +179,6 @@ class Slots(object):
         and SB0..SB[NSB+1]) with object attributes.
 
         Writes slots attribute as a binary image.
-
 """
         hdr = dict()
         hdr['STRATVER'] = robostrategy.__version__

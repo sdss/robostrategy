@@ -16,11 +16,9 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
-import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
 import sdss_access.path
-import fitsio
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 

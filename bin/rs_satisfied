@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Sept 26, 2018
-# @Filename: rs_assignments
+# @Filename: rs_satisfied
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -97,6 +97,7 @@ if __name__ == '__main__':
                                 ('incadence', np.int32),
                                 ('satisfied', np.int32),
                                 ('assigned', np.int32),
+                                ('extra', np.int32),
                                 ('nexps', np.int32),
                                 ('nepochs', np.int32)])
     satisfied = np.zeros(len(full_targets), dtype=satisfied_dtype)
@@ -144,6 +145,8 @@ if __name__ == '__main__':
                                             assignments['satisfied'][iin])
             satisfied['assigned'][isat] = (satisfied['assigned'][isat] +
                                            assignments['assigned'][iin])
+            satisfied['extra'][isat] = (satisfied['extra'][isat] +
+                                        assignments['extra'][iin])
             satisfied['incadence'][isat] = (satisfied['incadence'][isat] +
                                             targets['incadence'][iin])
             if(len(assignments['allowed'].shape) > 1):

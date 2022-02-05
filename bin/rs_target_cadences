@@ -13,22 +13,15 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-import time
 import argparse
 import os
 import sys
 import numpy as np
-import astropy.coordinates as coordinates
-import astropy.units as units
 import fitsio
 import robostrategy
 import robostrategy.header
-import roboscheduler
 import roboscheduler.cadence as cadence
-import robostrategy.field as field
-import robostrategy.params as params
 import sdss_access.path
-import multiprocessing
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -38,7 +31,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Field assignment test for Galactic Genesis')
+        description='Make list of unique cartons and cadences')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
@@ -76,9 +69,10 @@ if __name__ == '__main__':
     cadence_dtype = [('cadence', np.unicode_, 30)]
     cadence_arr = np.zeros(len(utcadences), dtype=cadence_dtype)
     cadence_arr['cadence'] = utcadences
-    fitsio.write(tcadence_file, cadence_arr, header=hd, clobber=True)
+    fitsio.write(tcadence_file, cadence_arr, header=hd, extname='CADENCES',
+                 clobber=True)
 
     carton_dtype = [('carton', np.unicode_, 30)]
     carton_arr = np.zeros(len(utcartons), dtype=carton_dtype)
     carton_arr['carton'] = utcartons
-    fitsio.write(tcadence_file, carton_arr, clobber=False)
+    fitsio.write(tcadence_file, carton_arr, extname='CARTONS', clobber=False)

@@ -157,30 +157,6 @@ if __name__ == '__main__':
         cadencelist.cadences[name].delta_min[:] = -1.
         cadencelist.cadences[name].delta_max[:] = -1.
 
-#
-#    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-#                            'data', 'v0.5-cadence-hack.fits')
-#    cadencelist.fromfits(hackfile)
-
-#    hackfile = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-#                            'data', 'v0.5-field-cadences-hack.cfg')
-#    cadencelist.fromcfg(hackfile)
-
-#    for c in cadencelist.cadences:
-#        if(c[0:6] == 'mixed2'):
-#            cadencelist.cadences[c].delta[0:2] = cadencelist.cadences['dark_2x1'].delta
-#            cadencelist.cadences[c].delta_min[0:2] = cadencelist.cadences['dark_2x1'].delta_min
-#            cadencelist.cadences[c].delta_max[0:2] = cadencelist.cadences['dark_2x1'].delta_max
-#            cadencelist.cadences[c].max_length[0:2] = cadencelist.cadences['dark_2x1'].max_length
-
-    if('ExtraFile' in rsParams.cfg['Cadences']):
-        print("Extra cadence files:")
-        extrafiles = rsParams.cfg.get('Cadences', 'ExtraFile').split()
-        for extrafile in extrafiles:
-            print(" " + extrafile)
-            cadencelist.fromcfg(os.path.join(os.getenv('RSCONFIG_DIR'),
-                                             'etc', extrafile))
-
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadences_array = cadencelist.toarray()
@@ -212,7 +188,8 @@ if __name__ == '__main__':
                     c = cadencelist.cadence_consistency(cn, 'dark_138x8')
                 c = cadencelist.cadence_consistency(cn, 'dark_100x8')
 
-    # Now really hack the cache!
+    # Now we allow robostrategy to enforce certain kinds 
+    # of cadence consistency rules.
     fp = open(os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                            'cadence-consistency-0.1.0.json'), "r")
     ccs = fp.read()

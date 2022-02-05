@@ -29,6 +29,20 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 def count_spares(indx):
+    """Count spares for a field
+
+    Parameters:
+    ----------
+
+    indx : int
+        index into allocate.field_array
+
+    Notes:
+    -----
+
+    Writes rsFieldSpares file
+
+"""
     fieldid = allocate.field_array['fieldid'][indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
@@ -110,7 +124,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Final assignment based on allocation')
+        description='Counts spare fibers in fields')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)

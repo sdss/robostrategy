@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: rs_fields_minimal
+# @Filename: rs_fields
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -27,9 +27,7 @@ import sdss_access.path
 import astropy.coordinates as coords
 import astropy.units as units
 
-user_robo_data_dir = os.getenv('ROBOSTRATEGY_DATA')
-sdss_path = sdss_access.path.Path(release='sdss5')
-os.environ['ROBOSTRATEGY_DATA'] = user_robo_data_dir # Above call overwrites user specified directory
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 if __name__ == '__main__':
@@ -125,20 +123,6 @@ if __name__ == '__main__':
         tmp_fields_south_array['type'] = 'AllSkySloane'
         fields_south_array = np.append(fields_south_array,
                                        tmp_fields_south_array)
-
-    if('eROSITA_DE' in rsParams.cfg['Fields']):
-        c = coords.SkyCoord(fields_north_array['racen'] * units.deg,
-                            fields_north_array['deccen'] * units.deg)
-        l = c.galactic.l.value
-        b = c.galactic.b.value
-        iede = np.where((l > 180.) & (l < 360.))[0]
-        fields_north_array['type'][iede] = 'eROSITA_DE'
-        c = coords.SkyCoord(fields_south_array['racen'] * units.deg,
-                            fields_south_array['deccen'] * units.deg)
-        l = c.galactic.l.value
-        b = c.galactic.b.value
-        iede = np.where((l > 180.) & (l < 360.))[0]
-        fields_south_array['type'][iede] = 'eROSITA_DE'
 
     if('BHMAqmesWide2' in rsParams.cfg['Fields']):
         in_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
@@ -239,29 +223,6 @@ if __name__ == '__main__':
         ino = np.where(obs == 'apo')[0]
         fields_north_array = np.append(fields_north_array,
                                        tmp_fields_rm[ino])
-
-    if('MWMTESS_OBAF' in rsParams.cfg['Fields']):
-        in_file_t = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                 'data',
-                                 'mwm-tess_obaf-{obs}-{v}.fits')
-        in_file = in_file_t.format(v=rsParams.cfg['Fields']['MWM'],
-                                   obs='apo')
-        tessobaf_north = fitsio.read(in_file)
-        for i in np.arange(len(tessobaf_north)):
-            d2 = ((fields_north_array['racen'] - tessobaf_north['racen'][i])**2 *
-                  np.cos(tessobaf_north['deccen'][i] * np.pi / 180.)**2 +
-                  (fields_north_array['deccen'] - tessobaf_north['deccen'][i])**2)
-            imatch = d2.argmin()
-            fields_north_array['type'][imatch] = 'MWMTESS_OBAF'
-        in_file = in_file_t.format(v=rsParams.cfg['Fields']['MWM'],
-                                   obs='lco')
-        tessobaf_south = fitsio.read(in_file)
-        for i in np.arange(len(tessobaf_south)):
-            d2 = ((fields_south_array['racen'] - tessobaf_south['racen'][i])**2 *
-                  np.cos(tessobaf_south['deccen'][i] * np.pi / 180.)**2 +
-                  (fields_south_array['deccen'] - tessobaf_south['deccen'][i])**2)
-            imatch = d2.argmin()
-            fields_south_array['type'][imatch] = 'MWMTESS_OBAF'
 
     fields_north_array['fieldid'] = np.arange(len(fields_north_array),
                                               dtype=np.int32) + 1

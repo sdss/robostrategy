@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: rs_assign_ggsp
+# @Filename: rs_field_cadences_plot
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Field assignment test for Galactic Genesis')
+        description='Make plots of field cadences')
 
     parser.add_argument('-n', '--ncadence', dest='ncadence',
                         type=np.int32, help='max number of cadences',

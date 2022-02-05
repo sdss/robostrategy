@@ -24,11 +24,12 @@ import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Gather numbers per carton both sites')
+        description='Make web page with carton priorities')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
@@ -58,6 +59,8 @@ if __name__ == '__main__':
                                   observatory='apo')
     if(opentargets):
         targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
+    if(filler):
+        targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
     targets = fitsio.read(targets_file)
 
     priorities = np.unique(targets['priority'])
@@ -88,6 +91,8 @@ if __name__ == '__main__':
                                                observatory='apo'))
     if(opentargets):
         html_file = os.path.join(html_path, 'rs-open-priorities.html')
+    elif(filler):
+        html_file = os.path.join(html_path, 'rs-filler-priorities.html')
     else:
         html_file = os.path.join(html_path, 'rs-priorities.html')
 

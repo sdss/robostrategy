@@ -160,7 +160,7 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--coordinate', dest='coordinate',
                         default=False, action='store_true',
                         help='coordinate target overlap')
-    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',

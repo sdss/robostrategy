@@ -18,37 +18,33 @@ import os
 import sys
 import numpy as np
 import fitsio
-import robostrategy
 import robostrategy.header
-import roboscheduler
-import robostrategy.field as field
-import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
-def make_count_entry(f, fields_entry, utcadences,
+def make_count_entry(targets, fields_entry, utcadences,
                      utcartons, count_dtype):
     count_entry = np.zeros(1, dtype=count_dtype)
 
     count_entry['fieldid'] = fields_entry['fieldid']
     count_entry['racen'] = fields_entry['racen']
     count_entry['deccen'] = fields_entry['deccen']
-    count_entry['ntargets'] = len(f.targets)
-    iok = np.where(f.targets['within'])[0]
+    count_entry['ntargets'] = len(targets)
+    iok = np.where(targets['within'])[0]
     count_entry['nwithin'] = len(iok)
 
     for indx in np.arange(len(utcadences), dtype=np.int32):
         utcadence = utcadences[indx]
-        ic = np.where(f.targets['cadence'] == utcadence)[0]
-        count_entry['nwithin_pcd'][0, indx] = f.targets['within'][ic].sum()
+        ic = np.where(targets['cadence'] == utcadence)[0]
+        count_entry['nwithin_pcd'][0, indx] = targets['within'][ic].sum()
 
     for indx in np.arange(len(utcartons), dtype=np.int32):
         utcarton = utcartons[indx]
-        ip = np.where(f.targets['carton'] == utcarton)[0]
-        count_entry['nwithin_pct'][0, indx] = f.targets['within'][ip].sum()
+        ip = np.where(targets['carton'] == utcarton)[0]
+        count_entry['nwithin_pct'][0, indx] = targets['within'][ip].sum()
 
     return(count_entry)
 
@@ -83,23 +79,17 @@ if __name__ == '__main__':
         fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
 
-    targets_file = sdss_path.full('rsTargets', plan=plan,
-                                  observatory=observatory)
-    targets_all = fitsio.read(targets_file)
+    target_cadence_file = sdss_path.full('rsTargets', plan=plan,
+                                         observatory=observatory)
+    target_cadence_file = target_cadence_file.replace('rsTargets',
+                                                      'rsTargetCadences')
 
-    cadencelist = cadence.CadenceList(skybrightness_only=True)
-    cadences_file = sdss_path.full('rsCadences', plan=plan,
-                                   observatory=observatory)
-    cadencelist.fromfits(filename=cadences_file, unpickle=True)
-
-    # Make list of all unique target cadences
-    tcadences = [x.strip() for x in targets_all['cadence']]
-    utcadences = np.unique(np.array(tcadences))
+    carr = fitsio.read(target_cadence_file, ext='CADENCES')
+    utcadences = carr['cadence']
     nutcadences = len(utcadences)
 
-    # Make list of all unique target cartons
-    tcartons = [x.strip() for x in targets_all['carton']]
-    utcartons = np.unique(np.array(tcartons))
+    carr = fitsio.read(target_cadence_file, ext='CARTONS')
+    utcartons = carr['carton']
     nutcartons = len(utcartons)
 
     count_dtype = [('fieldid', np.int32),
@@ -115,8 +105,7 @@ if __name__ == '__main__':
     for ifield in np.arange(len(fields_array)):
         fields_entry = fields_array[ifield]
         fieldid = fields_entry['fieldid']
-        if((fieldid % 1) == 0):
-            print(fieldid, flush=True)
+        print("fieldid {f}: Counting!".format(f=fieldid), flush=True)
 
         if(rotate):
             pa = np.float32(fields_entry[paname])
@@ -126,9 +115,9 @@ if __name__ == '__main__':
         field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
                                            observatory=observatory,
                                            fieldid=fieldid)
-        f = field.Field(filename=field_target_file)
+        targets = fitsio.read(field_target_file, ext='TARGET')
 
-        ce = make_count_entry(f, fields_entry, utcadences,
+        ce = make_count_entry(targets, fields_entry, utcadences,
                               utcartons, count_dtype)[0]
         count_array[ifield] = ce
 

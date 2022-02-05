@@ -16,21 +16,96 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import multiprocessing
 import numpy as np
 import healpy
 import fitsio
 import sdss_access.path
 import robostrategy
 import robostrategy.header
-import roboscheduler
-import kaiju
-import robostrategy.field as field
 import robostrategy.params as params
 import roboscheduler.cadence as cadence
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
+noclobber = False
+
+
+def field_target_filename(fieldid):
+    field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
+                                       observatory=observatory,
+                                       fieldid=fieldid)
+    if(opentargets):
+        field_target_file = field_target_file.replace('Targets', 'TargetsOpen')
+    if(filler):
+        field_target_file = field_target_file.replace('Targets', 'TargetsFiller')
+    return(field_target_file)
+
+
+def make_field_targets(indx):
+    import robostrategy.field as field
+
+    fields_entry = fields_array[indx]
+    fieldid = fields_entry['fieldid']
+    
+    field_target_file = field_target_filename(fieldid)
+    if(noclobber is True):
+        if(os.path.exists(field_target_file)):
+            print("fieldid {f}: rsFieldTargets file exists already".format(f=fieldid))
+            return
+
+    print("fieldid {f}: Starting search in healpix".format(f=fieldid), flush=True)
+
+    hpix_field = healpy.pixelfunc.ang2pix(nside, fields_entry['racen'],
+                                          fields_entry['deccen'],
+                                          lonlat=True)
+    neighbors = healpy.pixelfunc.get_all_neighbours(nside, hpix_field)
+    hpix_check = np.append(neighbors, np.array([hpix_field]))
+
+    keep = np.zeros(healpy.pixelfunc.nside2npix(nside), dtype=np.int32)
+    keep[hpix_check] = 1
+    icheck = np.where(keep[hpix])[0]
+
+    print("fieldid {f}: Limiting to circle".format(f=fieldid), flush=True)
+
+    # From Meeus Ch. 17
+    deccen_rad = fields_entry['deccen'] * np.pi / 180.
+    racen_rad = fields_entry['racen'] * np.pi / 180.
+    dec_rad = targets_all['dec'][icheck] * np.pi / 180.
+    ra_rad = targets_all['ra'][icheck] * np.pi / 180.
+    x = (np.cos(deccen_rad) * np.sin(dec_rad) -
+         np.sin(deccen_rad) * np.cos(dec_rad) *
+         np.cos(ra_rad - racen_rad))
+    y = np.cos(dec_rad) * np.sin(ra_rad - racen_rad)
+    z = (np.sin(deccen_rad) * np.sin(dec_rad) +
+         np.cos(deccen_rad) * np.cos(dec_rad) *
+         np.cos(ra_rad - racen_rad))
+    d_rad = np.arctan2(np.sqrt(x**2 + y**2), z)
+    d_deg = d_rad * 180. / np.pi
+
+    indx = np.where(d_deg < fields_entry['radius'])[0]
+    icircle = icheck[indx]
+
+    targets = targets_all[icircle]
+
+    if(rotate):
+        pa = np.float32(fields_entry[paname])
+    else:
+        pa = 0.
+
+    print("fieldid {f}: Putting in field format".format(f=fieldid), flush=True)
+
+    f = field.Field(fieldid=fieldid,
+                    racen=fields_entry['racen'],
+                    deccen=fields_entry['deccen'],
+                    observatory=observatory, pa=pa,
+                    verbose=True)
+    f.targets_fromarray(target_array=targets)
+
+    print("fieldid {f}: Writing to file".format(f=fieldid), flush=True)
+    f.tofits(field_target_file)
+    return
 
 if __name__ == '__main__':
 
@@ -49,12 +124,30 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
+                        action='store_true', default=False, required=False,
+                        help='do not clobber')
+    parser.add_argument('-M', '--nomultiprocessing', dest='nomultiprocessing',
+                        action='store_true', default=False, required=False,
+                        help='do not multiprocess')
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     start = args.start
     end = args.end
+    noclobber = args.noclobber
+    opentargets = args.opentargets
+    filler = args.filler
+    nomultiprocessing = args.nomultiprocessing
 
     rsParams = params.RobostrategyParams(plan=plan)
     if('Rotate' in rsParams.cfg['Fields']):
@@ -63,11 +156,6 @@ if __name__ == '__main__':
     else:
         rotate = False
         paname = ''
-
-    if('collisionBuffer' in rsParams.cfg['Assignment']):
-        collisionBuffer = np.float32(rsParams.cfg['Assignment']['collisionBuffer'])
-    else:
-        collisionBuffer = None
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
@@ -86,7 +174,25 @@ if __name__ == '__main__':
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
+    if(opentargets):
+        targets_file = targets_file.replace('Targets', 'TargetsOpen')
+    if(filler):
+        targets_file = targets_file.replace('Targets', 'TargetsFiller')
     targets_all = fitsio.read(targets_file)
+
+    nside = 32
+    hpix = healpy.pixelfunc.ang2pix(nside, targets_all['ra'],
+                                    targets_all['dec'], lonlat=True)
+
+    ifields = np.arange(len(fields_array), dtype=int)
+    if(nomultiprocessing is False):
+        with multiprocessing.Pool(16, maxtasksperchild=1) as pool:
+            pool.map(make_field_targets, ifields)
+    else:
+        for ifield in ifields:
+            make_field_targets(ifield)
+
+    print("Evaluating field coverage", flush=True)
 
     targets_covered_dtype = [('rsid', np.int64),
                              ('catalogid', np.int64),
@@ -104,78 +210,41 @@ if __name__ == '__main__':
     targets_covered['ra'] = targets_all['ra']
     targets_covered['dec'] = targets_all['dec']
 
-    nside = 32
-    hpix = healpy.pixelfunc.ang2pix(nside, targets_all['ra'],
-                                    targets_all['dec'], lonlat=True)
+    rsid2indx = dict()
+    for indx, t in enumerate(targets_covered):
+        rsid2indx[t['rsid']] = indx
 
     for fields_entry in fields_array:
+
         fieldid = fields_entry['fieldid']
-        if((fieldid % 1) == 0):
-            print(fieldid)
+        print("fieldid {f}: Gathering coverage information".format(f=fieldid))
 
-        hpix_field = healpy.pixelfunc.ang2pix(nside, fields_entry['racen'],
-                                              fields_entry['deccen'],
-                                              lonlat=True)
-        neighbors = healpy.pixelfunc.get_all_neighbours(nside, hpix_field)
-        hpix_check = np.append(neighbors, np.array([hpix_field]))
+        field_target_file = field_target_filename(fieldid)
 
-        keep = np.zeros(healpy.pixelfunc.nside2npix(nside), dtype=np.int32)
-        keep[hpix_check] = 1
-        icheck = np.where(keep[hpix])[0]
+        targets = fitsio.read(field_target_file, ext='TARGET')
 
-        # From Meeus Ch. 17
-        deccen_rad = fields_entry['deccen'] * np.pi / 180.
-        racen_rad = fields_entry['racen'] * np.pi / 180.
-        dec_rad = targets_all['dec'][icheck] * np.pi / 180.
-        ra_rad = targets_all['ra'][icheck] * np.pi / 180.
-        x = (np.cos(deccen_rad) * np.sin(dec_rad) -
-             np.sin(deccen_rad) * np.cos(dec_rad) *
-             np.cos(ra_rad - racen_rad))
-        y = np.cos(dec_rad) * np.sin(ra_rad - racen_rad)
-        z = (np.sin(deccen_rad) * np.sin(dec_rad) +
-             np.cos(deccen_rad) * np.cos(dec_rad) *
-             np.cos(ra_rad - racen_rad))
-        d_rad = np.arctan2(np.sqrt(x**2 + y**2), z)
-        d_deg = d_rad * 180. / np.pi
+        itargets = np.array([rsid2indx[x] for x in targets['rsid']],dtype=int)
 
-        indx = np.where(d_deg < fields_entry['radius'])[0]
-        icircle = icheck[indx]
+        within_circle = targets_covered['within_circle'][itargets]
+        targets_covered['within_circle_fields'][itargets, within_circle] = fieldid
+        targets_covered['within_circle'][itargets] = within_circle + 1
 
-        targets = targets_all[icircle]
-
-        within_circle = targets_covered['within_circle'][icircle]
-        targets_covered['within_circle_fields'][icircle,
-                                                within_circle] = fieldid
-        targets_covered['within_circle'][icircle] = within_circle + 1
-
-        if(rotate):
-            pa = np.float32(fields_entry[paname])
-        else:
-            pa = 0.
-
-        f = field.Field(fieldid=fieldid,
-                        racen=fields_entry['racen'],
-                        deccen=fields_entry['deccen'],
-                        collisionBuffer=collisionBuffer,
-                        observatory=observatory, pa=pa)
-        f.targets_fromarray(target_array=targets)
-        ihex = icheck[indx[np.where(f.targets['within'])[0]]]
+        ihex = np.where(targets['within'])[0]
+        ihex = itargets[ihex]
         within_hex = targets_covered['within_hex'][ihex]
         targets_covered['within_hex_fields'][ihex, within_hex] = fieldid
         targets_covered['within_hex'][ihex] = within_hex + 1
 
-        field_target_file = sdss_path.full('rsFieldTargets', plan=plan,
-                                           observatory=observatory,
-                                           fieldid=fieldid)
-        print(field_target_file)
-        f.tofits(field_target_file)
-
     targets_covered_base = 'rsTargetsCovered-{plan}-{obs}.fits'
+    if(opentargets):
+        targets_covered_base = targets_covered_base.replace('Targets', 'TargetsOpen')
+    if(filler):
+        targets_covered_base = targets_covered_base.replace('Targets', 'TargetsFiller')
+
     targets_covered_base = targets_covered_base.format(plan=plan,
                                                        obs=observatory)
     targets_covered_file = os.path.join(os.path.dirname(targets_file),
                                         targets_covered_base)
 
     hdr = robostrategy.header.rsheader()
-    fitsio.write(targets_covered_file, targets_covered,
-                 header=hdr, clobber=True)
+    fitsio.write(targets_covered_file, targets_covered, header=hdr, clobber=True)

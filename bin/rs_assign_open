@@ -76,7 +76,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Final assignment based on allocation')
+        description='Open fiber assignment based on allocation')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
-    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
     parser.add_argument('-f', '--from-reassign', dest='fromreassign',

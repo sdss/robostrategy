@@ -19,14 +19,11 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import argparse
 import sys
 import multiprocessing
-import datetime
 import numpy as np
 import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdss_access.path
-import pdb
 import fitsio
-import time
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -38,12 +35,11 @@ def prep_field(indx):
     import robostrategy.field as field
 
     fieldid = allocate['fieldid'][indx]
-    if((fieldid % 1) == 0):
-        print(fieldid, flush=True)
+    print("fieldid {f}: Prepping field".format(f=fieldid), flush=True)
 
     field_cadence = allocate['cadence'][indx].strip()
     
-    print("Reading target file", flush=True)
+    print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
@@ -59,15 +55,16 @@ def prep_field(indx):
                     fieldid=fieldid, collisionBuffer=collisionBuffer,
                     bright_neighbors=True, allgrids=False)
 
-    print("Set field cadence")
+    print("fieldid {f}: Set field cadence".format(f=fieldid), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
     f.targets['cadence'][icalib] = field_cadence
     f.set_field_cadence(field_cadence)
 
-    print("Write prepped file", flush=True)
+    print("fieldid {f}: Write prepped file".format(f=fieldid), flush=True)
     f.tofits(field_prep_file)
 
-    print("Done fieldid={f}".format(f=fieldid), flush=True)
+    print("fieldid {f}: Done".format(f=fieldid), flush=True)
+    return
 
 
 if __name__ == '__main__':
@@ -87,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
-    parser.add_argument('-k', '--no-clobber', dest='noclobber',
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
@@ -130,6 +127,3 @@ if __name__ == '__main__':
     else:
         with multiprocessing.Pool(8) as pool:
             pool.map(prep_field, ikeep)
-
-    print('DONE: rs_assign_prep')
-    print(time.ctime(time.time()))
