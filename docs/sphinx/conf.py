@@ -115,8 +115,8 @@ intersphinx_mapping = {'python': ('https://docs.python.org/3.6', None),
 
 autodoc_mock_imports = ['_tkinter', 'roboscheduler',
                         'roboscheduler.cadence', 'fitsio',
-                        'mugatu', 'astropy',
-                        'mugatu.designmode',
+                        'mugatu', 'astropy', 'peewee',
+                        'mugatu.designmode', 'PyAstronomy',
                         'kaiju', 'kaiju.robotGrid',
                         'coordio', 'coordio.time', 'coordio.utils']
 autodoc_member_order = 'groupwise'
