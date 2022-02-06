@@ -83,13 +83,6 @@ class Slots(object):
         number of available hours in LST, sky brightness slots
         [nlst, nskybrightness], created only when fill() is called
 
-    Methods
-    -------
-
-    fill() : fills slots array with number of available hours
-    tofits() : write slots information in class to a FITS file
-    fromfits() : set object from information in a FITS file
-
     Notes
     -----
 

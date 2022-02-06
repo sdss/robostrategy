@@ -83,14 +83,8 @@ class Sloane(object):
     dec : np.float64
         declination (deg)
 
-    Methods
-    -------
-
-    plot() : plot ra and dec
-    squash() : squash in Galactic latitude
-
-    Comments
-    --------
+    Notes
+    -----
 
     Only a limited set of coverings are available. If "n" is outside this
     set, ra and dec are set to None.
@@ -153,8 +147,8 @@ class Sloane(object):
         func : function
             function taking (l, b), returning (newl, newb)
 
-        Comments
-        --------
+        Notes
+        -----
 
         By default, squashes just in b to make denser tiling
         in Galactic plane.
