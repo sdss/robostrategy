@@ -40,11 +40,6 @@ class ObsTime(object):
     midnights : list of datetime.datetime objects
         [365] datetime format for each local standard midnight of year
 
-    Methods
-    -------
-
-    nominal(lst=) : returns nominal observing time for a given RA
-
     Notes
     -----
 

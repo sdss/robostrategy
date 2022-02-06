@@ -45,7 +45,7 @@ class Slots(object):
         fraction of clear time; note this does not change the numbers in the
         slots array (default 0.5 if observatory='apo', 0.7 if observatory='lco')
 
-    Attributes:
+    Attributes
     ----------
 
     nlst : int, np.int32
