@@ -2417,11 +2417,11 @@ class Field(object):
         So to assign these spare exposures one would do something like
         the following:
 
-        status = f.available_robot_exposures(robotID=robotID, rsid=rsid)
-        iassignable = np.where(status.assignable)[0]
-        for iexp in iassignable:
-            f.unassign_assignable(status=status, iexp=iexp)
-            f.assign_robot_exposure(robotID=robotID, rsid=rsid, iexp=iexp)
+         status = f.available_robot_exposures(robotID=robotID, rsid=rsid)
+         iassignable = np.where(status.assignable)[0]
+         for iexp in iassignable:
+             f.unassign_assignable(status=status, iexp=iexp)
+             f.assign_robot_exposure(robotID=robotID, rsid=rsid, iexp=iexp)
 
 """
         iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
