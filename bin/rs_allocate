@@ -58,6 +58,7 @@ if __name__ == '__main__':
                                                      'EpochOverhead'))
     else:
         epoch_overhead = 5.
+    epoch_overhead = epoch_overhead / 60.
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -78,8 +79,11 @@ if __name__ == '__main__':
                                  observatory=observatory)
     if(rotate):
         fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
+
+    print("Reading fields", flush=True)
     fields_array = fitsio.read(fields_file)
 
+    print("Reading options for fields", flush=True)
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
     field_options = fitsio.read(options_file)
@@ -95,7 +99,7 @@ if __name__ == '__main__':
         if('PerCarton' in rsParams.cfg['ValueRescale']):
             rescale = 'percarton'
         if(rescale == 'percadence'):
-            print("Rescale Per Cadence")
+            print("Rescale Per Cadence", flush=True)
             scales_pcd = np.ones(len(focadences))
             if('default' in rsParams.cfg['ValueRescale']):
                 scales_pcd = (np.zeros(len(focadences)) +
@@ -112,7 +116,7 @@ if __name__ == '__main__':
                     field_options['valuegot_pcd'][indx, :] *
                     scales_pcd).sum()
         if(rescale == 'percarton'):
-            print("Rescale Per Carton")
+            print("Rescale Per Carton", flush=True)
             scales_pct = np.ones(len(focartons))
             if('default' in rsParams.cfg['ValueRescale']):
                 scales_pct = (np.zeros(len(focartons)) +
@@ -143,10 +147,12 @@ if __name__ == '__main__':
                 minimum_ntargets[carton] = minnum
     print(minimum_ntargets)
 
+    print("Reading field slots", flush=True)
     field_slots_file = sdss_path.full('rsFieldSlots', plan=plan,
                                       observatory=observatory)
     field_slots = fitsio.read(field_slots_file)
 
+    print("Reading slots", flush=True)
     slots_file = sdss_path.full('rsSlots', plan=plan,
                                 observatory=observatory)
     slots = robostrategy.slots.Slots(observatory=observatory)
@@ -180,6 +186,8 @@ if __name__ == '__main__':
     else:
         print("Must specify cost model.")
         sys.exit(1)
+
+    print("Instantiate allocate object", flush=True)
     allocate = allocate_class(slots=slots,
                               field_options=field_options,
                               field_slots=field_slots,
@@ -192,16 +200,24 @@ if __name__ == '__main__':
                               cadences=focadences,
                               minimum_ntargets=minimum_ntargets,
                               epoch_overhead=epoch_overhead)
+
+    print("Construct allocate problem", flush=True)
     allocate.construct()
+
+    print("Solve allocate problem", flush=True)
     status = allocate.solve()
 
     if(status != 0):
         print("Allocation failed.")
         sys.exit(1)
 
+    print("Construct time minimization problem", flush=True)
     allocate.construct(fix_cadence=True)
+
+    print("Solve time minimization problem", flush=True)
     allocate.solve(minimize_time=True)
 
+    print("Output results", flush=True)
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
     allocate.tofits(allocate_file)

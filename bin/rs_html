@@ -228,12 +228,11 @@ if __name__ == '__main__':
         rsinfo['cartons'].append(cg)
 
     rsinfo['spares'] = dict()
-    rsinfo['spares']['apo'] = dict()
-    rsinfo['spares']['apo']['boss'] = spares['apo']['nboss_spare'].sum()
-    rsinfo['spares']['apo']['apogee'] = spares['apo']['napogee_spare'].sum()
-    rsinfo['spares']['lco'] = dict()
-    rsinfo['spares']['lco']['boss'] = spares['lco']['nboss_spare'].sum()
-    rsinfo['spares']['lco']['apogee'] = spares['lco']['napogee_spare'].sum()
+
+    for observatory in observatories:
+        rsinfo['spares'][obs] = dict()
+        rsinfo['spares'][obs]['boss'] = spares[obs]['nboss_spare'].sum()
+        rsinfo['spares'][obs]['apogee'] = spares[obs]['napogee_spare'].sum()
 
     template = env.get_template('rs-template.html')
     page = template.render(rsinfo)

@@ -192,7 +192,7 @@ class AllocateLST(object):
         else:
             self.fromfits(filename=filename)
         if(self.epoch_overhead is None):
-            self.epoch_overhead = 5.
+            self.epoch_overhead = 5. / 60.
         self.minimum_ntargets = minimum_ntargets
         self.seed = seed
         np.random.seed(self.seed)
@@ -207,8 +207,8 @@ class AllocateLST(object):
         scale = 1.
         exptime = self.slots.exptime
         total = ((self.epoch_overhead * cadence.nepochs) +
-                 ((self.slots.exposure_overhead + exptime) *
-                  cadence.nexp_total))
+                 (self.slots.exposure_overhead + exptime) *
+                  cadence.nexp_total)
         scale = total / (self.slots.duration * cadence.nexp_total)
         return(scale)
 
@@ -255,6 +255,7 @@ class AllocateLST(object):
                                               lat=self.observer.latitude)
         airmass = self.observer.alt2airmass(alt=alt)
         xfactor = airmass**2
+        xfactor = xfactor * self.duration_scale(cadence=cadence)
         return(xfactor)
 
     def construct(self, fix_cadence=False):
@@ -574,7 +575,6 @@ class AllocateLST(object):
                                    field['fieldid']) &
                                   (fscadence == fcadence))[0][0]
                 curr_slots = self.field_slots[islots]['slots']
-                duration_scale = self.duration_scale(self.cadencelist.cadences[fcadence])
                 for ilst in np.arange(self.slots.nlst, dtype=np.int32):
                     lst = self.slots.lst[ilst]
                     for isb in np.arange(self.slots.nskybrightness,
@@ -586,7 +586,7 @@ class AllocateLST(object):
                                                    cadence=fcadence,
                                                    skybrightness=skybrightness,
                                                    lst=lst)
-                            field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.duration * duration_scale
+                            field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.duration
                             field['xfactor'][ilst, isb] = xfactor
 
         self.field_array = field_array
@@ -610,7 +610,7 @@ class AllocateLST(object):
         hdr = robostrategy.header.rsheader()
         hdr.append({'name':'EPOVER',
                     'value':self.epoch_overhead,
-                    'comment':'Epoch overhead assumed (minutes)'})
+                    'comment':'Epoch overhead assumed (hours)'})
         fitsio.write(filename, self.field_array, header=hdr,
                      clobber=True, extname='ALLOCATE')
         self.slots.tofits(filename=filename, clobber=False)
