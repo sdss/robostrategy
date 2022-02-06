@@ -6,7 +6,7 @@ API Reference
 
 .. _api-field:
 
-Field
+field
 -----
 
 .. automodule:: robostrategy.field
@@ -14,7 +14,15 @@ Field
    :undoc-members:
    :show-inheritance:
 
-Allocate
+extra_field
+-----------
+
+.. automodule:: robostrategy.extra_field
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+allocate
 --------
 
 .. automodule:: robostrategy.allocate
@@ -22,7 +30,23 @@ Allocate
    :undoc-members:
    :show-inheritance:
 
-Slots
+header
+------
+
+.. automodule:: robostrategy.header
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+obstime
+-------
+
+.. automodule:: robostrategy.obstime
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+slots
 -----
 
 .. automodule:: robostrategy.slots
@@ -30,7 +54,7 @@ Slots
    :undoc-members:
    :show-inheritance:
 
-Sloane
+sloane
 ------
 
 .. automodule:: robostrategy.sloane
@@ -38,7 +62,15 @@ Sloane
    :undoc-members:
    :show-inheritance:
 
-Params
+targets
+-------
+
+.. automodule:: robostrategy.targets
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+params
 ------
 
 .. automodule:: robostrategy.params
