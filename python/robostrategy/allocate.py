@@ -47,7 +47,7 @@ class AllocateLST(object):
     dark_prefer : float, np.float32
         factor by which to prefer a dark cadence (multiplies value)
 
-    Attributes:
+    Attributes
     ----------
 
     slots : robostrategy.slots.Slots object
@@ -103,15 +103,15 @@ class AllocateLST(object):
 
       \sum_{ij} w_{ijk} N_{ik} < T_k, 
 
-      0 <= w_{ijk} <= A_{ij}, with A_{ij} the total time necessary for the
-                              field-cadence i-j
+      0 <= w_{ijk} <= A_{ij}
 
       \sum_k w_{ijk} <= A_{ij}
 
       \sum_{jk} (w_{ijk} / A_{ij}) <= 1,
 
+    with A_{ij} the total time necessary for the field-cadence i-j,
     with T_k the maximum # exposures in each slot,
-    and N_{ik} expressing the time taken relative to a nominal 
+    and with N_{ik} expressing the time taken relative to a nominal 
     exposure of observing a particular field in a particular slot.
 
     Then we define a value::
@@ -239,8 +239,8 @@ class AllocateLST(object):
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments
-        --------
+        Notes
+        -----
 
         This function sets the cost of observing at high airmass.
         Right now it just scales as airmass**2. Note the cost as a
@@ -853,8 +853,8 @@ class AllocateLSTCostA(AllocateLST):
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments
-        --------
+        Notes
+        -----
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
         then it assumes you are working in the optical and care about blue
@@ -906,8 +906,8 @@ class AllocateLSTCostB(AllocateLST):
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments
-        --------
+        Notes
+        -----
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
         then it assumes you are working in the optical and care about blue
@@ -959,8 +959,8 @@ class AllocateLSTCostC(AllocateLST):
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments
-        --------
+        Notes
+        -----
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
         then it assumes you are working in the optical and care about blue
@@ -1013,8 +1013,8 @@ class AllocateLSTCostD(AllocateLST):
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments
-        --------
+        Notes
+        -----
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
         then it assumes you are working in the optical and care about blue
@@ -1067,8 +1067,8 @@ class AllocateLSTCostE(AllocateLST):
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments
-        --------
+        Notes
+        -----
 
         If the sky brightness requirement of an epoch is <= 0.4,
         then it assumes you are working in the optical and care about blue
@@ -1123,8 +1123,8 @@ class AllocateLSTCostF(AllocateLST):
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments
-        --------
+        Notes
+        -----
 
         If the sky brightness requirement of an epoch is <= 0.4,
         then it assumes you are working in the optical and care about blue
