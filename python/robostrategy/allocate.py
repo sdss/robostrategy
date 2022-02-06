@@ -71,11 +71,12 @@ class AllocateLST(object):
 
     field_array : ndarray
         for each field, solution as to how to observe it, with fields:
-         * 'fieldid' - field identifier
-         * 'cadence' - cadence name
-         * 'nfilled' - number of exposures allocated
-         * 'slots_exposures' - number of exposures allocated for each slot
-         * 'slots_time' - time allocated for each slots (hours)
+
+         * 'fieldid' : field identifier
+         * 'cadence' : cadence name
+         * 'nfilled' : number of exposures allocated
+         * 'slots_exposures' : number of exposures allocated for each slot
+         * 'slots_time' : time allocated for each slots (hours)
 
     Notes
     -----
