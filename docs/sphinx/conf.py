@@ -117,7 +117,7 @@ autodoc_mock_imports = ['_tkinter', 'roboscheduler',
                         'roboscheduler.cadence', 'fitsio',
                         'mugatu', 'astropy', 'peewee',
                         'mugatu.designmode', 'PyAstronomy',
-                        'kaiju', 'kaiju.robotGrid',
+                        'kaiju', 'kaiju.robotGrid', 'sdssdb',
                         'coordio', 'coordio.time', 'coordio.utils']
 autodoc_member_order = 'groupwise'
 
