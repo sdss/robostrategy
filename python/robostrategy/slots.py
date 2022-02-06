@@ -19,7 +19,7 @@ import roboscheduler.scheduler
 class Slots(object):
     """Slots of time, in LST and sky brightness
 
-    Parameters:
+    Parameters
     ----------
 
     nlst : int, np.int32
@@ -83,14 +83,14 @@ class Slots(object):
         number of available hours in LST, sky brightness slots
         [nlst, nskybrightness], created only when fill() is called
 
-    Methods:
+    Methods
     -------
 
     fill() : fills slots array with number of available hours
     tofits() : write slots information in class to a FITS file
     fromfits() : set object from information in a FITS file
 
-    Notes:
+    Notes
     -----
 
     fclear is not applied to the number of hours in slots. It is there
@@ -123,7 +123,7 @@ class Slots(object):
     def fill(self):
         """Fill slots attribute with available hours
 
-        Notes:
+        Notes
         ------
 
         Sets the attribute slots to an ndarray of np.float32 with
@@ -161,7 +161,7 @@ class Slots(object):
     def tofits(self, filename=None, clobber=True):
         """Write slots information to FITS file
 
-        Parameters:
+        Parameters
         ----------
 
         filename : str
@@ -170,8 +170,8 @@ class Slots(object):
         clobber : boolean
             whether to overwrite existing file (default True)
 
-        Notes:
-        ------
+        Notes
+        -----
 
         Will fail if the slots attribute has not yet been set.
 
@@ -198,13 +198,13 @@ class Slots(object):
     def fromfits(self, filename=None, ext=0):
         """Read slots information from FITS file
 
-        Parameters:
+        Parameters
         ----------
 
         filename : str
             file name to read from
 
-        Notes:
+        Notes
         ------
 
         Assumes the FITS file is of the form written by the tofits()

@@ -13,7 +13,7 @@ import datetime
 class ObsTime(object):
     """Class for finding appropriate observing times
 
-    Parameters:
+    Parameters
     ----------
 
     observatory : str
@@ -22,7 +22,7 @@ class ObsTime(object):
     year : int
         nominal year to consider (default 2021)
 
-    Attributes:
+    Attributes
     ----------
 
     observatory : str
@@ -40,12 +40,12 @@ class ObsTime(object):
     midnights : list of datetime.datetime objects
         [365] datetime format for each local standard midnight of year
 
-    Methods:
+    Methods
     -------
 
     nominal(lst=) : returns nominal observing time for a given RA
 
-    Notes:
+    Notes
     -----
 
     This class provides a way to assign a nominal observation time for
@@ -87,21 +87,21 @@ class ObsTime(object):
     def nominal(self, lst=None):
         """Return a nominal observation time for a given LST
 
-        Parameters:
+        Parameters
         ----------
 
         lst : np.float64 or float
             LST desired for the observation (deg)
 
-        Returns:
+        Returns
         -------
 
         nominal_time : datetime object
             datetime object describing the midnight at which this LST
             is closest to transiting.
 
-        Notes:
-        ------
+        Notes
+        -----
 
         At 0/360 boundary picks the closest night to that boundary.
         This should be a very minor effect (few minutes).

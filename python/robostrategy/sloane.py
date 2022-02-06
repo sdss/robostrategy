@@ -69,13 +69,13 @@ def _radec2lb(ra=None, dec=None):
 class Sloane(object):
     """RA and DEC of point coverings of sphere (Hardin, Sloane & Smith 1994)
 
-    Parameters:
+    Parameters
     ----------
 
     n : int, np.int32
         number of points in covering
 
-    Attributes:
+    Attributes
     ----------
 
     ra : np.float64
@@ -83,13 +83,13 @@ class Sloane(object):
     dec : np.float64
         declination (deg)
 
-    Methods:
+    Methods
     -------
 
     plot() : plot ra and dec
     squash() : squash in Galactic latitude
 
-    Comments:
+    Comments
     --------
 
     Only a limited set of coverings are available. If "n" is outside this
@@ -147,13 +147,13 @@ class Sloane(object):
     def squash(self, func=None):
         """Squash tiling in Galactic coordinates
 
-        Parameters:
+        Parameters
         ----------
 
         func : function
             function taking (l, b), returning (newl, newb)
 
-        Comments:
+        Comments
         --------
 
         By default, squashes just in b to make denser tiling

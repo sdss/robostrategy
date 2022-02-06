@@ -71,7 +71,7 @@ clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 def read_cadences(plan=None, observatory=None, unpickle=False):
     """Convenience function to read a run's cadence list
 
-    Parameters:
+    Parameters
     ----------
 
     plan : str
@@ -80,7 +80,7 @@ def read_cadences(plan=None, observatory=None, unpickle=False):
     observatory : str
         observatory name ('apo' or 'lco')
 
-    Returns: 
+    Returns 
     -------
 
     clist : CadenceList
@@ -97,7 +97,7 @@ def read_field(plan=None, observatory=None, fieldid=None,
                unpickle=False):
     """Convenience function to read a field object
 
-    Parameters:
+    Parameters
     ----------
 
     plan : str
@@ -124,7 +124,7 @@ def read_field(plan=None, observatory=None, fieldid=None,
     verbose : bool
         if set, be verbose (default False)
 
-    Returns:
+    Returns
     -------
 
     field : Field object
@@ -163,7 +163,7 @@ def read_field(plan=None, observatory=None, fieldid=None,
 class AssignmentStatus(object):
     """Status of a prospective assignment for a set of exposures
 
-    Parameters:
+    Parameters
     ----------
 
     rsid : np.int64
@@ -175,7 +175,7 @@ class AssignmentStatus(object):
     iexps : ndarray of np.int32
         prospective exposure numbers
 
-    Attributes:
+    Attributes
     ----------
 
     rsid : np.int64
@@ -208,12 +208,12 @@ class AssignmentStatus(object):
         array of spare calibration targets that assignment collides with
         (initialized to list of empty arrays)
 
-    Methods:
+    Methods
     -------
 
     assignable_exposures()
 
-    Notes:
+    Notes
     -----
 
     These objects are used to track information about prospective
@@ -242,7 +242,7 @@ class AssignmentStatus(object):
     def assignable_exposures(self):
         """List of assignable exposures
         
-        Returns:
+        Returns
         --------
         
         iexps : ndarray of np.int32
@@ -254,7 +254,7 @@ class AssignmentStatus(object):
 class Field(object):
     """Field class
 
-    Parameters:
+    Parameters
     ----------
 
     filename : str
@@ -297,7 +297,7 @@ class Field(object):
     veryverbose : bool
         if True, really issue a lot of output statements (default False)
 
-    Attributes:
+    Attributes
     ----------
 
     achievable_calibrations : OrderedDict
@@ -467,7 +467,7 @@ class Field(object):
     _unique_catalogids : ndarray of np.int64
         list of unique catalogids for convenience
 
-    Notes:
+    Notes
     -----
 
     Before creating a field object, you will typically need to
@@ -565,7 +565,7 @@ class Field(object):
                            fiberType=None):
         """Retrieve bright stars to avoid
 
-        Parameters:
+        Parameters
         ----------
 
         design_mode : str
@@ -574,14 +574,14 @@ class Field(object):
         fiberType : str
             fiber type ('APOGEE' or 'BOSS')
 
-        Returns:
+        Returns
         -------
 
         bright_stars : ndarray
             array of bright stars, with columns 'ra', 'dec', 'mag',
             'catalogid', 'r_exclude'
 
-        Notes:
+        Notes
         -----
 
         r_exclude is the radius of the exclusion zone for each star
@@ -645,7 +645,7 @@ class Field(object):
                          reset=False):
         """Records in attributes which bright stars to avoid
 
-        Parameters:
+        Parameters
         ----------
 
         design_mode : str
@@ -660,7 +660,7 @@ class Field(object):
         reset : bool
             force a reset if dictionary element already set
 
-        Notes:
+        Notes
         -----
 
         Adds an element to dictionaries bright_stars, 
@@ -716,7 +716,7 @@ class Field(object):
     def _bright_allowed_direct(self, design_mode=None, targets=None):
         """Report which input targets are not too close to a bright neighbor
 
-        Parameters:
+        Parameters
         ----------
 
         design_mode : str
@@ -725,13 +725,13 @@ class Field(object):
         targets : ndarray
             some elements of the targets ndarray
 
-        Returns:
+        Returns
         -------
 
         bright_allowed : ndarray of bool
             for each element of targets, True if allowed, False otherwise
 
-        Notes:
+        Notes
         -----
 
         This bright allowance only checks the fiber used for the target.
@@ -761,7 +761,7 @@ class Field(object):
                               design_mode=None):
         """Reports if bright neighbor considerations allow an assignment
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -773,7 +773,7 @@ class Field(object):
         design_mode : str
             design mode to consider
 
-        Returns:
+        Returns
         -------
 
         allowed : bool
@@ -867,13 +867,13 @@ class Field(object):
     def fromfits(self, filename=None):
         """Read field from FITS file
 
-        Parameters:
+        Parameters
         ----------
 
         filename : str
             name of file to read in
 
-        Comments:
+        Comments
         --------
 
         Expects header keywords:
@@ -1035,7 +1035,7 @@ class Field(object):
     def clear_assignments(self):
         """Clear the assignments for this field
 
-        Comments:
+        Comments
         --------
 
         Uses unassign() to unassign every target.
@@ -1050,7 +1050,7 @@ class Field(object):
     def clear_field_cadence(self):
         """Resets the field cadence to 'none' and clears all the ancillary data
 
-        Comments:
+        Comments
         --------
 
         Calls the clear_assignments() method, deletes all the
@@ -1099,7 +1099,7 @@ class Field(object):
     def _robotGrid(self):
         """Return a RobotGridAPO or RobotGridLCO instance
 
-        Notes:
+        Notes
         -----
 
         Sets all robots to home position.
@@ -1129,13 +1129,13 @@ class Field(object):
     def set_field_cadence(self, field_cadence='none'):
         """Set the field cadence, and set up robotgrids and assignments output
 
-        Parameters:
+        Parameters
         ----------
 
         field_cadence : str
             Name of field cadence
 
-        Notes:
+        Notes
         ------
 
         Sets the field cadence. 
@@ -1287,7 +1287,7 @@ class Field(object):
     def set_flag(self, rsid=None, flagname=None):
         """Set a bitmask flag for a target
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -1303,7 +1303,7 @@ class Field(object):
     def check_flag(self, rsid=None, flagname=None):
         """Check a bitmask flag for a target
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64 or ndarray
@@ -1312,7 +1312,7 @@ class Field(object):
         flagname : str
             name of flag to set
 
-        Returns:
+        Returns
         -------
 
         setornot : ndarray of bool
@@ -1325,13 +1325,13 @@ class Field(object):
     def get_flag_names(self, flagval=None):
         """Return names associated with flag
 
-        Parameters:
+        Parameters
         ----------
 
         flagval : np.int32
             flag
 
-        Returns:
+        Returns
         -------
 
         flagnames : list
@@ -1346,7 +1346,7 @@ class Field(object):
     def _offset_radec(self, ra=None, dec=None, delta_ra=0., delta_dec=0.):
         """Offsets ra and dec according to specified amount
         
-        Parameters:
+        Parameters
         ----------
 
         ra : np.float64 or ndarray of np.float64
@@ -1361,7 +1361,7 @@ class Field(object):
         delta_dec : np.float64 or ndarray of np.float64
             declination direction offset, arcsec
 
-        Returns:
+        Returns
         -------
 
         offset_ra : np.float64 or ndarray of np.float64
@@ -1370,7 +1370,7 @@ class Field(object):
         offset_dec : np.float64 or ndarray of np.float64
             offset declination, deg
 
-        Notes:
+        Notes
         -----
 
         Assumes that delta_ra, delta_dec are in proper coordinates; i.e.
@@ -1407,7 +1407,7 @@ class Field(object):
                   pmdec=None, delta_ra=0., delta_dec=0., fiberType=None):
         """Converts ra and dec to wok x, y, and z
 
-        Parameters:
+        Parameters
         ----------
 
         ra : ndarray of np.float64
@@ -1434,7 +1434,7 @@ class Field(object):
         fiberType : str, list of str, or ndarray of str
             fiber type ('APOGEE' or 'BOSS')
 
-        Returns:
+        Returns
         -------
 
         x : ndarray of np.float64
@@ -1446,7 +1446,7 @@ class Field(object):
         z : ndarray of np.float64
             Z position in wok (mm)
 
-        Notes:
+        Notes
         -----
 
         delta_ra and delta_dec are proper angular distances.
@@ -1489,7 +1489,7 @@ class Field(object):
     def xy2radec(self, x=None, y=None, fiberType=None):
         """X and Y back to RA, Dec, without proper motions or deltas
 
-        Parameters:
+        Parameters
         ----------
 
         x : ndarray of np.float64
@@ -1501,7 +1501,7 @@ class Field(object):
         fiberType : str, list of str, or ndarray of str
             fiber type ('APOGEE' or 'BOSS')
 
-        Returns:
+        Returns
         -------
 
         ra : ndarray of np.float64
@@ -1533,7 +1533,7 @@ class Field(object):
         filename : str
             file name to read from
 
-        Notes:
+        Notes
         -----
 
         Just reads extension 1. Then calls targets_fromarray()
@@ -1545,7 +1545,7 @@ class Field(object):
     def _mags_allowed(self, targets=None, designMode=None):
         """Report whether magnitude limits allow targets
 
-        Parameters:
+        Parameters
         ----------
 
         targets : ndarray
@@ -1554,7 +1554,7 @@ class Field(object):
         designMode : DesignMode object
             design mode to test against
 
-        Returns:
+        Returns
         -------
 
         allowed : ndarray of bool
@@ -1592,7 +1592,7 @@ class Field(object):
     def _targets_to_robotgrid(self, targets=None, robotgrid=None):
         """Assign targets to a RobotGrid object
 
-        Parameters:
+        Parameters
         ----------
 
         targets : ndarray
@@ -1617,19 +1617,19 @@ class Field(object):
     def _setup_targets_for_cadence(self, targets=None):
         """Set up targets for a particular cadence
 
-        Parameters:
+        Parameters
         ----------
         
         targets : ndarray
             array of targets
 
-        Returns:
+        Returns
         -------
 
         targets : ndarray
             adjusted array of targets
 
-        Notes:
+        Notes
         -----
 
         Assumes field cadence is defined.
@@ -1670,7 +1670,7 @@ class Field(object):
                                        assignment_array=None):
         """Sets up the assignments array for a given cadence
 
-        Parameters:
+        Parameters
         ----------
 
         targets : ndarray
@@ -1679,13 +1679,13 @@ class Field(object):
         assignments : ndarray
             assignments array
 
-        Returns:
+        Returns
         -------
 
         assignments : ndarray
             adjusted assignments array
 
-        Notes:
+        Notes
         -----
         
         Using field cadence, appropriately sets:
@@ -1894,13 +1894,13 @@ class Field(object):
     def tofits(self, filename=None):
         """Write field and assignments to FITS file
 
-        Parameters:
+        Parameters
         ----------
 
         filename : str
             file name to write to
 
-        Notes:
+        Notes
         -----
 
         Writes out a file readable by fromfits(). Has header keywords
@@ -2062,7 +2062,7 @@ class Field(object):
     def set_assignment_status(self, status=None, isspare=None):
         """Set parameters of status object
 
-        Parameters:
+        Parameters
         ----------
 
         status : AssignmentStatus object
@@ -2072,7 +2072,7 @@ class Field(object):
             is rsid of this AssignmentStatus a spare calibration fiber
             in each exposure (default all False)
 
-        Notes:
+        Notes
         -----
 
         For each exposure, sets the corresponding element in the attributes:
@@ -2123,7 +2123,7 @@ class Field(object):
     def set_bright_neighbor_status(self, status=None, iexp=None):
         """Set the bright_neighbor_allowed attribute of status
 
-        Parameters:
+        Parameters
         ----------
         status : AssignmentStatus object
             object to set attributes of 
@@ -2131,7 +2131,7 @@ class Field(object):
         iexp : int
             exposure index (0-indexed within field cadence)
 
-        Notes:
+        Notes
         -----
 
         Sets bright_neighbor_allowed[status.expindx[iexp]] to True
@@ -2150,7 +2150,7 @@ class Field(object):
     def set_collided_status(self, status=None, iexp=None):
         """Set the collded attribute of status
 
-        Parameters:
+        Parameters
         ----------
         status : AssignmentStatus object
             object to set attributes of 
@@ -2158,7 +2158,7 @@ class Field(object):
         iexp : int
             exposure index (0-indexed within field cadence)
 
-        Notes:
+        Notes
         -----
 
         Sets collided[status.expindx[iexp]] to True if this assignment
@@ -2240,7 +2240,7 @@ class Field(object):
                             reset_count=True):
         """Unassign spare calibrations to allow an assignment to happen
 
-        Parameters:
+        Parameters
         ----------
 
         status : AssignmentStatus object
@@ -2285,7 +2285,7 @@ class Field(object):
 #        collide : bool
 #            True if it causes a collision, False if not
 #
-#        Notes:
+#        Notes
 #        -----
 #
 #        If there is no RobotGrid to check collisions and/or nocollide
@@ -2315,7 +2315,7 @@ class Field(object):
                               isspare=None):
         """Check if a robot-epoch has enough exposures
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2333,7 +2333,7 @@ class Field(object):
         isspare : bool
             True if this is a spare calibration target
 
-        Returns:
+        Returns
         -------
 
         available : bool
@@ -2342,7 +2342,7 @@ class Field(object):
         status : list of AssignmentStatus
             which exposures in the epoch are free?
 
-        Comments:
+        Comments
         --------
 
         Checks if a robot is available at each exposure AND if
@@ -2378,7 +2378,7 @@ class Field(object):
     def available_robot_exposures(self, rsid=None, robotID=None, isspare=False):
         """Return available robot exposures for an rsid
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2390,13 +2390,13 @@ class Field(object):
         isspare : bool
             True if this is a spare calibration target (default False)
 
-        Returns:
+        Returns
         -------
 
         status : AssignmentStatus for object
             for each exposure, is it available or not?
 
-        Comments:
+        Comments
         --------
 
         Checks if a robot is available to assign at each exposure.
@@ -2430,7 +2430,7 @@ class Field(object):
     def _is_spare(self, rsid=None, iexps=None):
         """Is this rsid a spare calibration in these exposures?
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2439,7 +2439,7 @@ class Field(object):
         iexps : ndarray of np.int32
             exposures of field to check (default all field exposures)
 
-        Returns:
+        Returns
         -------
 
         isspare : ndarray of bool
@@ -2454,7 +2454,7 @@ class Field(object):
                            status=None, reset_count=True):
         """Assign an rsid to a particular robot-epoch
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2484,7 +2484,7 @@ class Field(object):
             if True, reset the exposure and epoch counts
             (default True)
 
-        Returns:
+        Returns
         --------
 
         success : bool
@@ -2537,13 +2537,13 @@ class Field(object):
     def _set_competing_targets(self, rsids=None):
         """Set number of competing targets for each robotID from this set
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
             rsid values to count for each robot
 
-        Notes:
+        Notes
         -----
 
         Sets attribute _competing_targets to an array with number of competing targets.
@@ -2561,7 +2561,7 @@ class Field(object):
                               reset_count=True):
         """Assign an rsid to a particular robot-exposure
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2585,7 +2585,7 @@ class Field(object):
             if True, reset the 'nexp' and 'nepochs' columns
             (default True)
 
-        Returns:
+        Returns
         --------
 
         success : bool
@@ -2641,7 +2641,7 @@ class Field(object):
                          reset_has_spare=True):
         """Assign an rsid to particular exposures
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2658,7 +2658,7 @@ class Field(object):
             if True, reset the '_has_spare' matrix
             (default True)
 
-        Returns:
+        Returns
         --------
 
         success : ndarray of bool
@@ -2702,13 +2702,13 @@ class Field(object):
     def _set_assigned(self, itarget=None):
         """Set assigned flag
     
-        Parameters:
+        Parameters
         ----------
 
         itarget : np.int32 or int
             0-indexed position of target in targets array
 
-        Notes:
+        Notes
         -----
 
         Sets 'assigned' in assigments array if any exposure has robotID set
@@ -2724,7 +2724,7 @@ class Field(object):
                           reset_count=True):
         """Unassign an rsid from a particular exposure
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2791,7 +2791,7 @@ class Field(object):
                        reset_count=True):
         """Unassign an rsid from a particular epoch
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2816,7 +2816,7 @@ class Field(object):
             if True, reset the '_has_spare' matrix after unassignment
             (default True)
 
-        Returns:
+        Returns
         -------
 
         status : int
@@ -2850,7 +2850,7 @@ class Field(object):
                  reset_has_spare=True, reset_count=True):
         """Unassign a set of rsids entirely
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
@@ -2898,7 +2898,7 @@ class Field(object):
     def _merge_epochs(self, epochs=None, nexps=None):
         """Merge epoch list to combine repeats
 
-        Parameters:
+        Parameters
         ----------
 
         epochs : ndarray of np.int32
@@ -2907,7 +2907,7 @@ class Field(object):
         nexps : ndarray of np.int32
             number of exposures needed
 
-        Returns:
+        Returns
         -------
 
         epochs_merged : ndarray of np.int32
@@ -2927,7 +2927,7 @@ class Field(object):
                          first=False, strict=False):
         """Find robots available for each epoch
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -2946,7 +2946,7 @@ class Field(object):
             if set, first check if epoch request is possible, and
             return nothing if the full request cannot be fulfilled
 
-        Returns:
+        Returns
         --------
 
         available : dictionary, with key value pairs below
@@ -3039,7 +3039,7 @@ class Field(object):
     def assign_epochs(self, rsid=None, epochs=None, nexps=None):
         """Assign target to robots in a set of epochs
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
@@ -3054,7 +3054,7 @@ class Field(object):
         method : str
             method to use to pick which robot ('first')
 
-        Returns:
+        Returns
         --------
 
         success : bool
@@ -3111,13 +3111,13 @@ class Field(object):
     def assign_cadence(self, rsid=None):
         """Assign target to robots according to its cadence
 
-        Parameters:
+        Parameters
         ----------
 
         rsid : np.int64
             rsid of target to assign
 
-        Returns:
+        Returns
         --------
 
         success : bool
@@ -3183,7 +3183,7 @@ class Field(object):
     def _set_equiv(self, rsids=None, iexps=None):
         """Set equivRobotID to reflect any compatible observations with this rsid
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
@@ -3192,7 +3192,7 @@ class Field(object):
         iexps : ndarray of np.int32
             exposures to update (default all field exposures)
 
-        Notes:
+        Notes
         -----
 
         This finds ALL entries with the same:
@@ -3236,7 +3236,7 @@ class Field(object):
     def _set_satisfied(self, rsids=None, reset_equiv=True):
         """Set satisfied flag based on assignments
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
@@ -3245,7 +3245,7 @@ class Field(object):
         reset_equiv : bool
             whether to reset equivRobotID before assessing (default True)
 
-        Notes:
+        Notes
         -----
 
         'satisfied' means that the exposures obtained satisfy
@@ -3302,7 +3302,7 @@ class Field(object):
     def _set_count(self, rsids=None, reset_equiv=True):
         """Set exposure and epochs based on assignments
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
@@ -3311,7 +3311,7 @@ class Field(object):
         reset_equiv : bool
             whether to reset equivRobotID before assessing (default True)
 
-        Notes:
+        Notes
         -----
 
         Sets nexps, nepochs for each target, based on equivRobotID.
@@ -3348,7 +3348,7 @@ class Field(object):
     def _assign_one_by_one(self, rsids=None, check_satisfied=True):
         """Assign a set of targets to robots
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
@@ -3357,13 +3357,13 @@ class Field(object):
         check_satisfied : bool
             if True, do not try to reassign targets that are already satisfied
 
-        Returns:
+        Returns
         --------
 
         success : ndarray of bool
             True if successful, False otherwise
 
-        Notes:
+        Notes
         -----
 
         Performs assigment in order rsids are given.
@@ -3379,7 +3379,7 @@ class Field(object):
     def assign_cadences(self, rsids=None, check_satisfied=True):
         """Assign a set of targets to robots
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
@@ -3388,13 +3388,13 @@ class Field(object):
         check_satisfied : bool
             if True, do not try to reassign targets that are already satisfied
 
-        Returns:
+        Returns
         --------
 
         success : ndarray of bool
             True if successful, False otherwise
 
-        Notes:
+        Notes
         -----
 
         Sorts cadences by priority for assignment.
@@ -3748,13 +3748,13 @@ class Field(object):
         check_collisions : bool
             if set, check for collisions (default True)
 
-        Returns:
+        Returns
         -------
 
         assignedRobotIDs : ndarray of np.int32
             [N] robots to assign to
 
-        Notes:
+        Notes
         -----
 
         Doesn't yet limit to robotIDs input
@@ -3856,19 +3856,19 @@ class Field(object):
     def assign_full_cp_model(self, rsids=None):
         """Assigns rsids exactly matching field cadence using the CP-SAT module
 
-        Parameters:
+        Parameters
         ----------
 
         rsids : ndarray of np.int64
             rsids of targets to assign
 
-        Returns:
-        --------
+        Returns
+        -------
 
         success : ndarray of bool
             True if successful, False otherwise
 
-        Notes:
+        Notes
         -----
 
         Assigns only the ones matching the field cadence
@@ -3906,7 +3906,7 @@ class Field(object):
     def assign_calibrations(self, stage='srd'):
         """Assign all calibration targets
 
-        Parameters:
+        Parameters
         ----------
 
         stage : str
@@ -3949,7 +3949,7 @@ class Field(object):
     def assign_science(self, stage='srd'):
         """Assign all science targets
         
-        Parameters:
+        Parameters
         ----------
 
         stage : str
@@ -4002,7 +4002,7 @@ class Field(object):
                                   coordinated_targets=None):
         """Assign all science targets and calibrations
 
-        Parameters:
+        Parameters
         ----------
 
         stage : str
@@ -4012,7 +4012,7 @@ class Field(object):
             dictionary of coordinated targets (keys are rsids, values are bool)
             [ DEPRECATED ]
 
-        Notes:
+        Notes
         -----
 
         Does not try to assign any targets for which
@@ -4189,14 +4189,14 @@ class Field(object):
     def assign(self, coordinated_targets=None):
         """Assign all targets
 
-        Parameters:
+        Parameters
         ----------
 
         coordinated_targets : dict
             dictionary of coordinated targets (keys are rsids, values are bool)
 
 
-        Notes:
+        Notes
         -----
 
         Does not try to assign any targets for which
@@ -4316,16 +4316,16 @@ class Field(object):
     def validate(self):
         """Validate a field solution
 
-        Parameters:
+        Parameters
         -------
 
-        Returns:
+        Returns
         -------
 
         nproblems : int
             Number of problems discovered
 
-        Comments:
+        Comments
         --------
 
         Prints nature of problems identified to stdout
@@ -4460,13 +4460,13 @@ class Field(object):
         Parameters:
         -------
 
-        Returns:
+        Returns
         -------
 
         nproblems : int
             Number of problems discovered
 
-        Comments:
+        Comments
         --------
 
         Prints nature of problems identified to stdout
@@ -4524,7 +4524,7 @@ class Field(object):
     def count_spares(self):
         """Count spare fibers (accounting for spare calibrations)
 
-        Returns:
+        Returns
         -------
 
         nboss_spare : np.int32
@@ -4696,7 +4696,7 @@ class Field(object):
 class FieldSpeedy(Field):
     """FieldSpeedy class
 
-    Notes:
+    Notes
     -----
 
     Subclass of Field, with all the same attributes and methods.

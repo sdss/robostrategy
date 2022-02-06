@@ -29,7 +29,7 @@ except ImportError:
 class AllocateLST(object):
     """LST allocation object for robostrategy
 
-    Parameters:
+    Parameters
     ----------
 
     slots : robostrategy.slots.Slots object
@@ -78,7 +78,7 @@ class AllocateLST(object):
          'slots_time' - time allocated for each slots (hours)
         (set by solve() method)
 
-    Methods:
+    Methods
     -------
 
     xfactor() : calculate time for exposure relative to nominal
@@ -88,7 +88,7 @@ class AllocateLST(object):
     tofits() : write field_array to a FITS file
     plot_full() : plot the LST distribution of field_array
 
-    Notes:
+    Notes
     -----
 
     The output in slots_time is the number of exposures, times the duration
@@ -222,7 +222,7 @@ class AllocateLST(object):
                 lst=None, cadence=None):
         """Exposure time cost factor relative to nominal
 
-        Parameters:
+        Parameters
         ----------
 
         racen : np.float64
@@ -240,13 +240,13 @@ class AllocateLST(object):
         lst : np.float32
             LST of observation, hours
 
-        Returns:
+        Returns
         -------
 
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments:
+        Comments
         --------
 
         This function sets the cost of observing at high airmass.
@@ -266,13 +266,13 @@ class AllocateLST(object):
     def construct(self, fix_cadence=False):
         """Construct the allocinfo attribute with the problem definition
 
-        Parameters:
+        Parameters
         ----------
 
         fix_cadence : bool
             If True, use already-determined field cadences (default False)
 
-        Notes:
+        Notes
         ------
 
         The allocinfo attribute is a fairly complicated dictionary
@@ -333,13 +333,13 @@ class AllocateLST(object):
     def solve(self, minimize_time=False):
         """Solve the linear programming problem to allocate fields
 
-        Parameters:
+        Parameters
         ----------
 
         minimize_time : bool
             If True, minimize time and force all field-cadences (default False)
 
-        Notes:
+        Notes
         ------
 
         Solves the linear programming problem.
@@ -602,13 +602,13 @@ class AllocateLST(object):
     def tofits(self, filename=None):
         """Write field allocation array to a FITS file
 
-        Parameters:
+        Parameters
         ----------
 
         filename : str
             file name to write to
 
-        Notes:
+        Notes
         ------
 
         Writes all array attributes as a binary table.
@@ -636,13 +636,13 @@ class AllocateLST(object):
     def fromfits(self, filename=None):
         """Read field allocation array from a FITS file
 
-        Parameters:
+        Parameters
         ----------
 
         filename : str
             file name to write to
 
-        Notes:
+        Notes
         ------
 
         Reads all attributes from a binary FITS table.
@@ -700,7 +700,7 @@ class AllocateLST(object):
     def plot_full(self, iskybrightness=None, title=None):
         """Plot the LST distributions for the allocations
 
-        Parameters:
+        Parameters
         ----------
 
         iskybrightness : ndarray of np.int32
@@ -758,7 +758,7 @@ class AllocateLST(object):
                     **kwargs):
         """Plot the RA/Dec distribution of fields allocated
 
-        Parameters:
+        Parameters
         ----------
 
         indx : ndarray of np.int32
@@ -836,7 +836,7 @@ class AllocateLSTCostA(AllocateLST):
                 cadence=None):
         """Exposure time cost factor relative to nominal
 
-        Parameters:
+        Parameters
         ----------
 
         racen : np.float64
@@ -854,13 +854,13 @@ class AllocateLSTCostA(AllocateLST):
         lst : np.float32
             LST of observation, hours
 
-        Returns:
+        Returns
         -------
 
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments:
+        Comments
         --------
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
@@ -889,7 +889,7 @@ class AllocateLSTCostB(AllocateLST):
                 cadence=None):
         """Exposure time cost factor relative to nominal
 
-        Parameters:
+        Parameters
         ----------
 
         racen : np.float64
@@ -907,13 +907,13 @@ class AllocateLSTCostB(AllocateLST):
         lst : np.float32
             LST of observation, hours
 
-        Returns:
+        Returns
         -------
 
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments:
+        Comments
         --------
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
@@ -942,7 +942,7 @@ class AllocateLSTCostC(AllocateLST):
                 cadence=None):
         """Exposure time cost factor relative to nominal
 
-        Parameters:
+        Parameters
         ----------
 
         racen : np.float64
@@ -960,13 +960,13 @@ class AllocateLSTCostC(AllocateLST):
         lst : np.float32
             LST of observation, hours
 
-        Returns:
+        Returns
         -------
 
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments:
+        Comments
         --------
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
@@ -996,7 +996,7 @@ class AllocateLSTCostD(AllocateLST):
                 cadence=None):
         """Exposure time cost factor relative to nominal
 
-        Parameters:
+        Parameters
         ----------
 
         racen : np.float64
@@ -1014,13 +1014,13 @@ class AllocateLSTCostD(AllocateLST):
         lst : np.float32
             LST of observation, hours
 
-        Returns:
+        Returns
         -------
 
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments:
+        Comments
         --------
 
         If the minimum sky brightness requirement of the cadence is <= 0.4,
@@ -1050,7 +1050,7 @@ class AllocateLSTCostE(AllocateLST):
                 cadence=None):
         """Exposure time cost factor relative to nominal
 
-        Parameters:
+        Parameters
         ----------
 
         racen : np.float64
@@ -1068,13 +1068,13 @@ class AllocateLSTCostE(AllocateLST):
         lst : np.float32
             LST of observation, hours
 
-        Returns:
+        Returns
         -------
 
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments:
+        Comments
         --------
 
         If the sky brightness requirement of an epoch is <= 0.4,
@@ -1106,7 +1106,7 @@ class AllocateLSTCostF(AllocateLST):
                 cadence=None):
         """Exposure time cost factor relative to nominal
 
-        Parameters:
+        Parameters
         ----------
 
         racen : np.float64
@@ -1124,13 +1124,13 @@ class AllocateLSTCostF(AllocateLST):
         lst : np.float32
             LST of observation, hours
 
-        Returns:
+        Returns
         -------
 
         xfactor : np.float64
             length of exposure relative to nominal
 
-        Comments:
+        Comments
         --------
 
         If the sky brightness requirement of an epoch is <= 0.4,

@@ -176,7 +176,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         '''
         Code for assigning extra epochs to RV targets. The more the merrier for these stars!
 
-        Parameters:
+        Parameters
         ----------
         make_report: bool
             if True print out a report of what happened
