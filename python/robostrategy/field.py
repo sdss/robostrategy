@@ -898,11 +898,9 @@ class Field(object):
         Expects HDUs named as follows:
 
          * TARGET : has the targets array (usable by targets_fromarray())
-         * ASSIGN : if it exists, has the assignments array with assignments 
-                    for each target and exposure
+         * ASSIGN : if it exists, has the assignments array with assignments for each target and exposure
          * DESMODE : if it exists, has the definitions of design modes
-         * BS# : bright stars for neighbor checks (with DESMODE & FIBERTY
-                 specified in header)
+         * BS# : bright stars for neighbor checks (with DESMODE & FIBERTY specified in header)
 
         This method does not copy the assignments table directly, it adds 
         the assignments using assign_robot_exposure(), so all columns in 
@@ -1902,13 +1900,11 @@ class Field(object):
         Writes out a file readable by fromfits(). Has header keywords
         defining field, and HDUs:
 
-        * TARGET - has the targets array (usable by targets_fromarray())
-        * ASSIGN - if it exists, has the assignments array with assignments 
-                   for each target and exposure
-        * DESMODE - if it exists, has the definitions of design modes
-        * BS# - bright stars for neighbor checks (with DESMODE & FIBERTY
-                specified in header)
-        * ROBOTS - targets assigned for each robot
+         * TARGET : has the targets array (usable by targets_fromarray())
+         * ASSIGN : if it exists, has the assignments array with assignments for each target and exposure
+         * DESMODE : if it exists, has the definitions of design modes
+         * BS# : bright stars for neighbor checks (with DESMODE & FIBERTY specified in header)
+         * ROBOTS - targets assigned for each robot
 """
         hdr = robostrategy.header.rsheader()
         hdr.append({'name':'FIELDID',

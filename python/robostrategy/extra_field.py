@@ -304,8 +304,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         return any_extra
 
     def assign_bright_extra(self, make_report=False):
-        '''
-        Code for assigning extra epochs to MWM bright time targets:
+        '''Code for assigning extra epochs to MWM bright time targets:
          * Previously "satisfied" targets in TESS Planet
          * Previous "partial" targets in TESS planet (b/c they were not allowed
            over N requested at the partial completion stage)
