@@ -15,8 +15,6 @@ import collections
 import matplotlib.pyplot as plt
 import robostrategy
 import robostrategy.header
-import roboscheduler
-import kaiju
 import robostrategy.slots
 import roboscheduler.cadence as rcadence
 import roboscheduler.scheduler as scheduler

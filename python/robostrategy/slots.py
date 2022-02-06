@@ -1,6 +1,6 @@
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: field_assign_gg
+# @Filename: slots.py
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
