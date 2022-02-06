@@ -879,11 +879,11 @@ class Field(object):
 
         Expects header keywords:
        
-          FIELDID
-          RACEN
-          DECCEN
-          PA
-          OBS
+          * FIELDID
+          * RACEN
+          * DECCEN
+          * PA
+          * OBS
 
         If NOCALIB is in header and the nocalib attribute is 
         False, nocalib will be set according to the keyword.
@@ -902,12 +902,12 @@ class Field(object):
 
         Expects HDUs named as follows:
 
-        TARGET - has the targets array (usable by targets_fromarray())
-        ASSIGN - if it exists, has the assignments array with assignments 
-                 for each target and exposure
-        DESMODE - if it exists, has the definitions of design modes
-        BS# - bright stars for neighbor checks (with DESMODE & FIBERTY
-              specified in header)
+        * TARGET - has the targets array (usable by targets_fromarray())
+        * ASSIGN - if it exists, has the assignments array with assignments 
+                   for each target and exposure
+        * DESMODE - if it exists, has the definitions of design modes
+        * BS# - bright stars for neighbor checks (with DESMODE & FIBERTY
+                specified in header)
 
         This method does not copy the assignments table directly, it adds 
         the assignments using assign_robot_exposure(), so all columns in 
