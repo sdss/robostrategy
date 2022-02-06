@@ -71,22 +71,11 @@ class AllocateLST(object):
 
     field_array : ndarray
         for each field, solution as to how to observe it, with fields:
-         'fieldid' - field identifier
-         'cadence' - cadence name
-         'nfilled' - number of exposures allocated
-         'slots_exposures' - number of exposures allocated for each slot
-         'slots_time' - time allocated for each slots (hours)
-        (set by solve() method)
-
-    Methods
-    -------
-
-    xfactor() : calculate time for exposure relative to nominal
-    construct() : create allocinfo attribute organizing field info
-    solve() : solve for allocation, create field_array attribute with results
-    fromfits() : write field_array to a FITS file
-    tofits() : write field_array to a FITS file
-    plot_full() : plot the LST distribution of field_array
+         * 'fieldid' - field identifier
+         * 'cadence' - cadence name
+         * 'nfilled' - number of exposures allocated
+         * 'slots_exposures' - number of exposures allocated for each slot
+         * 'slots_time' - time allocated for each slots (hours)
 
     Notes
     -----
@@ -98,9 +87,10 @@ class AllocateLST(object):
     field observations.
 
     The inputs are:
-      - the available time as a function of LST and sky brightness (slots)
-      - the slots that each field could be observed in (field_slots)
-      - the cadences available for each field (field_options)
+
+      * the available time as a function of LST and sky brightness (slots)
+      * the slots that each field could be observed in (field_slots)
+      * the cadences available for each field (field_options)
 
     The code constructs a linear programming problem of the following
     form. We define a set of variables indexed w_ijk, where i indexes
@@ -109,19 +99,22 @@ class AllocateLST(object):
     on LST and sky brightness). There are not necessarily the same number of
     indices for each field.
 
-    We then impose the following constraints:
+    We then impose the following constraints::
 
       \sum_{ij} w_{ijk} N_{ik} < T_k, 
-        with T_k the maximum # exposures in each slot,
-        and N_{ik} expressing the time taken relative to a nominal 
-        exposure of observing a particular field in a particular slot.
+
       0 <= w_{ijk} <= A_{ij}, with A_{ij} the total time necessary for the
                               field-cadence i-j
-      \sum_k w_{ijk} <= A_{ij}
-      \sum_{jk} (w_{ijk} / A_{ij}) <= 1, which means you can only have
-          the equivalent of a single cadence assigned for a field.
 
-    Then we define a value:
+      \sum_k w_{ijk} <= A_{ij}
+
+      \sum_{jk} (w_{ijk} / A_{ij}) <= 1,
+
+    with T_k the maximum # exposures in each slot,
+    and N_{ik} expressing the time taken relative to a nominal 
+    exposure of observing a particular field in a particular slot.
+
+    Then we define a value::
 
       V = \sum_{ijk} (w_{ijk} / A_{ij}) V_{ij}
 
@@ -146,17 +139,17 @@ class AllocateLST(object):
 
     Nevertheless, for those cases where that is not true, we do the
     following.  For each field i, we sum up the linear programming
-    allocations for each cadence j:
+    allocations for each cadence j::
 
         C_ij = \sum_k w_ijk.
 
     Then for each field i we pick randomly the cadence according to
-    probabilities defined by:
+    probabilities defined by::
 
         P_ij = C_ij / \sum_j C_ij
 
     Then, we look at the total allocation of the field relative to the
-    needed allocation for the cadence:
+    needed allocation for the cadence::
 
         \sum_{jk} w_ijk / A_ij
 
@@ -167,7 +160,7 @@ class AllocateLST(object):
     The construct() and solve() methods can also be used to decide
     on time allocation at a fixed choice of cadences per field. This
     can be done as a second step to the solution. The calling sequence
-    is:
+    is::
 
       allocate.construct()
       allocate.solve()
