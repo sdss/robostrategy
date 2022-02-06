@@ -59,7 +59,8 @@ _flagdict = {'STAGE_IS_NONE':1,
              'NO_AVAILABILITY': 32,
              'ALREADY_ASSIGNED': 64}
 
-__all__ = ['Field']
+__all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus']
+
 
 """Field module class.
 """
@@ -243,7 +244,7 @@ class AssignmentStatus(object):
         """List of assignable exposures
         
         Returns
-        --------
+        -------
         
         iexps : ndarray of np.int32
             list of assignable exposures
@@ -873,8 +874,8 @@ class Field(object):
         filename : str
             name of file to read in
 
-        Comments
-        --------
+        Notes
+        -----
 
         Expects header keywords:
        
@@ -1035,8 +1036,8 @@ class Field(object):
     def clear_assignments(self):
         """Clear the assignments for this field
 
-        Comments
-        --------
+        Notes
+        -----
 
         Uses unassign() to unassign every target.
 """
@@ -1050,8 +1051,8 @@ class Field(object):
     def clear_field_cadence(self):
         """Resets the field cadence to 'none' and clears all the ancillary data
 
-        Comments
-        --------
+        Notes
+        -----
 
         Calls the clear_assignments() method, deletes all the
         robotGrids in the robotgrids array, sets field_cadence to
@@ -1136,7 +1137,7 @@ class Field(object):
             Name of field cadence
 
         Notes
-        ------
+        -----
 
         Sets the field cadence. 
 
@@ -2077,10 +2078,10 @@ class Field(object):
 
         For each exposure, sets the corresponding element in the attributes:
         
-         spare - is this robotID assigned to a spare calib fiber
-         assignable - is this robotID assignable to this rsid
-         collided - would this assignment cause a collision
-         bright_neighbor_allowed - is it allowed from a bright neighbor POV?
+         * spare - is this robotID assigned to a spare calib fiber
+         * assignable - is this robotID assignable to this rsid
+         * collided - would this assignment cause a collision
+         * bright_neighbor_allowed - is it allowed from a bright neighbor POV?
 """
         if(isspare is None):
             isspare = np.zeros(len(status.iexps), dtype=bool)
@@ -2125,6 +2126,7 @@ class Field(object):
 
         Parameters
         ----------
+
         status : AssignmentStatus object
             object to set attributes of 
 
@@ -2152,6 +2154,7 @@ class Field(object):
 
         Parameters
         ----------
+
         status : AssignmentStatus object
             object to set attributes of 
 
@@ -2342,8 +2345,8 @@ class Field(object):
         status : list of AssignmentStatus
             which exposures in the epoch are free?
 
-        Comments
-        --------
+        Notes
+        -----
 
         Checks if a robot is available at each exposure AND if
         assigning the robot to the given target would cause a
@@ -2396,8 +2399,8 @@ class Field(object):
         status : AssignmentStatus for object
             for each exposure, is it available or not?
 
-        Comments
-        --------
+        Notes
+        -----
 
         Checks if a robot is available to assign at each exposure.
         The robot is available if it is not assigned to any target or
@@ -2485,7 +2488,7 @@ class Field(object):
             (default True)
 
         Returns
-        --------
+        -------
 
         success : bool
             True if successful, False otherwise
@@ -2659,7 +2662,7 @@ class Field(object):
             (default True)
 
         Returns
-        --------
+        -------
 
         success : ndarray of bool
             for each exposure, True if successful, False otherwise
@@ -2947,7 +2950,7 @@ class Field(object):
             return nothing if the full request cannot be fulfilled
 
         Returns
-        --------
+        -------
 
         available : dictionary, with key value pairs below
             'available' : bool
@@ -3055,7 +3058,7 @@ class Field(object):
             method to use to pick which robot ('first')
 
         Returns
-        --------
+        -------
 
         success : bool
             True if successful, False otherwise
@@ -3118,7 +3121,7 @@ class Field(object):
             rsid of target to assign
 
         Returns
-        --------
+        -------
 
         success : bool
             True if successful, False otherwise
@@ -4316,17 +4319,14 @@ class Field(object):
     def validate(self):
         """Validate a field solution
 
-        Parameters
-        -------
-
         Returns
         -------
 
         nproblems : int
             Number of problems discovered
 
-        Comments
-        --------
+        Notes
+        -----
 
         Prints nature of problems identified to stdout
 
@@ -4457,17 +4457,14 @@ class Field(object):
     def validate_cadences(self):
         """Validate the cadences
 
-        Parameters:
-        -------
-
         Returns
         -------
 
         nproblems : int
             Number of problems discovered
 
-        Comments
-        --------
+        Notes
+        -----
 
         Prints nature of problems identified to stdout
 
