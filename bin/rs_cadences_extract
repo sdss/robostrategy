@@ -15,7 +15,6 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 
 import argparse
-import configparser
 import os
 import sys
 import numpy as np
@@ -111,7 +110,7 @@ if __name__ == '__main__':
         adjustment = rsParams.cfg.get('Cadences', c)
         if(adjustment == 'NoDelta'):
             if(c in cadencelist.cadences):
-                for i in cadencelist.cadences[c].epoch_indx[:-1]:
+                for i in np.arange(cadencelist.cadences[c].nepochs, dtype=int):
                     cadencelist.cadences[c].delta[i] = -1.
                     cadencelist.cadences[c].delta_min[i] = -1.
                     cadencelist.cadences[c].delta_max[i] = -1.
@@ -190,45 +189,48 @@ if __name__ == '__main__':
 
     # Now we allow robostrategy to enforce certain kinds 
     # of cadence consistency rules.
-    fp = open(os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
-                           'cadence-consistency-0.1.0.json'), "r")
-    ccs = fp.read()
-    fp.close()
-    ccl = json.loads(ccs)
-    for cc in ccl:
-        if(cc['target_cadence'] not in cadencelist.cadences):
-            print("{c} not in CadenceList".format(c=cc['target_cadence']))
-            continue
-        nexp_total_target = cadencelist.cadences[cc['target_cadence']].nexp_total
-        for field_cadence in cadencelist.cadences:
-            nexp_total_field = cadencelist.cadences[cc['target_cadence']].nexp_total
-            if((re.match(cc['field_cadence'], field_cadence) is None) or
-               (nexp_total_target > nexp_total_field)):
+    if('cadence_consistency' in rsParams['Cadences']):
+        ccversion = rsParams['Cadences']['cadence_consistency']
+        fp = open(os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
+                               'cadence-consistency-{ccversion}.json'.format(ccversion=ccversion)),
+                  "r")
+        ccs = fp.read()
+        fp.close()
+        ccl = json.loads(ccs)
+        for cc in ccl:
+            if(cc['target_cadence'] not in cadencelist.cadences):
+                print("{c} not in CadenceList".format(c=cc['target_cadence']))
                 continue
-            add_to_cache(cc['target_cadence'], field_cadence,
-                         return_solutions=False, merge_epochs=False,
-                         skybrightness_only=cadencelist.skybrightness_only,
-                         ok=cc['ok'] > 0)
-            if(cc['epochs_list'] == [[]]):
-                epochs_list = None
-            else:
-                epochs_list = cc['epochs_list']
-            add_to_cache(cc['target_cadence'], field_cadence,
-                         return_solutions=True, merge_epochs=False,
-                         skybrightness_only=cadencelist.skybrightness_only,
-                         ok=cc['ok'] > 0, epochs_list=epochs_list)
-            if(cc['merged_epochs_list'] == [[]]):
-                merged_epochs_list = None
-                merged_nexps_list = None
-            else:
-                merged_epochs_list = cc['merged_epochs_list']
-                merged_nexps_list = cc['merged_nexps_list']
-            add_to_cache(cc['target_cadence'], field_cadence,
-                         return_solutions=True, merge_epochs=True,
-                         skybrightness_only=cadencelist.skybrightness_only,
-                         ok=cc['ok'] > 0,
-                         epochs_list=merged_epochs_list,
-                         nexps_list=merged_nexps_list)
+            nexp_total_target = cadencelist.cadences[cc['target_cadence']].nexp_total
+            for field_cadence in cadencelist.cadences:
+                nexp_total_field = cadencelist.cadences[cc['target_cadence']].nexp_total
+                if((re.match(cc['field_cadence'], field_cadence) is None) or
+                   (nexp_total_target > nexp_total_field)):
+                    continue
+                add_to_cache(cc['target_cadence'], field_cadence,
+                             return_solutions=False, merge_epochs=False,
+                             skybrightness_only=cadencelist.skybrightness_only,
+                             ok=cc['ok'] > 0)
+                if(cc['epochs_list'] == [[]]):
+                    epochs_list = None
+                else:
+                    epochs_list = cc['epochs_list']
+                add_to_cache(cc['target_cadence'], field_cadence,
+                             return_solutions=True, merge_epochs=False,
+                             skybrightness_only=cadencelist.skybrightness_only,
+                             ok=cc['ok'] > 0, epochs_list=epochs_list)
+                if(cc['merged_epochs_list'] == [[]]):
+                    merged_epochs_list = None
+                    merged_nexps_list = None
+                else:
+                    merged_epochs_list = cc['merged_epochs_list']
+                    merged_nexps_list = cc['merged_nexps_list']
+                add_to_cache(cc['target_cadence'], field_cadence,
+                             return_solutions=True, merge_epochs=True,
+                             skybrightness_only=cadencelist.skybrightness_only,
+                             ok=cc['ok'] > 0,
+                             epochs_list=merged_epochs_list,
+                             nexps_list=merged_nexps_list)
 
     pkl_file = cadences_file + ".pkl"
     fp = open(pkl_file, 'wb')

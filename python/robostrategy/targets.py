@@ -1,13 +1,8 @@
 import os
 import numpy as np
-import fitsio
 import peewee
 import astropy.io.ascii
-import robostrategy
-import roboscheduler.cadence
-import robostrategy.params as params
 import sdssdb.peewee.sdss5db.targetdb as targetdb
-import sdss_access.path
 
 from sdssdb.peewee.sdss5db import database
 database.set_profile('operations')
@@ -229,16 +224,5 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
                             tmp_targets['cadence'][inocadence[ii]] = 'dark_100x8'
                 else:
                     print("{msg}, NOT FIXING".format(msg=msg))
-
-        if(carton == 'mwm_tess_ob'):
-            isouth = np.where(tmp_targets['dec'] < 0.)[0]
-            inorth = np.where(tmp_targets['dec'] > 0.)[0]
-            np.random.seed(10)
-            np.random.shuffle(inorth)
-            tmp_targets_south = tmp_targets[isouth]
-            tmp_targets_north = tmp_targets[inorth[0:100]]
-            tmp_targets = tmp_targets_south
-            tmp_targets = np.append(tmp_targets, tmp_targets_north)
-            tmp_targets['priority'] = 1000
 
     return(tmp_targets)

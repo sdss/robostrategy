@@ -70,6 +70,21 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
+    if('mwm_tess_planet_cadence_fix' in rsParams.cfg['Cartons']):
+        mwm_tess_planet_cadence_fix = True
+    else:
+        mwm_tess_planet_cadence_fix = False
+
+    if('dark_1x4_to_2x2_cadence_fix' in rsParams.cfg['Cartons']):
+        dark_1x4_to_2x2_cadence_fix = True
+    else:
+        dark_1x4_to_2x2_cadence_fix = False
+
+    if('bhm_colr_galaxies_lsdr8_cadence_fix' in rsParams.cfg['Cartons']):
+        bhm_colr_galaxies_lsdr8_cadence_fix = True
+    else:
+        bhm_colr_galaxies_lsdr8_cadence_fix = False
+
     cartons_version = rsParams.cfg['Cartons']['version']
     cartons = robostrategy.targets.read_cartons(version=cartons_version)
     stage = 'srd'
@@ -116,19 +131,33 @@ if __name__ == '__main__':
     # Set the stage
     targets['stage'] = stage
 
+    # FUDGE filler galaxies
+    if(bhm_colr_galaxies_lsdr8_cadence_fix):
+        ifix = np.where((targets['carton'] == 'bhm_colr_galaxies_lsdr8')
+                        & (targets['cadence'] == 'dark_1x4'))[0]
+        targets['cadence'][ifix] = 'dark_single_4x1'
+
     # FUDGE dark_1x4 to dark_2x2
-    i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
-    targets['cadence'][i4] = 'dark_2x2'
+    if(dark_1x4_to_2x2_cadence_fix):
+        i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
+        targets['cadence'][i4] = 'dark_2x2'
+
+    # FUDGE TESS planet cadences
+    if(mwm_tess_planet_cadence_fix):
+        cadence_map = {'bright_1x2': 'bright_flexible_2x1',
+                       'bright_1x3': 'bright_flexible_3x1',
+                       'bright_1x4': 'bright_flexible_4x1',
+                       'bright_1x5': 'bright_flexible_5x1',
+                       'bright_1x6': 'bright_flexible_6x1'}
+        for c in cadence_map:
+            ii = np.where(targets['cadence'] == c)[0]
+            targets['cadence'][ii] = cadence_map[c]
 
     # Fudge open_fiber into science
     iopen = np.where(targets['category'] == 'open_fiber')[0]
     if(len(iopen) > 0):
         print("Recategorizing {n} targets from open_fiber to science".format(n=len(iopen)))
         targets['category'][iopen] = 'science'
-
-    ifix = np.where((targets['carton'] == 'bhm_colr_galaxies_lsdr8')
-                    & (targets['cadence'] == 'dark_1x4'))[0]
-    targets['cadence'][ifix] = 'dark_single_4x1'
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
