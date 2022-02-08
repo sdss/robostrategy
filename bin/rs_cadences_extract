@@ -189,8 +189,8 @@ if __name__ == '__main__':
 
     # Now we allow robostrategy to enforce certain kinds 
     # of cadence consistency rules.
-    if('cadence_consistency' in rsParams['Cadences']):
-        ccversion = rsParams['Cadences']['cadence_consistency']
+    if('cadence_consistency' in rsParams.cfg['Cadences']):
+        ccversion = rsParams.cfg['Cadences']['cadence_consistency']
         fp = open(os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                'cadence-consistency-{ccversion}.json'.format(ccversion=ccversion)),
                   "r")

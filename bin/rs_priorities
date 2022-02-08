@@ -37,10 +37,15 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     opentargets = args.opentargets
+    filler = args.filler
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                     'carton_description.cfg')
