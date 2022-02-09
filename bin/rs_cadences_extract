@@ -149,6 +149,11 @@ if __name__ == '__main__':
         copy_cadence('dark_174x8', 'dark_138x8', nepochs=138)
     copy_cadence('mixed2_single_3x1', 'mixed2_single_2x1', nepochs=2)
 
+    copy_cadence('dark_2x2', 'dark_flexible_2x2')
+    cadencelist.cadences['dark_flexible_2x2'].delta[:] = -1
+    cadencelist.cadences['dark_flexible_2x2'].delta_min[:] = -1
+    cadencelist.cadences['dark_flexible_2x2'].delta_max[:] = -1
+
     for n in range(2, 7):
         name = 'bright_flexible_{n}x1'.format(n=n)
         copy_cadence('bright_{n}x1'.format(n=n), name)
