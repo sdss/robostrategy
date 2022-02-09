@@ -124,7 +124,7 @@ if __name__ == '__main__':
                                                               'rsFieldAssignmentsFiller')
         if(reassign):
             field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
-                                                              'rsFieldAssignmentsOpen')
+                                                              'rsFieldReassignments')
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
