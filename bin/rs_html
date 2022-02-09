@@ -229,7 +229,7 @@ if __name__ == '__main__':
 
     rsinfo['spares'] = dict()
 
-    for observatory in observatories:
+    for obs in observatories:
         rsinfo['spares'][obs] = dict()
         rsinfo['spares'][obs]['boss'] = spares[obs]['nboss_spare'].sum()
         rsinfo['spares'][obs]['apogee'] = spares[obs]['napogee_spare'].sum()
