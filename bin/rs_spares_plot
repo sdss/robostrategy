@@ -16,7 +16,6 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
-import multiprocessing
 import numpy as np
 import sdss_access.path
 import fitsio
