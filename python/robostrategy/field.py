@@ -794,8 +794,8 @@ class Field(object):
                                                               y[fiberType]]),
                                                   fiberType=fiberType)
                 sep = pyasl.getAngDist(ra_robo[0], dec_robo[0],
-                                       self.bright_stars['ra'],
-                                       self.bright_stars['dec']) * 3600.
+                                       bright['ra'],
+                                       bright['dec']) * 3600.
                 itooclose = np.where(sep < bright['r_exclude'])[0]
                 if(len(itooclose) > 0):
                     self.mastergrid.unassignTarget(rsid)
