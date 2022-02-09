@@ -120,7 +120,7 @@ if __name__ == '__main__':
         if(tmp_targets is not None):
             if(name in adjust):
                 tmp_targets['priority'] = (tmp_targets['priority'] +
-                                           adjust[carton])
+                                           adjust[name])
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
     # FUDGE dark_1x4 to dark_2x2
     if(dark_1x4_to_2x2_cadence_fix):
         i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
-        targets['cadence'][i4] = 'dark_2x2'
+        targets['cadence'][i4] = 'dark_flexible_2x2'
 
     # FUDGE TESS planet cadences
     if(mwm_tess_planet_cadence_fix):
