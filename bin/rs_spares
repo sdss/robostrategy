@@ -27,6 +27,24 @@ import fitsio
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
+noclobber = False
+
+
+def spares_file_name(fieldid=None):
+    base = 'rsFieldSpares'
+    tdir = 'targets'
+    if(opentargets):
+        base = 'rsFieldSparesOpen'
+    if(filler):
+        base = 'rsFieldSparesFiller'
+    if(final):
+        tdir = 'final'
+        base = 'rsFieldSparesFinal'
+    if(reassign):
+        base = 'rsFieldSparesReassign'
+    spares_file = '{tdir}/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base, tdir=tdir)
+    return(spares_file)
+
 
 def count_spares(indx):
     """Count spares for a field
@@ -46,6 +64,12 @@ def count_spares(indx):
     fieldid = allocate.field_array['fieldid'][indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
+
+    spares_file = spares_file_name(fieldid=fieldid)
+
+    if((noclobber is True) & os.path.isfile(spares_file)):
+        print("Fieldid {f} exists already".format(f=fieldid))
+        return
 
     field_target_file = sdss_path.full('rsFieldAssignments',
                                        plan=plan, observatory=observatory,
@@ -103,18 +127,6 @@ def count_spares(indx):
                            (f.targets['fiberType'][cindx] == 'APOGEE'))[0]
         spare['napogee_science'][0] = len(iapogee)
             
-    base = 'rsFieldSpares'
-    tdir = 'targets'
-    if(opentargets):
-        base = 'rsFieldSparesOpen'
-    if(filler):
-        base = 'rsFieldSparesFiller'
-    if(reassign):
-        base = 'rsFieldSparesReassign'
-    if(final):
-        tdir = 'final'
-        base = 'rsFieldSparesFinal'
-    spares_file = '{tdir}/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base, tdir=tdir)
     hdr = robostrategy.header.rsheader()
     fitsio.write(spares_file, spare, header=hdr, clobber=True)
     return
@@ -137,6 +149,9 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
+                        help='do not clobber', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-O', '--open', dest='opentargets',
                         help='set to read open target results',
                         default=False, required=False,
@@ -163,6 +178,7 @@ if __name__ == '__main__':
     filler = args.filler
     reassign = args.reassign
     final = args.final
+    noclobber = args.noclobber
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -210,24 +226,16 @@ if __name__ == '__main__':
     ispares_exp = 0
     for indx in ikeep:
         fieldid = allocate.field_array['fieldid'][indx]
-        base = 'rsFieldSpares'
-        tdir = 'targets'
-        if(opentargets):
-            base = 'rsFieldSparesOpen'
-        if(filler):
-            base = 'rsFieldSparesFiller'
-        if(final):
-            tdir = 'final'
-            base = 'rsFieldSparesFinal'
-        if(reassign):
-            base = 'rsFieldSparesReassign'
-        spares_file = '{tdir}/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base, tdir=tdir)
+        spares_file = spares_file_name(fieldid=fieldid)
         cspares = fitsio.read(spares_file)
 
         try:
             nexp = len(cspares['nboss_spare'][0, :])
         except IndexError:
             nexp = 1
+
+        if(nexp != allocate.field_array['nfilled'][indx]):
+            print("fid={fid}, nexp={nexp}, nfilled={nfilled}".format(fid=fieldid, nexp=nexp, nfilled=allocate.field_array['nfilled'][indx]))
         spares_exp['fieldid'][ispares_exp:ispares_exp + nexp] = fieldid
         spares_exp['iexp'][ispares_exp:ispares_exp + nexp] = np.arange(nexp, dtype=np.int32)
         spares_exp['racen'][ispares_exp:ispares_exp + nexp] = cspares['racen'][0]
