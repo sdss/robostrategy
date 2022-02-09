@@ -26,7 +26,6 @@ import robostrategy.field as field
 import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
-import pdb
 import fitsio
 import time
 from astropy.coordinates.angle_utilities import angular_separation
@@ -240,7 +239,15 @@ if __name__ == '__main__':
                 assign_field(i)
         else:
             with multiprocessing.Pool() as pool:
-                pool.map(assign_field, ikeep)
+                ikeep = list(ikeep)
+                ikeep_distributed = []
+                icurr = 0
+                while(len(ikeep) > 0):
+                    ikeep_distributed.append(ikeep[icurr])
+                    ikeep.remove(ikeep[icurr])
+                    if(len(ikeep) > 0):
+                        icurr = (icurr + int(pool._processes)) % len(ikeep)
+                pool.map(assign_field, ikeep_distributed)
 
     print('DONE: rs_assign_final')
     print(time.ctime(time.time()))
