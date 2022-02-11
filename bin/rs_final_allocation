@@ -24,8 +24,6 @@ import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import mugatu.designs_to_targetdb
 import sdss_access.path
-import fitsio
-import time
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
