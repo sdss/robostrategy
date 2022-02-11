@@ -99,7 +99,7 @@ def read_cadences(plan=None, observatory=None, unpickle=False):
 
 
 def read_field(plan=None, observatory=None, fieldid=None,
-               stage='', targets=False, speedy=False, complete=False,
+               stage='', targets=False, speedy=False,
                verbose=False, unpickle=False):
     """Convenience function to read a field object
 
@@ -123,9 +123,6 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     speedy : bool
         if True, return a FieldSpeedy object (default False)
-
-    speedy : bool
-        if True, return a CompleteField object (default False)
 
     unpickle : bool
         if set, read in pickled cadence_consistency cache  (default False)
@@ -164,11 +161,9 @@ def read_field(plan=None, observatory=None, fieldid=None,
     if(speedy):
         f = FieldSpeedy(filename=field_file, fieldid=fieldid,
                         verbose=verbose)
-    elif(complete):
-        f = CompleteField(filename=field_file, fieldid=fieldid,
-                          verbose=verbose)
     else:
         f = Field(filename=field_file, fieldid=fieldid, verbose=verbose)
+
     return(f)
 
 
@@ -4298,6 +4293,167 @@ class Field(object):
         self._set_count(reset_equiv=False)
         return
 
+    def complete_epochs_assigned(self):
+        """Complete the epochs of any assigned science targets"""
+
+        print("fieldid {fid}: Complete any assigned targets within their epochs".format(fid=self.fieldid), flush=True)
+
+        # Go through each epoch. For all science targets
+        # observed in that epoch, go through them in priority order
+        # and see if you can assign them
+        ntargets = 0
+        ntargets_added = 0
+        nexposures_added = 0
+        for epoch in np.arange(self.field_cadence.nepochs, dtype=int):
+            iexps_epoch = (self.field_cadence.epoch_indx[epoch] +
+                           np.arange(self.field_cadence.nexp[epoch], dtype=int))
+            observed_in_epoch = (self.assignments['equivRobotID'][:, iexps_epoch] >= 0).sum(axis=1) > 0
+            iscience = np.where((self.targets['category'] == 'science') &
+                                (observed_in_epoch))[0]
+            if(len(iscience) > 0):
+                isort = np.argsort(self.targets['priority'][iscience])
+                iscience = iscience[isort]
+                ntargets = ntargets + len(iscience)
+                for itarget in iscience:
+                    rsid = self.targets['rsid'][itarget]
+                    not_observed = (self.assignments['equivRobotID'][itarget, iexps_epoch] < 0)
+                    done = self.assign_exposures(rsid=rsid, iexps=iexps_epoch[not_observed])
+                    ndone = done.sum()
+                    if(ndone > 0):
+                        self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
+                        ntargets_added = ntargets_added + 1
+                        nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        
+        self.decollide_unassigned()
+        return
+
+    def complete_assigned(self):
+        """Complete any available exposures of any assigned science targets"""
+
+        print("fieldid {fid}: Complete any assigned targets across all exposures".format(fid=self.fieldid), flush=True)
+
+        # For all science targets observed in that epoch, go through 
+        # them in priority order and see if you can assign them
+        ntargets = 0
+        ntargets_added = 0
+        nexposures_added = 0
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        iscience = np.where((self.targets['category'] == 'science') &
+                            ((self.assignments['equivRobotID'] >= 0).sum(axis=1) > 0))[0]
+        if(len(iscience) > 0):
+            isort = np.argsort(self.targets['priority'][iscience])
+            iscience = iscience[isort]
+            ntargets = ntargets + len(iscience)
+            for itarget in iscience:
+                rsid = self.targets['rsid'][itarget]
+                not_observed = (self.assignments['equivRobotID'][itarget, iexps] < 0)
+                done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed])
+                ndone = done.sum()
+                if(ndone > 0):
+                    self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
+                    ntargets_added = ntargets_added + 1
+                    nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        
+        self.decollide_unassigned()
+        return
+
+    def complete_unassigned(self):
+        """Complete any available exposures of any unassigned science targets"""
+
+        print("fieldid {fid}: Complete any unassigned targets".format(fid=self.fieldid), flush=True)
+
+        # Try any unassigned targets, and assign them whatever can be 
+        # assigned
+        iscience = np.where((self.targets['category'] == 'science') &
+                            ((self.assignments['equivRobotID'] >= 0).sum(axis=1) == 0))[0]
+        print("fieldid {fid}:    {n} unassigned science targets to check".format(fid=self.fieldid, n=len(iscience)), flush=True)
+        if(len(iscience) == 0):
+            return
+
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        isort = np.argsort(self.targets['priority'][iscience])
+        iscience = iscience[isort]
+        ntargets_added = 0
+        nexposures_added = 0
+        for itarget in iscience:
+            rsid = self.targets['rsid'][itarget]
+            done = self.assign_exposures(rsid=rsid, iexps=iexps)
+            ndone = done.sum()
+            if(ndone > 0):
+                self.set_flag(rsid=rsid, flagname='COMPLETE_UNASSIGNED')
+                ntargets_added = ntargets_added + 1
+                nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        self.decollide_unassigned()
+        return
+
+    def complete_calibrations(self):
+        """Add any available exposures for any calibration targets"""
+
+        print("fieldid {fid}: Add any calibration targets".format(fid=self.fieldid), flush=True)
+
+        # Assign any calibrations that can be additionally
+        # assigned WITHOUT allowing spare calibrations to be
+        # bumped.
+        icalib = np.where(self.targets['category'] != 'science')[0]
+        print("fieldid {fid}:    {n} calibration targets to check".format(fid=self.fieldid, n=len(icalib)), flush=True)
+        if(len(icalib) == 0):
+            return
+
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        isort = np.argsort(self.targets['priority'][icalib])
+        icalib = icalib[isort]
+        ntargets_added = 0
+        nexposures_added = 0
+        for itarget in icalib:
+            rsid = self.targets['rsid'][itarget]
+            not_observed = (self.assignments['equivRobotID'][itarget, iexps] < 0)
+            done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed],
+                                         check_spare=False)
+            ndone = done.sum()
+            if(ndone > 0):
+                self.set_flag(rsid=rsid, flagname='COMPLETE_CALIBRATION')
+                ntargets_added = ntargets_added + 1
+                nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+
+        self.decollide_unassigned()
+        return
+
+    def complete(self):
+        """Fill out any extra exposures possible
+
+        Notes
+        -----
+
+        Runs::
+
+           complete_epochs_assigned()
+           complete_assigned()
+           complete_unassigned()
+           complete_calibrations()
+           decollide_unassigned()
+
+"""
+        self.complete_epochs_assigned()
+        self.complete_assigned()
+        self.complete_unassigned()
+        self.complete_calibrations()
+        self.decollide_unassigned()
+        return
+
     def assess(self):
         """Assess the current results of assignment in field
 
@@ -4829,140 +4985,3 @@ class FieldSpeedy(Field):
         return
 
 
-class CompleteField(Field):  # inherit all Field-defined stuff.
-
-    def complete_epochs_assigned(self):
-
-        print("fieldid {fid}: Complete any assigned targets within their epochs".format(fid=self.fieldid), flush=True)
-
-        # Go through each epoch. For all science targets
-        # observed in that epoch, go through them in priority order
-        # and see if you can assign them
-        ntargets = 0
-        ntargets_added = 0
-        nexposures_added = 0
-        for epoch in np.arange(self.field_cadence.nepochs, dtype=int):
-            iexps_epoch = (self.field_cadence.epoch_indx[epoch] +
-                           np.arange(self.field_cadence.nexp[epoch], dtype=int))
-            observed_in_epoch = (self.assignments['equivRobotID'][:, iexps_epoch] >= 0).sum(axis=1) > 0
-            iscience = np.where((self.targets['category'] == 'science') &
-                                (observed_in_epoch))[0]
-            if(len(iscience) > 0):
-                isort = np.argsort(self.targets['priority'][iscience])
-                iscience = iscience[isort]
-                ntargets = ntargets + len(iscience)
-                for itarget in iscience:
-                    rsid = self.targets['rsid'][itarget]
-                    not_observed = (self.assignments['equivRobotID'][itarget, iexps_epoch] < 0)
-                    done = self.assign_exposures(rsid=rsid, iexps=iexps_epoch[not_observed])
-                    ndone = done.sum()
-                    if(ndone > 0):
-                        self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
-                        ntargets_added = ntargets_added + 1
-                        nexposures_added = nexposures_added + ndone
-
-        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
-        
-        return
-
-    def complete_assigned(self):
-
-        print("fieldid {fid}: Complete any assigned targets across all exposures".format(fid=self.fieldid), flush=True)
-
-        # For all science targets observed in that epoch, go through 
-        # them in priority order and see if you can assign them
-        ntargets = 0
-        ntargets_added = 0
-        nexposures_added = 0
-        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
-        iscience = np.where((self.targets['category'] == 'science') &
-                            ((self.assignments['equivRobotID'] >= 0).sum(axis=1) > 0))[0]
-        if(len(iscience) > 0):
-            isort = np.argsort(self.targets['priority'][iscience])
-            iscience = iscience[isort]
-            ntargets = ntargets + len(iscience)
-            for itarget in iscience:
-                rsid = self.targets['rsid'][itarget]
-                not_observed = (self.assignments['equivRobotID'][itarget, iexps] < 0)
-                done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed])
-                ndone = done.sum()
-                if(ndone > 0):
-                    self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
-                    ntargets_added = ntargets_added + 1
-                    nexposures_added = nexposures_added + ndone
-
-        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
-        
-        return
-
-    def complete_unassigned(self):
-        print("fieldid {fid}: Complete any unassigned targets".format(fid=self.fieldid), flush=True)
-
-        # Try any unassigned targets, and assign them whatever can be 
-        # assigned
-        iscience = np.where((self.targets['category'] == 'science') &
-                            ((self.assignments['equivRobotID'] > 0).sum(axis=1) == 0))[0]
-        print("fieldid {fid}:    {n} unassigned science targets to check".format(fid=self.fieldid, n=len(iscience)), flush=True)
-        if(len(iscience) == 0):
-            return
-
-        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
-        isort = np.argsort(self.targets['priority'][iscience])
-        iscience = iscience[isort]
-        ntargets_added = 0
-        nexposures_added = 0
-        for itarget in iscience:
-            rsid = self.targets['rsid'][itarget]
-            done = self.assign_exposures(rsid=rsid, iexps=iexps)
-            ndone = done.sum()
-            if(ndone > 0):
-                self.set_flag(rsid=rsid, flagname='COMPLETE_UNASSIGNED')
-                ntargets_added = ntargets_added + 1
-                nexposures_added = nexposures_added + ndone
-
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
-        return
-
-    def complete_calibrations(self):
-        print("fieldid {fid}: Add any calibration targets".format(fid=self.fieldid), flush=True)
-
-        # Assign any calibrations that can be additionally
-        # assigned WITHOUT allowing spare calibrations to be
-        # bumped.
-        icalib = np.where(self.targets['category'] != 'science')[0]
-        print("fieldid {fid}:    {n} calibration targets to check".format(fid=self.fieldid, n=len(icalib)), flush=True)
-        if(len(icalib) == 0):
-            return
-
-        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
-        isort = np.argsort(self.targets['priority'][icalib])
-        icalib = icalib[isort]
-        ntargets_added = 0
-        nexposures_added = 0
-        for itarget in icalib:
-            rsid = self.targets['rsid'][itarget]
-            not_observed = (self.assignments['equivRobotID'][itarget, iexps] < 0)
-            done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed],
-                                         check_spare=False)
-            ndone = done.sum()
-            if(ndone > 0):
-                self.set_flag(rsid=rsid, flagname='COMPLETE_CALIBRATION')
-                ntargets_added = ntargets_added + 1
-                nexposures_added = nexposures_added + ndone
-
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
-        return
-
-    def complete(self):
-        """Fill out any extra exposures possible"""
-        self.complete_epochs_assigned()
-        self.complete_assigned()
-        self.complete_unassigned()
-        self.complete_calibrations()
-        return
