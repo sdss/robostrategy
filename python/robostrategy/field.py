@@ -30,6 +30,7 @@ import coordio.time
 import coordio.utils
 import sdss_access.path
 
+
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 # Default collision buffer
@@ -58,7 +59,10 @@ _flagdict = {'STAGE_IS_NONE':1,
              'NOT_COVERED': 8,
              'NONE_ALLOWED': 16,
              'NO_AVAILABILITY': 32,
-             'ALREADY_ASSIGNED': 64}
+             'ALREADY_ASSIGNED': 64,
+             'COMPLETE_ASSIGNED': 128,
+             'COMPLETE_UNASSIGNED': 256,
+             'COMPLETE_CALIBRATION': 512}
 
 __all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus']
 
@@ -95,8 +99,8 @@ def read_cadences(plan=None, observatory=None, unpickle=False):
 
 
 def read_field(plan=None, observatory=None, fieldid=None,
-               stage='', targets=False, speedy=False, verbose=False,
-               unpickle=False):
+               stage='', targets=False, speedy=False, complete=False,
+               verbose=False, unpickle=False):
     """Convenience function to read a field object
 
     Parameters
@@ -119,6 +123,9 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     speedy : bool
         if True, return a FieldSpeedy object (default False)
+
+    speedy : bool
+        if True, return a CompleteField object (default False)
 
     unpickle : bool
         if set, read in pickled cadence_consistency cache  (default False)
@@ -157,6 +164,9 @@ def read_field(plan=None, observatory=None, fieldid=None,
     if(speedy):
         f = FieldSpeedy(filename=field_file, fieldid=fieldid,
                         verbose=verbose)
+    elif(complete):
+        f = CompleteField(filename=field_file, fieldid=fieldid,
+                          verbose=verbose)
     else:
         f = Field(filename=field_file, fieldid=fieldid, verbose=verbose)
     return(f)
@@ -385,6 +395,11 @@ class Field(object):
         distance from racen, deccen to search for for targets (deg);
         set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
 
+    calibration_order : ndarray of str
+        Ordering of calibrations to perform assignment; note that spares
+        are preferentially assigned to the later listed; default is
+        ['sky_apogee', 'sky_boss', 'standard_apogee', 'standard_boss']
+
     required_calibrations : OrderedDict
         dictionary with numbers of required calibration sources specified
         for each exposure, for 'sky_boss', 'standard_boss', 'sky_apogee',
@@ -481,6 +496,8 @@ class Field(object):
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  bright_neighbors=True, verbose=False, veryverbose=False):
+        self.calibration_order = np.array(['sky_apogee', 'sky_boss',
+                                           'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
         self.verbose = verbose
         self.veryverbose = veryverbose
@@ -540,15 +557,13 @@ class Field(object):
                 mugatu.designmode.allDesignModes(filename=default_dm_file)
             if(self.nocalib is False):
                 self.required_calibrations = collections.OrderedDict()
-                self.required_calibrations['sky_boss'] = np.zeros(0, dtype=np.int32)
-                self.required_calibrations['standard_boss'] = np.zeros(0, dtype=np.int32)
-                self.required_calibrations['sky_apogee'] = np.zeros(0, dtype=np.int32)
-                self.required_calibrations['standard_apogee'] = np.zeros(0, dtype=np.int32)
+                for n in self.calibration_order:
+                    self.required_calibrations[n] = np.zeros(0, dtype=np.int32)
                 self.calibrations = collections.OrderedDict()
-                for n in self.required_calibrations:
+                for n in self.calibration_order:
                     self.calibrations[n] = np.zeros(0, dtype=np.int32)
                 self.achievable_calibrations = collections.OrderedDict()
-                for n in self.required_calibrations:
+                for n in self.calibration_order:
                     self.achievable_calibrations[n] = self.required_calibrations[n].copy()
             self.set_field_cadence(field_cadence)
         self._set_radius()
@@ -680,7 +695,7 @@ class Field(object):
         if(((design_mode, fiberType) in self.bright_stars.keys()) &
            (reset is False)):
             if(self.verbose):
-                print("Already got bright stars for {d}, {f}".format(d=design_mode, f=fiberType), flush=True)
+                print("fieldid {fid}: Already got bright stars for {d}, {f}".format(d=design_mode, f=fiberType, fid=self.fieldid), flush=True)
             return
 
         if(self.verbose):
@@ -945,10 +960,10 @@ class Field(object):
                         else:
                             self.required_calibrations[hdr[name]] = np.zeros(0, dtype=np.int32)
             self.calibrations = collections.OrderedDict()
-            for n in self.required_calibrations:
+            for n in self.calibration_order:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
             self.achievable_calibrations = collections.OrderedDict()
-            for n in self.required_calibrations:
+            for n in self.calibration_order:
                 self.achievable_calibrations[n] = self.required_calibrations[n].copy()
 
         try:
@@ -982,7 +997,7 @@ class Field(object):
             assignments = None
         if(assignments is not None):
             self.achievable_calibrations = collections.OrderedDict()
-            for n in self.required_calibrations:
+            for n in self.calibration_order:
                 self.achievable_calibrations[n] = self.required_calibrations[n].copy()
             for name in hdr:
                 m = re.match('^ACNAME([0-9]*)$', name)
@@ -1070,7 +1085,7 @@ class Field(object):
         self.assignments = None
         self.design_mode = None
         if(self.nocalib is False):
-            for n in self.required_calibrations:
+            for n in self.calibration_order:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
                 self.required_calibrations[n] = np.zeros(0, dtype=np.int32)
                 self.achievable_calibrations[n] = self.required_calibrations[n].copy()
@@ -1182,7 +1197,7 @@ class Field(object):
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
-                                               ('holeID', np.dtype("|U15"), (self.field_cadence.nexp_total,)),
+                                               ('holeID', np.dtype("|U15"), (self.field_cadence.nexp_total)),
                                                ('equivRobotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('target_skybrightness', np.float32,
@@ -1232,7 +1247,7 @@ class Field(object):
                     
             if(self.nocalib is False):
                 dms = self.design_mode[self.field_cadence.epochs]
-                for c in self.required_calibrations:
+                for c in self.calibration_order:
                     if(c == 'standard_boss'):
                         self.required_calibrations[c] = np.array([self.designModeDict[d].n_stds_min['BOSS'] for d in dms], dtype=np.int32)
                     elif(c == 'standard_apogee'):
@@ -1241,10 +1256,10 @@ class Field(object):
                         self.required_calibrations[c] = np.array([self.designModeDict[d].n_skies_min['BOSS'] for d in dms], dtype=np.int32)
                     elif(c == 'sky_apogee'):
                         self.required_calibrations[c] = np.array([self.designModeDict[d].n_skies_min['APOGEE'] for d in dms], dtype=np.int32)
-                for c in self.calibrations:
+                for c in self.calibration_order:
                     self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                     dtype=np.int32)
-                for c in self.calibrations:
+                for c in self.calibration_order:
                     self.achievable_calibrations[c] = self.required_calibrations[c].copy()
 
             if(self.bright_neighbors):
@@ -1257,7 +1272,7 @@ class Field(object):
                                               fiberType=fiberType)
 
             if(self.verbose):
-                print("fieldid {fieldid}: Setup targets".format(fieldid=self.fieldid), flush=True)
+                print("fieldid {fieldid}: Setup targets for cadence".format(fieldid=self.fieldid), flush=True)
             self.targets = self._setup_targets_for_cadence(self.targets)
             if(self.verbose):
                 print("fieldid {fieldid}: Setup assignments".format(fieldid=self.fieldid), flush=True)
@@ -1945,7 +1960,7 @@ class Field(object):
                     'value':self.nocalib,
                     'comment':'True if this field ignores calibrations'})
         if(self.nocalib is False):
-            for indx, rc in enumerate(self.required_calibrations):
+            for indx, rc in enumerate(self.calibration_order):
                 name = 'RCNAME{indx}'.format(indx=indx)
                 num = 'RCNUM{indx}'.format(indx=indx)
                 hdr.append({'name':name,
@@ -1955,7 +1970,7 @@ class Field(object):
                 hdr.append({'name':num,
                             'value':ns,
                             'comment':'number required per exposure'})
-            for indx, ac in enumerate(self.achievable_calibrations):
+            for indx, ac in enumerate(self.calibration_order):
                 name = 'ACNAME{indx}'.format(indx=indx)
                 num = 'ACNUM{indx}'.format(indx=indx)
                 hdr.append({'name':name,
@@ -2049,7 +2064,7 @@ class Field(object):
                                                        self.achievable_calibrations[category])
         return
 
-    def set_assignment_status(self, status=None, isspare=None):
+    def set_assignment_status(self, status=None, isspare=None, check_spare=True):
         """Set parameters of status object
 
         Parameters
@@ -2061,6 +2076,9 @@ class Field(object):
         isspare : ndarray of bool
             is rsid of this AssignmentStatus a spare calibration fiber
             in each exposure (default all False)
+        
+        check_spare : bool
+            if True, checks whether spare calibrations can be bumped (default True)
 
         Notes
         -----
@@ -2088,7 +2106,10 @@ class Field(object):
             free = (status.currindx < 0)
             hasspare = self._has_spare_calib[self._calibration_index[status.currindx + 1], status.iexps]
             status.spare = (hasspare > 0) & (isspare == False) & (free == False)
-            status.assignable = (free | status.spare) & (allowed > 0)
+            if(check_spare):
+                status.assignable = (free | status.spare) & (allowed > 0)
+            else:
+                status.assignable = (free) & (allowed > 0)
         else:
             # Consider exposures for this epoch
             status.currindx = self._robot2indx[robotindx, status.iexps]
@@ -2102,7 +2123,8 @@ class Field(object):
 
         if(status.rsid is not None):
             for iexp in status.assignable_exposures():
-                self.set_collided_status(status=status, iexp=iexp)
+                self.set_collided_status(status=status, iexp=iexp,
+                                         check_spare=check_spare)
                 if(self.bright_neighbors):
                     self.set_bright_neighbor_status(status=status, iexp=iexp)
                     i = status.expindx[iexp]
@@ -2138,7 +2160,7 @@ class Field(object):
         status.bright_neighbor_allowed[i] = self.bright_neighbor_cache[key]
         return
 
-    def set_collided_status(self, status=None, iexp=None):
+    def set_collided_status(self, status=None, iexp=None, check_spare=True):
         """Set the collded attribute of status
 
         Parameters
@@ -2149,6 +2171,9 @@ class Field(object):
 
         iexp : int
             exposure index (0-indexed within field cadence)
+        
+        check_spare : bool
+            if True, checks whether spare calibrations can be bumped (default True)
 
         Notes
         -----
@@ -2206,6 +2231,13 @@ class Field(object):
                                     (status.collided[i] == False))
             return
 
+        # If it collides with another robot and we aren't allowing
+        # it to bump spares, then it can't be assigned
+        if(check_spare == False):
+            status.assignable[i] = (status.assignable[i] and
+                                    (status.collided[i] == False))
+            return
+
         # If it collides with another robot but is a spare fiber,
         # then it can't be assigned
         indx = self.rsid2indx[status.rsid]
@@ -2251,7 +2283,7 @@ class Field(object):
         # If they are ALL spare, check if removing them all 
         # is possible
         toremove = dict()
-        for c in self.required_calibrations:
+        for c in self.calibration_order:
             toremove[c] = 0
         if(status.spare[i]):
             toremove[self.targets['category'][status.currindx[i]]] += 1
@@ -2259,7 +2291,7 @@ class Field(object):
             toremove[self.targets['category'][itarget]] += 1
 
         enough = True
-        for c in self.required_calibrations:
+        for c in self.calibration_order:
             excess = (self.calibrations[c][iexp] -
                       self.achievable_calibrations[c][iexp])
             if(toremove[c] > excess):
@@ -2668,8 +2700,8 @@ class Field(object):
 
         return
 
-    def assign_exposures(self, rsid=None, iexps=None, reset_satisfied=True,
-                         reset_has_spare=True):
+    def assign_exposures(self, rsid=None, iexps=None, check_spare=True,
+                         reset_satisfied=True, reset_has_spare=True):
         """Assign an rsid to particular exposures
 
         Parameters
@@ -2688,6 +2720,9 @@ class Field(object):
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix
             (default True)
+
+        check_spare : bool
+            if True, checks whether spare calibrations can be bumped (default True)
 
         Returns
         -------
@@ -2708,7 +2743,7 @@ class Field(object):
             if(len(cexps) == 0):
                 break
             status = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=cexps)
-            self.set_assignment_status(status=status)
+            self.set_assignment_status(status=status, check_spare=check_spare)
             for iexp in status.assignable_exposures():
                 self.unassign_assignable(status=status, iexp=iexp,
                                          reset_count=False,
@@ -4074,7 +4109,7 @@ class Field(object):
         for design_mode in udesign_mode:
             iexpall = np.where(self.design_mode[epochs] == design_mode)[0]
             iexp = iexpall[0]
-            for c in self.required_calibrations:
+            for c in self.calibration_order:
                 icalib = np.where(self.targets['category'] != 'science')[0]
                 np.random.shuffle(icalib)
                 isort = np.argsort(self.targets['priority'][icalib],
@@ -4085,7 +4120,7 @@ class Field(object):
                                           iexps=np.array([iexp],
                                                          dtype=np.int32),
                                           reset_satisfied=False)
-                for c in self.required_calibrations:
+                for c in self.calibration_order:
                     if(self.calibrations[c][iexp] <
                        self.required_calibrations[c][iexp]):
                         self.achievable_calibrations[c][iexpall] = self.calibrations[c][iexp]
@@ -4119,7 +4154,7 @@ class Field(object):
         np.random.shuffle(iscience)
 
         assigned_exposure_calib = collections.OrderedDict()
-        for c in self.required_calibrations:
+        for c in self.calibration_order:
             assigned_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
                                                   dtype=bool)
 
@@ -4137,7 +4172,7 @@ class Field(object):
             # some category, assign the calibs just in those exposures
             if(self.verbose):
                 print("fieldid {fid}: Checking calibrations for each exposure".format(fid=self.fieldid), flush=True)
-            for c in self.required_calibrations:
+            for c in self.calibration_order:
                 if(self.verbose):
                     print("fieldid {fid}:   ... {c}".format(fid=self.fieldid, c=c), flush=True)
                 iexps = np.where(assigned_exposure_calib[c] == False)[0]
@@ -4150,6 +4185,7 @@ class Field(object):
                 for i in icalib:
                     self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps,
                                           reset_satisfied=False)
+                self._set_satisfied(rsids=self.targets['rsid'][icalib])
 
             # If any exposure didn't get the achievable calibrations
             # in any category, remove all science targets, assign the
@@ -4160,7 +4196,7 @@ class Field(object):
                 print("fieldid {fid}: Checking for shortfalls".format(fid=self.fieldid), flush=True)
             shortfalls = collections.OrderedDict()
             anyshortfall = False
-            for c in self.required_calibrations:
+            for c in self.calibration_order:
                 shortfalls[c] = []
                 for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
                     if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
@@ -4173,20 +4209,23 @@ class Field(object):
                 self.unassign(rsids=self.targets['rsid'][ipriority])
                 if(self.verbose):
                     print("fieldid {fid}: Assigning calibs in shortfall exposures".format(fid=self.fieldid), flush=True)
-                for c in self.required_calibrations:
-                    if(self.verbose):
-                        print("   ... {c}".format(c=c))
-                    icalib = np.where((self.targets['category'] == c) &
-                                      (self.targets['stage'] == stage))[0]
-                    np.random.shuffle(icalib)
-                    isort = np.argsort(self.targets['priority'][icalib],
-                                       kind='stable')
-                    icalib = icalib[isort]
-                    for i in icalib:
-                        self.assign_exposures(rsid=self.targets['rsid'][i],
-                                              iexps=iexps,
-                                              reset_satisfied=False)
-                    assigned_exposure_calib[c][iexps] = True
+                for c in self.calibration_order:
+                    iexps = np.array(shortfalls[c], dtype=int)
+                    if(len(iexps) > 0):
+                        if(self.verbose):
+                            print("   ... {c}".format(c=c))
+                        icalib = np.where((self.targets['category'] == c) &
+                                          (self.targets['stage'] == stage))[0]
+                        np.random.shuffle(icalib)
+                        isort = np.argsort(self.targets['priority'][icalib],
+                                           kind='stable')
+                        icalib = icalib[isort]
+                        for i in icalib:
+                            self.assign_exposures(rsid=self.targets['rsid'][i],
+                                                  iexps=iexps,
+                                                  reset_satisfied=False)
+                        assigned_exposure_calib[c][iexps] = True
+                        self._set_satisfied(rsids=self.targets['rsid'][icalib])
                 self.assign_cadences(rsids=self.targets['rsid'][ipriority])
 
             # For all exposures that did not get assigned
@@ -4196,7 +4235,7 @@ class Field(object):
                 if(self.verbose):
                     print("fieldid {fid}: Unassigning temporary calibs".format(fid=self.fieldid), flush=True)
                 for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
-                    for c in self.required_calibrations:
+                    for c in self.calibration_order:
                         if(assigned_exposure_calib[c][iexp] == False):
                             icalib = np.where(self.targets['category'] == c)[0]
                             for i in icalib:
@@ -4275,7 +4314,7 @@ class Field(object):
         if(self.nocalib is False):
             out = out + "\n"
             out = out + "Calibration targets:\n"
-            for c in self.required_calibrations:
+            for c in self.calibration_order:
                 tmp = " {c}:"
                 out = out + tmp.format(c=c)
                 for cn, rcn in zip(self.calibrations[c], self.required_calibrations[c]):
@@ -4323,14 +4362,23 @@ class Field(object):
             out = out + " {p}".format(p=len(iused_apogee))
         out = out + "\n"
 
+        nboss_spare, napogee_spare, nboss_unused, napogee_unused = self.count_spares(return_unused=True)
         out = out + "\nSpare fibers per exposure (including spare calibs):\n"
-        nboss_spare, napogee_spare = self.count_spares()
         out = out + " BOSS: "
         for iexp in range(self.field_cadence.nexp_total):
             out = out + " {p}".format(p=nboss_spare[iexp])
         out = out + "\n APOGEE: "
         for iexp in range(self.field_cadence.nexp_total):
             out = out + " {p}".format(p=napogee_spare[iexp])
+        out = out + "\n"
+
+        out = out + "\nUnassigned fibers per exposure:\n"
+        out = out + " BOSS: "
+        for iexp in range(self.field_cadence.nexp_total):
+            out = out + " {p}".format(p=nboss_unused[iexp])
+        out = out + "\n APOGEE: "
+        for iexp in range(self.field_cadence.nexp_total):
+            out = out + " {p}".format(p=napogee_unused[iexp])
         out = out + "\n"
 
         out = out + "\nCarton completion:\n"
@@ -4380,7 +4428,7 @@ class Field(object):
 
         if(self.nocalib is False):
             test_calibrations = dict()
-            for c in self.required_calibrations:
+            for c in self.calibration_order:
                 test_calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                 dtype=np.int32)
 
@@ -4416,7 +4464,7 @@ class Field(object):
 
         # Check that the number of calibrators has been tracked right
         if(self.nocalib is False):
-            for c in self.required_calibrations:
+            for c in self.calibration_order:
                 for iexp in range(self.field_cadence.nexp_total):
                     if(test_calibrations[c][iexp] != self.calibrations[c][iexp]):
                         print("number of {c} calibrators tracked incorrectly ({nc} found instead of {nct})".format(c=c, nc=test_calibrations[c][iexp], nct=self.calibrations[c][iexp]))
@@ -4569,17 +4617,29 @@ class Field(object):
                 print("rsid={rsid} : target assigned with wrong nepochs".format(rsid=target['rsid']))
                 nproblems += 1
 
-    def count_spares(self):
+    def count_spares(self, return_unused=False):
         """Count spare fibers (accounting for spare calibrations)
+
+        Parameters
+        ----------
+
+        return_unused : bool
+            return nboss_unused and napogee_unused
 
         Returns
         -------
 
-        nboss_spare : np.int32
-            Number of spare BOSS fibers (all, including APOGEE+BOSS robots)
+        nboss_spare : ndarray of np.int32
+            Number of spare BOSS fibers (all, including APOGEE+BOSS robots) in each exposure
 
-        napogee_spare : np.int32
-            Number of spare APOGEE fibers
+        napogee_spare : ndarray of np.int32
+            Number of spare APOGEE fibers in each exposure
+
+        nboss_unused : ndarray of np.int32
+            If return_unused is True, number of unused BOSS fibers (all, including APOGEE+BOSS robots) in each exposure
+
+        napogee_unused : ndarray of np.int32
+            If return_unused is True, number of unused APOGEE fibers in each exposure
 """
         hasApogee = np.array([self.mastergrid.robotDict[self.robotIDs[x]].hasApogee
                               for x in range(500)], dtype=bool)
@@ -4601,7 +4661,7 @@ class Field(object):
                 nun_boss[iexp] = len(ina_boss)
         
             nsp = collections.OrderedDict()
-            for calibration in self.calibrations:
+            for calibration in self.calibration_order:
                 nsp[calibration] = (self.calibrations[calibration] -
                                     self.required_calibrations[calibration])
                 iz = np.where(nsp[calibration] < 0)[0]
@@ -4638,7 +4698,7 @@ class Field(object):
                              nsp['standard_boss_wapogee'] +
                              nsp['sky_boss_wapogee'])
 
-        return(nboss_spare, napogee_spare)
+        return(nboss_spare, napogee_spare, nun_boss, nun_apogee)
         
     def _plot_robot(self, robot, color=None, ax=None):
         """Plot a single robot
@@ -4766,4 +4826,143 @@ class FieldSpeedy(Field):
                          verbose=verbose, bright_neighbors=False,
                          nocalib=True, nocollide=True, allgrids=False)
 
+        return
+
+
+class CompleteField(Field):  # inherit all Field-defined stuff.
+
+    def complete_epochs_assigned(self):
+
+        print("fieldid {fid}: Complete any assigned targets within their epochs".format(fid=self.fieldid), flush=True)
+
+        # Go through each epoch. For all science targets
+        # observed in that epoch, go through them in priority order
+        # and see if you can assign them
+        ntargets = 0
+        ntargets_added = 0
+        nexposures_added = 0
+        for epoch in np.arange(self.field_cadence.nepochs, dtype=int):
+            iexps_epoch = (self.field_cadence.epoch_indx[epoch] +
+                           np.arange(self.field_cadence.nexp[epoch], dtype=int))
+            observed_in_epoch = (self.assignments['equivRobotID'][:, iexps_epoch] >= 0).sum(axis=1) > 0
+            iscience = np.where((self.targets['category'] == 'science') &
+                                (observed_in_epoch))[0]
+            if(len(iscience) > 0):
+                isort = np.argsort(self.targets['priority'][iscience])
+                iscience = iscience[isort]
+                ntargets = ntargets + len(iscience)
+                for itarget in iscience:
+                    rsid = self.targets['rsid'][itarget]
+                    not_observed = (self.assignments['equivRobotID'][itarget, iexps_epoch] < 0)
+                    done = self.assign_exposures(rsid=rsid, iexps=iexps_epoch[not_observed])
+                    ndone = done.sum()
+                    if(ndone > 0):
+                        self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
+                        ntargets_added = ntargets_added + 1
+                        nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        
+        return
+
+    def complete_assigned(self):
+
+        print("fieldid {fid}: Complete any assigned targets across all exposures".format(fid=self.fieldid), flush=True)
+
+        # For all science targets observed in that epoch, go through 
+        # them in priority order and see if you can assign them
+        ntargets = 0
+        ntargets_added = 0
+        nexposures_added = 0
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        iscience = np.where((self.targets['category'] == 'science') &
+                            ((self.assignments['equivRobotID'] >= 0).sum(axis=1) > 0))[0]
+        if(len(iscience) > 0):
+            isort = np.argsort(self.targets['priority'][iscience])
+            iscience = iscience[isort]
+            ntargets = ntargets + len(iscience)
+            for itarget in iscience:
+                rsid = self.targets['rsid'][itarget]
+                not_observed = (self.assignments['equivRobotID'][itarget, iexps] < 0)
+                done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed])
+                ndone = done.sum()
+                if(ndone > 0):
+                    self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
+                    ntargets_added = ntargets_added + 1
+                    nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        
+        return
+
+    def complete_unassigned(self):
+        print("fieldid {fid}: Complete any unassigned targets".format(fid=self.fieldid), flush=True)
+
+        # Try any unassigned targets, and assign them whatever can be 
+        # assigned
+        iscience = np.where((self.targets['category'] == 'science') &
+                            ((self.assignments['equivRobotID'] > 0).sum(axis=1) == 0))[0]
+        print("fieldid {fid}:    {n} unassigned science targets to check".format(fid=self.fieldid, n=len(iscience)), flush=True)
+        if(len(iscience) == 0):
+            return
+
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        isort = np.argsort(self.targets['priority'][iscience])
+        iscience = iscience[isort]
+        ntargets_added = 0
+        nexposures_added = 0
+        for itarget in iscience:
+            rsid = self.targets['rsid'][itarget]
+            done = self.assign_exposures(rsid=rsid, iexps=iexps)
+            ndone = done.sum()
+            if(ndone > 0):
+                self.set_flag(rsid=rsid, flagname='COMPLETE_UNASSIGNED')
+                ntargets_added = ntargets_added + 1
+                nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        return
+
+    def complete_calibrations(self):
+        print("fieldid {fid}: Add any calibration targets".format(fid=self.fieldid), flush=True)
+
+        # Assign any calibrations that can be additionally
+        # assigned WITHOUT allowing spare calibrations to be
+        # bumped.
+        icalib = np.where(self.targets['category'] != 'science')[0]
+        print("fieldid {fid}:    {n} calibration targets to check".format(fid=self.fieldid, n=len(icalib)), flush=True)
+        if(len(icalib) == 0):
+            return
+
+        iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        isort = np.argsort(self.targets['priority'][icalib])
+        icalib = icalib[isort]
+        ntargets_added = 0
+        nexposures_added = 0
+        for itarget in icalib:
+            rsid = self.targets['rsid'][itarget]
+            not_observed = (self.assignments['equivRobotID'][itarget, iexps] < 0)
+            done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed],
+                                         check_spare=False)
+            ndone = done.sum()
+            if(ndone > 0):
+                self.set_flag(rsid=rsid, flagname='COMPLETE_CALIBRATION')
+                ntargets_added = ntargets_added + 1
+                nexposures_added = nexposures_added + ndone
+
+        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        return
+
+    def complete(self):
+        """Fill out any extra exposures possible"""
+        self.complete_epochs_assigned()
+        self.complete_assigned()
+        self.complete_unassigned()
+        self.complete_calibrations()
         return
