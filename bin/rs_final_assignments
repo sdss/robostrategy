@@ -22,12 +22,10 @@ import shutil
 import multiprocessing
 import numpy as np
 import astropy.io.fits as fits
-import robostrategy.field
 import robostrategy.params as params
 import roboscheduler.cadence as cadence
 import sdss_access.path
 import fitsio
-import time
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -40,6 +38,8 @@ def process_field(ifield):
         infile = infile.replace('rsFieldAssignments', 'rsFieldReassignments')
     if(opentargets):
         infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsOpen')
+    if(filler):
+        infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsFiller')
     
     outfile = sdss_path.full('rsFieldAssignments', plan=plan,
                              observatory=observatory, fieldid=field['fieldid'])
@@ -68,6 +68,10 @@ if __name__ == '__main__':
                         help='set to read open target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to use reassignment target results',
                         default=False, required=False,
@@ -78,6 +82,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     opentargets = args.opentargets
+    filler = args.filler
     reassign = args.reassign
 
     rsParams = params.RobostrategyParams(plan=plan)
