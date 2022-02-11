@@ -47,6 +47,10 @@ if __name__ == '__main__':
                         help='set to read filler target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassign results',
                         default=False, required=False,
@@ -61,14 +65,21 @@ if __name__ == '__main__':
     observatory = args.observatory
     opentargets = args.opentargets
     filler = args.filler
+    complete = args.complete
     reassign = args.reassign
     final = args.final
+
+    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
+        print("Only one of -O, -R, -F, -K can be set!")
+        sys.exit()
 
     base = 'rsSpares'
     if(opentargets):
         base = 'rsSparesOpen'
     if(filler):
         base = 'rsSparesFiller'
+    if(complete):
+        base = 'rsSparesComplete'
     if(reassign):
         base = 'rsSparesReassign'
     if(final):
@@ -108,6 +119,8 @@ if __name__ == '__main__':
             title = 'Spare {ft} (after open fiber allocation)'
         if(filler):
             title = 'Spare {ft} (after filler fiber allocation)'
+        if(complete):
+            title = 'Spare {ft} (after complete fiber allocation)'
         if(reassign):
             title = 'Spare {ft} (after reassignment)'
         if(final):
@@ -143,6 +156,8 @@ if __name__ == '__main__':
             title = 'Unused {ft} (after open fiber allocation)'
         if(filler):
             title = 'Unused {ft} (after filler fiber allocation)'
+        if(complete):
+            title = 'Unused {ft} (after complete fiber allocation)'
         if(reassign):
             title = 'Unused {ft} (after reassignment)'
         if(final):
