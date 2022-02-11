@@ -94,6 +94,8 @@ def count_spares(indx):
                     ('deccen', np.float64),
                     ('nboss_spare', np.int32, f.field_cadence.nexp_total),
                     ('napogee_spare', np.int32, f.field_cadence.nexp_total),
+                    ('nboss_unused', np.int32, f.field_cadence.nexp_total),
+                    ('napogee_unused', np.int32, f.field_cadence.nexp_total),
                     ('nboss_science', np.int32, f.field_cadence.nexp_total),
                     ('napogee_science', np.int32, f.field_cadence.nexp_total)]
 
@@ -103,9 +105,11 @@ def count_spares(indx):
     spare['racen'] = allocate.fields['racen'][indx]
     spare['deccen'] = allocate.fields['deccen'][indx]
 
-    nboss_spare, napogee_spare = f.count_spares()
+    nboss_spare, napogee_spare, nboss_unused, napogee_unused = f.count_spares(return_unused=True)
     spare['nboss_spare'] = nboss_spare
     spare['napogee_spare'] = napogee_spare
+    spare['nboss_unused'] = nboss_unused
+    spare['napogee_unused'] = napogee_unused
 
     if(f.field_cadence.nexp_total > 1):
         for iexp in np.arange(f.field_cadence.nexp_total):
