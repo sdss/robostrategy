@@ -21,7 +21,6 @@ import jinja2
 import numpy as np
 import fitsio
 import sdss_access.path
-import robostrategy.allocate
 import robostrategy.params as params
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
@@ -84,6 +83,7 @@ if __name__ == '__main__':
 
     cadence_hdr = dict()
     spares = dict()
+    unused = dict()
     for obs in observatories:
         field_cadence_file = os.path.basename(sdss_path.full('rsFieldCadences',
                                                              plan=plan,
@@ -228,11 +228,15 @@ if __name__ == '__main__':
         rsinfo['cartons'].append(cg)
 
     rsinfo['spares'] = dict()
+    rsinfo['unused'] = dict()
 
     for obs in observatories:
         rsinfo['spares'][obs] = dict()
         rsinfo['spares'][obs]['boss'] = spares[obs]['nboss_spare'].sum()
         rsinfo['spares'][obs]['apogee'] = spares[obs]['napogee_spare'].sum()
+        rsinfo['unused'][obs] = dict()
+        rsinfo['unused'][obs]['boss'] = spares[obs]['nboss_unused'].sum()
+        rsinfo['unused'][obs]['apogee'] = spares[obs]['napogee_unused'].sum()
 
     template = env.get_template('rs-template.html')
     page = template.render(rsinfo)
