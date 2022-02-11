@@ -33,6 +33,8 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='observatory', required=True)
     parser.add_argument('-O', '--open', dest='opentargets',
                         help='set to read open target results',
                         default=False, required=False,
@@ -44,6 +46,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     plan = args.plan
+    observatory = args.observatory
     opentargets = args.opentargets
     filler = args.filler
 
@@ -61,7 +64,7 @@ if __name__ == '__main__':
         carton_description = dict()
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
-                                  observatory='apo')
+                                  observatory=observatory)
     if(opentargets):
         targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
     if(filler):
@@ -93,7 +96,7 @@ if __name__ == '__main__':
                 combos.append(tmp_combo)
 
     html_path = os.path.dirname(sdss_path.full('rsCompleteness', plan=plan,
-                                               observatory='apo'))
+                                               observatory=observatory))
     if(opentargets):
         html_file = os.path.join(html_path, 'rs-open-priorities.html')
     elif(filler):
