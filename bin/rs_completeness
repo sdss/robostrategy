@@ -112,6 +112,10 @@ if __name__ == '__main__':
                         help='set to read filler target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -128,7 +132,12 @@ if __name__ == '__main__':
         observatories = [observatory]
     opentargets = args.opentargets
     filler = args.filler
+    complete = args.complete
     reassign = args.reassign
+
+    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
+        print("Only one of -O, -R, -F, -K can be set!")
+        sys.exit()
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatories[0])
@@ -210,6 +219,9 @@ if __name__ == '__main__':
         if(filler):
             satisfied_file = satisfied_file.replace('rsSatisfied',
                                                     'rsSatisfiedFiller')
+        if(complete):
+            satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                    'rsSatisfiedComplete')
         if(reassign):
             satisfied_file = satisfied_file.replace('rsSatisfied',
                                                     'rsSatisfiedReassign')
@@ -284,6 +296,9 @@ if __name__ == '__main__':
     if(filler):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessFiller')
+    if(complete):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessComplete')
     if(reassign):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessReassign')
@@ -370,6 +385,9 @@ if __name__ == '__main__':
     if(filler):
         subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                             'rsCompletenessFiller')
+    if(complete):
+        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                            'rsCompletenessComplete')
     if(reassign):
         subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                             'rsCompletenessReassign')
@@ -489,6 +507,9 @@ if __name__ == '__main__':
         if(filler):
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessFiller')
+        if(complete):
+            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
+                                                                'rsCompletenessComplete')
         if(reassign):
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessReassign')

@@ -44,6 +44,10 @@ if __name__ == '__main__':
                         help='set to read filler target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -55,6 +59,11 @@ if __name__ == '__main__':
     opentargets = args.opentargets
     filler = args.filler
     reassign = args.reassign
+    complete = args.complete
+
+    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
+        print("Only one of -O, -R, -F, -K can be set!")
+        sys.exit()
 
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
@@ -64,6 +73,9 @@ if __name__ == '__main__':
     if(filler):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessFiller')
+    if(complete):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessComplete')
     if(reassign):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessReassign')
@@ -100,6 +112,9 @@ if __name__ == '__main__':
         if(filler):
             ntargets_png_file = ntargets_png_file.replace('rsAssignments',
                                                           'rsAssignmentsFiller')
+        if(complete):
+            ntargets_png_file = ntargets_png_file.replace('rsAssignments',
+                                                          'rsAssignmentsComplete')
         if(reassign):
             ntargets_png_file = ntargets_png_file.replace('rsAssignments',
                                                           'rsAssignmentsReassign')
@@ -120,6 +135,9 @@ if __name__ == '__main__':
         if(filler):
             ngot_png_file = ngot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsFiller')
+        if(complete):
+            ngot_png_file = ngot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsComplete')
         if(reassign):
             ngot_png_file = ngot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsReassign')
@@ -141,6 +159,9 @@ if __name__ == '__main__':
         if(filler):
             fgot_png_file = fgot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsFiller')
+        if(complete):
+            fgot_png_file = fgot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsComplete')
         if(reassign):
             fgot_png_file = fgot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsReassign')
@@ -171,6 +192,9 @@ if __name__ == '__main__':
         if(filler):
             ntargets_png_file = ntargets_png_file.replace('rsAssignments',
                                                           'rsAssignmentsFiller')
+        if(complete):
+            ntargets_png_file = ntargets_png_file.replace('rsAssignments',
+                                                          'rsAssignmentsComplete')
         if(reassign):
             ntargets_png_file = ntargets_png_file.replace('rsAssignments',
                                                           'rsAssignmentsReassign')
@@ -191,6 +215,9 @@ if __name__ == '__main__':
         if(filler):
             ngot_png_file = ngot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsFiller')
+        if(complete):
+            ngot_png_file = ngot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsComplete')
         if(reassign):
             ngot_png_file = ngot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsReassign')
@@ -212,6 +239,9 @@ if __name__ == '__main__':
         if(filler):
             fgot_png_file = fgot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsFiller')
+        if(complete):
+            fgot_png_file = fgot_png_file.replace('rsAssignments',
+                                                  'rsAssignmentsComplete')
         if(reassign):
             fgot_png_file = fgot_png_file.replace('rsAssignments',
                                                   'rsAssignmentsReassign')

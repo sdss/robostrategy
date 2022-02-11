@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_assign_complete
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import numpy as np
+import roboscheduler.cadence as cadence
+import robostrategy.field as field
+import robostrategy.params as params
+import sdss_access.path
+import fitsio
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+noclobber = False
+
+
+def assign_field(indx):
+    print(time.ctime(time.time()))
+
+    fieldid = fields_array['fieldid'][indx]
+    print("fieldid {fid}: Starting".format(fid=fieldid), flush=True)
+
+    field_assigned_file_orig = sdss_path.full('rsFieldAssignments',
+                                              plan=plan,
+                                              observatory=observatory,
+                                              fieldid=fieldid)
+    field_filler_file = field_assigned_file_orig.replace('rsFieldAssignments',
+                                                         'rsFieldAssignmentsFiller')
+    field_complete_file = field_assigned_file_orig.replace('rsFieldAssignments',
+                                                           'rsFieldAssignmentsComplete')
+    
+    if((noclobber is True) & os.path.exists(field_complete_file)):
+        print("fieldid {fid}: Completed already", flush=True)
+        return
+
+    print("fieldid={f}: Read in field".format(f=fieldid), flush=True)
+    f = field.Field(filename=field_filler_file, verbose=True,
+                    fieldid=fieldid)
+
+    print("fieldid={f}: Running completion".format(f=fieldid), flush=True)
+    f.complete()
+
+    print("fieldid={f}: Write assignments".format(f=fieldid), flush=True)
+    f.tofits(field_complete_file)
+
+    print("Done fieldid={f}".format(f=fieldid), flush=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final assignment based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
+                        help='do not clobber', required=False,
+                        default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    noclobber = args.noclobber
+
+    rsParams = params.RobostrategyParams(plan=plan)
+    if('Rotate' in rsParams.cfg['Fields']):
+        rotate = True
+        paname = rsParams.cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
+
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    if(rotate):
+        fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
+    fields_array = fitsio.read(fields_file)
+
+    cadencelist = cadence.CadenceList()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
+
+    if(end < 0):
+        end = fields_array['fieldid'].max()
+
+    ikeep = np.where((fields_array['fieldid'] >= start) &
+                     (fields_array['fieldid'] <= end))[0]
+
+    np.random.shuffle(ikeep)
+    with multiprocessing.Pool() as pool:
+        pool.map(assign_field, ikeep)
+    print('DONE: rs_assign_complete')

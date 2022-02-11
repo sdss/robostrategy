@@ -46,6 +46,10 @@ if __name__ == '__main__':
                         help='set to read filler target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -62,7 +66,12 @@ if __name__ == '__main__':
         observatories = [observatory]
     opentargets = args.opentargets
     filler = args.filler
+    complete = args.complete
     reassign = args.reassign
+
+    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
+        print("Only one of -O, -R, -F, -K can be set!")
+        sys.exit()
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                     'carton_description.cfg')
@@ -72,8 +81,10 @@ if __name__ == '__main__':
         description_cfg.read(description_file)
         if(opentargets):
             carton_description = description_cfg['Open']
-        if(filler):
+        elif(filler):
             carton_description = description_cfg['Filler']
+        elif(complete):
+            carton_description = description_cfg['Complete']
         else:
             carton_description = description_cfg['Mapper']
     else:
@@ -97,6 +108,8 @@ if __name__ == '__main__':
             spares_file = spares_file.replace('rsSpares', 'rsSparesOpen')
         if(filler):
             spares_file = spares_file.replace('rsSpares', 'rsSparesFiller')
+        if(complete):
+            spares_file = spares_file.replace('rsSpares', 'rsSparesComplete')
         if(reassign):
             spares_file = spares_file.replace('rsSpares', 'rsSparesReassign')
         spares[obs] = fitsio.read(spares_file)
@@ -110,6 +123,9 @@ if __name__ == '__main__':
     if(filler):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessFiller')
+    if(complete):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessComplete')
     if(reassign):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessReassign')
@@ -127,6 +143,10 @@ if __name__ == '__main__':
         html_file = os.path.join(html_path,
                                  'rs-filler-{observatory}.html'.format(observatory=observatory))
 
+    if(complete):
+        html_file = os.path.join(html_path,
+                                 'rs-complete-{observatory}.html'.format(observatory=observatory))
+
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("robostrategy"),
         autoescape=jinja2.select_autoescape()
@@ -139,6 +159,8 @@ if __name__ == '__main__':
         rsinfo['stage'] = 'Open'
     if(filler):
         rsinfo['stage'] = 'Filler'
+    if(complete):
+        rsinfo['stage'] = 'Complete'
     if(reassign):
         rsinfo['stage'] = 'Reassign'
 
@@ -153,6 +175,8 @@ if __name__ == '__main__':
         rsinfo['method'] = "They are shown after open fiber target allocation."
     if(filler):
         rsinfo['method'] = "They are shown after filler target allocation."
+    if(complete):
+        rsinfo['method'] = "They are shown after complete target allocation."
     if(reassign):
         rsinfo['method'] = "They are shown after reassignment and open fiber target allocation."
 
