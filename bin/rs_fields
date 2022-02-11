@@ -24,8 +24,6 @@ import robostrategy
 import robostrategy.sloane as sloane
 import robostrategy.params as params
 import sdss_access.path
-import astropy.coordinates as coords
-import astropy.units as units
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
