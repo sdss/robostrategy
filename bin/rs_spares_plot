@@ -121,3 +121,38 @@ if __name__ == '__main__':
     
         plt.savefig(png_file)
         plt.clf()
+        
+        png_file = png_file.replace('rsSpares', 'rsUnused')
+
+        # draw parallels and meridians.
+        m.drawparallels(np.arange(-90., 120., 30.),
+                        linewidth=0.5,
+                        labels=[1, 0, 0, 0],
+                        labelstyle='+/-')
+        m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+        m.drawmapboundary()
+
+        name = 'n{ft}_unused'.format(ft=fiberType)
+        spval = np.float32(spares[name])
+        iz = np.where(spval == 0)[0]
+        spval[iz] = 0.1
+        spval = np.log10(spval)
+        plt.scatter(xx, yy, s=3, c=spval, vmin=-1., vmax=3.99)
+        title = 'Unused {ft} (after science allocation)'
+        if(opentargets):
+            title = 'Unused {ft} (after open fiber allocation)'
+        if(filler):
+            title = 'Unused {ft} (after filler fiber allocation)'
+        if(reassign):
+            title = 'Unused {ft} (after reassignment)'
+        if(final):
+            title = 'Unused {ft} (final)'
+        title = title.format(ft=fiberType.upper())
+        plt.title(title)
+
+        colorbar_label = '$log_{10} N$'
+        cb = plt.colorbar()
+        cb.set_label(colorbar_label)
+    
+        plt.savefig(png_file)
+        plt.clf()
