@@ -37,6 +37,8 @@ def spares_file_name(fieldid=None):
         base = 'rsFieldSparesOpen'
     if(filler):
         base = 'rsFieldSparesFiller'
+    if(complete):
+        base = 'rsFieldSparesComplete'
     if(final):
         tdir = 'final'
         base = 'rsFieldSparesFinal'
@@ -83,6 +85,9 @@ def count_spares(indx):
     if(filler):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldAssignmentsFiller')
+    if(complete):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsComplete')
     if(reassign):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldReassignments')
@@ -164,6 +169,10 @@ if __name__ == '__main__':
                         help='set to read filler target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassign results',
                         default=False, required=False,
@@ -181,8 +190,13 @@ if __name__ == '__main__':
     opentargets = args.opentargets
     filler = args.filler
     reassign = args.reassign
+    complete = args.complete
     final = args.final
     noclobber = args.noclobber
+
+    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
+        print("Only one of -O, -R, -F, -K can be set!")
+        sys.exit()
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -271,6 +285,8 @@ if __name__ == '__main__':
         base = 'rsSparesOpen'
     if(filler):
         base = 'rsSparesFiller'
+    if(complete):
+        base = 'rsSparesComplete'
     if(reassign):
         base = 'rsSparesReassign'
     if(final):
@@ -284,6 +300,8 @@ if __name__ == '__main__':
         base = 'rsSparesExpOpen'
     if(filler):
         base = 'rsSparesExpFiller'
+    if(complete):
+        base = 'rsSparesExpComplete'
     if(reassign):
         base = 'rsSparesExpReassign'
     if(final):
