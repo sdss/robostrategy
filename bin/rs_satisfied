@@ -12,12 +12,9 @@ import os
 import sys
 import numpy as np
 import fitsio
-import kaiju
-import roboscheduler
 import roboscheduler.cadence as cadence
 import robostrategy
 import robostrategy.header
-import robostrategy.field as field
 import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
@@ -45,6 +42,10 @@ if __name__ == '__main__':
                         help='set to read filler target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete target results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-R', '--reassign', dest='reassign',
                         help='set to read reassignment target results',
                         default=False, required=False,
@@ -55,7 +56,12 @@ if __name__ == '__main__':
     observatory = args.observatory
     opentargets = args.opentargets
     filler = args.filler
+    complete = args.complete
     reassign = args.reassign
+
+    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
+        print("Only one of -O, -R, -F, -K can be set!")
+        sys.exit()
 
     rsParams = params.RobostrategyParams(plan=plan)
     if('Rotate' in rsParams.cfg['Fields']):
@@ -79,7 +85,7 @@ if __name__ == '__main__':
                                    observatory=observatory)
     if(opentargets):
         targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
-    if(filler):
+    if(filler | complete):
         targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
     full_targets = fitsio.read(targets_file)
 
@@ -125,6 +131,9 @@ if __name__ == '__main__':
         if(reassign):
             field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
                                                               'rsFieldReassignments')
+        if(complete):
+            field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
+                                                              'rsFieldAssignmentsComplete')
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
@@ -169,6 +178,9 @@ if __name__ == '__main__':
     if(filler):
         satisfied_file = satisfied_file.replace('rsSatisfied',
                                                 'rsSatisfiedFiller')
+    if(complete):
+        satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                'rsSatisfiedComplete')
     if(reassign):
         satisfied_file = satisfied_file.replace('rsSatisfied',
                                                 'rsSatisfiedReassign')
