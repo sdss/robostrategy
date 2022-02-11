@@ -3140,12 +3140,19 @@ class Field(object):
             return False
 
         # Assign to each epoch
+        robotID = -1
         for iepoch, epoch in enumerate(epochs):
             currRobotIDs = np.array(availableRobotIDs[iepoch], dtype=np.int32)
             currRobotIndxs = np.array([self.robotID2indx[x]
                                        for x in currRobotIDs], dtype=int)
             if(self.methods['assign_epochs'] == 'first'):
                 irobot = 0
+            if(self.methods['assign_epochs'] == 'same'):
+                irobot = np.where(robotID == currRobotIDs)[0]
+                if(len(irobot) > 0):
+                    irobot = irobot[0]
+                else:
+                    irobot = 0
             if(self.methods['assign_epochs'] == 'fewestcompeting'):
                 irobot = np.argmin(self._competing_targets[currRobotIndxs])
             robotID = currRobotIDs[irobot]
