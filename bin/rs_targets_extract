@@ -70,6 +70,11 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
+    if('mwm_tess_ob_priority_fix' in rsParams.cfg['Cartons']):
+        mwm_tess_ob_priority_fix = np.float32(rsParams.cfg['Cartons']['mwm_tess_ob_priority_fix'])
+    else:
+        mwm_tess_ob_priority_fix = None
+
     if('mwm_tess_planet_cadence_fix' in rsParams.cfg['Cartons']):
         mwm_tess_planet_cadence_fix = True
     else:
@@ -152,6 +157,11 @@ if __name__ == '__main__':
         for c in cadence_map:
             ii = np.where(targets['cadence'] == c)[0]
             targets['cadence'][ii] = cadence_map[c]
+
+    # FUDGE TESS OB priority
+    if(mwm_tess_ob_priority_fix is not None):
+        ii = np.where(targets['carton'] == 'mwm_tess_ob')[0]
+        targets['priority'][ii] = mwm_tess_ob_priority_fix
 
     # Fudge open_fiber into science
     iopen = np.where(targets['category'] == 'open_fiber')[0]
