@@ -206,6 +206,8 @@ if __name__ == '__main__':
                     ('deccen', np.float64),
                     ('nboss_spare', np.int32),
                     ('napogee_spare', np.int32),
+                    ('nboss_unused', np.int32),
+                    ('napogee_unused', np.int32),
                     ('nboss_science', np.int32),
                     ('napogee_science', np.int32),
                     ('nboss_total', np.int32),
@@ -217,6 +219,8 @@ if __name__ == '__main__':
                         ('deccen', np.float64),
                         ('nboss_spare', np.int32),
                         ('napogee_spare', np.int32),
+                        ('nboss_unused', np.int32),
+                        ('napogee_unused', np.int32),
                         ('nboss_science', np.int32),
                         ('napogee_science', np.int32)]
 
@@ -255,6 +259,8 @@ if __name__ == '__main__':
         spares['deccen'][indx] = cspares['deccen'][0]
         spares['nboss_spare'][indx] = cspares['nboss_spare'].sum()
         spares['napogee_spare'][indx] = cspares['napogee_spare'].sum()
+        spares['nboss_unused'][indx] = cspares['nboss_unused'].sum()
+        spares['napogee_unused'][indx] = cspares['napogee_unused'].sum()
         spares['nboss_science'][indx] = cspares['nboss_science'].sum()
         spares['napogee_science'][indx] = cspares['napogee_science'].sum()
         spares['nboss_total'][indx] = 500 * nexp
