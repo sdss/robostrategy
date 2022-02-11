@@ -8,7 +8,7 @@ import roboscheduler.cadence
 
 
 # Establish access to the CadenceList singleton
-clist = roboscheduler.cadence.CadenceList()
+clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
 class extra_Field(Field):  #inherit all Field-defined stuff.
