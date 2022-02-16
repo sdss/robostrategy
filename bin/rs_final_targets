@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_final_targets
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import robostrategy.header
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5',
+                                  preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Create combined rsTargets, rsTargetsCovered files')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    for obs in ['apo', 'lco']:
+
+        targets_file = sdss_path.full('rsTargets', plan=plan,
+                                      observatory=obs)
+        open_targets_file = targets_file.replace('rsTargets',
+                                                 'rsTargetsOpen')
+        filler_targets_file = targets_file.replace('rsTargets',
+                                                   'rsTargetsFiller')
+        final_targets_file = targets_file.replace('rsTargets',
+                                                  'final/rsTargetsFinal')
+        
+        targets_files = [targets_file, open_targets_file,
+                         filler_targets_file]
+    
+        full_targets = None
+        for targets_file in targets_files:
+            tmp_targets = fitsio.read(targets_file)
+            if(full_targets is None):
+                full_targets = tmp_targets
+            else:
+                ncurr = len(full_targets)
+                nnew = len(tmp_targets)
+                full_targets.resize(ncurr + nnew)
+                full_targets[ncurr:] = tmp_targets
+
+        if(len(full_targets) != len(np.unique(full_targets['rsid']))):
+            print("Uh oh---repeated rsid!")
+            sys.exit()
+
+        hdr = robostrategy.header.rsheader()
+        fitsio.write(final_targets_file, full_targets, header=hdr,
+                     clobber=True)
+
+        targets_file = sdss_path.full('rsTargets', plan=plan,
+                                      observatory=obs)
+        targets_file = targets_file.replace('rsTargets',
+                                            'rsTargetsCovered')
+        open_targets_file = targets_file.replace('rsTargets',
+                                                 'rsTargetsOpen')
+        filler_targets_file = targets_file.replace('rsTargets',
+                                                   'rsTargetsFiller')
+        final_targets_file = targets_file.replace('rsTargets',
+                                                  'final/rsTargetsFinal')
+        
+        targets_files = [targets_file, open_targets_file,
+                         filler_targets_file]
+    
+        full_targets = None
+        for targets_file in targets_files:
+            tmp_targets = fitsio.read(targets_file)
+            if(full_targets is None):
+                full_targets = tmp_targets
+            else:
+                ncurr = len(full_targets)
+                nnew = len(tmp_targets)
+                full_targets.resize(ncurr + nnew)
+                full_targets[ncurr:] = tmp_targets
+
+        if(len(full_targets) != len(np.unique(full_targets['rsid']))):
+            print("Uh oh---repeated rsid!")
+            sys.exit()
+
+        hdr = robostrategy.header.rsheader()
+        fitsio.write(final_targets_file, full_targets, header=hdr,
+                     clobber=True)
+

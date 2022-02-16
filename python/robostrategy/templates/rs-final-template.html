@@ -1,0 +1,162 @@
+<html><head>
+<style>
+    table, th, tr, td {border: 1px solid black}
+</style>
+<body><h2>Description</h2>
+<p>This page describes the results of robostrategy for plan {{plan}},
+for the SDSS-V FPS carton observing for the Milky Way Mapper and
+the Black Hole Mapper. This page shows the final results
+for the operations at APO and LCO together.
+</p>
+
+<p><b>Summary:</b>{{summary}}</p>
+
+<p><b>Cadences:</b>The detailed description of all 
+cadences used can be found <a href="rs-cadences.html">
+here</a>.</p>
+
+<p><b>Priorities:</b>The detailed description of all 
+cadences used can be
+	found <a href="rs-priorities.html">
+here</a>.</p>
+
+<p><b>Configuration:</b>The detailed settings can
+be found <a href="rs-config.html">here</a>.</p>
+
+<h2>Allocation of time</h2>
+
+  <p> For both all time and for different sky brightnesses, the allocation of time as a function of LST.</p>
+
+{% for obs in observatories %}
+<table>
+	<tr>
+		<td><b>{% filter upper %}{{obs}}{% endfilter %}</b></td>
+		{% for type in ['all', 'dark', 'bright'] %}
+		<td>
+			<a href='rsAllocationFinal-lst-{{type}}-{{plan}}-{{obs}}.png'>
+				<img src='rsAllocationFinal-lst-{{type}}-{{plan}}-{{obs}}.png'
+						 width=300px/>
+			</a>
+		</td>
+		{% endfor %}
+	</tr>
+</table>
+{% endfor %}
+
+<h2>Exposures per field</h2>
+
+  <p>These plots show the number of exposures per field, 
+		and then the number of dark exposures and number of 
+		bright exposures. Note that these do not necessarily 
+		match the cadences, since bright cadences can be 
+		observed in dark time.</p>
+
+{% for obs in observatories %}
+<table>
+	<tr>
+		<td><b>{% filter upper %}{{obs}}{% endfilter %}</b></td>
+		{% for type in ['', '-dark', '-bright'] %}
+		<td>
+			<a href='rsAllocationFinal-radec{{type}}-{{plan}}-{{obs}}.png'>
+				<img src='rsAllocationFinal-radec{{type}}-{{plan}}-{{obs}}.png'
+				width=300px/>
+			</a>
+		</td>
+		{% endfor %}
+	</tr>
+</table>
+{% endfor %}
+
+<h2>Target completeness</h2>
+
+	<p>There are a total of {{ngboss}} targets with BOSS
+		observations and {{ngapogee}} targets with APOGEE
+		observations.</p>
+
+  <p>These plots show the completeness as a function of cadence group and also carton. Cadence groups lump cadences with the same prefix (e.g. mwm_rv_NxM) to be all within the same group. Targets either get all the necessary exposures for their cadence, or they get none.</p>
+
+  <p>The left column shows the total number of targets in each healpix pixel (scaled with asinh to be able to see the dynamic range. The middle column shows the number of targets completed (scaled with asinh again). The right column shows the fraction. If the fraction is shown as negative (the darkest color) then that means there were zero targets in the pixel to begin with.</p>
+
+<h3>Targets by carton</h3>
+
+<table>
+	{% for carton in cartons %}
+	<tr>
+		{% for type in ['ntargets', 'ngot', 'fgot'] %}
+		<td>
+			<a href='rsAssignmentsFinal{{stage}}-{{type}}-carton-{{carton.name}}-{{plan}}-{{observatory}}.png'>
+				<img src='rsAssignmentsFinal{{stage}}-{{type}}-carton-{{carton.name}}-{{plan}}-{{observatory}}.png' width=300px/>
+			</a>
+		</td>
+		{% endfor %}
+		<td>
+			<table>
+				<tr>
+					<td>Carton {{carton.name}} : {{carton.description}}</td>
+				</tr>
+				<tr>
+					<td>n<sub>target</sub> = {{carton.ntargets}}</td>
+				</tr>
+				<tr>
+					<td>n<sub>allowed</sub> = {{carton.nallowed}}</td>
+				</tr>
+				<tr>
+					<td>n<sub>got</sub> = {{carton.ngot}}</td>
+				</tr>
+				<tr>
+					<td>f<sub>got</sub> = {{carton.fgot}}</td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+	{% endfor %}
+</table>
+
+<h2>Spare Fibers</h2>
+
+<table>
+	{% for obs in observatories %}
+	<tr>
+		<td><b>{% filter upper %}{{obs}}{% endfilter %}</b></td>
+		<td>BOSS<br/> n<sub>spare</sub> = {{spares[obs].boss}}</td>
+		<td>
+			<a href='rsSparesFinal{{stage}}-{{plan}}-{{obs}}-boss.png'>
+				<img src='rsSparesFinal{{stage}}-{{plan}}-{{obs}}-boss.png' width=300px/>
+			</a>
+		</td>
+		<td></td>
+		<td>APOGEE<br/> n<sub>spare</sub> = {{spares[obs].apogee}}</td>
+		<td>
+			<a href='rsSparesFinal{{stage}}-{{plan}}-{{obs}}-apogee.png'>
+				<img src='rsSparesFinal{{stage}}-{{plan}}-{{obs}}-apogee.png' width=300px/>
+			</a>
+		</td>
+	</tr>
+	{% endfor %}
+</table>
+
+<h2>Unused Fibers</h2>
+
+<table>
+	{% for obs in observatories %}
+	<tr>
+		<td><b>{% filter upper %}{{obs}}{% endfilter %}</b></td>
+		<td>BOSS<br/> n<sub>unused</sub> = {{unused[obs].boss}}</td>
+		<td>
+			<a href='rsUnusedFinal{{stage}}-{{plan}}-{{obs}}-boss.png'>
+				<img src='rsUnusedFinal{{stage}}-{{plan}}-{{obs}}-boss.png' width=300px/>
+			</a>
+		</td>
+		<td></td>
+		<td>APOGEE<br/> n<sub>unused</sub> = {{unused[obs].apogee}}</td>
+		<td>
+			<a href='rsUnusedFinal{{stage}}-{{plan}}-{{obs}}-apogee.png'>
+				<img src='rsUnusedFinal{{stage}}-{{plan}}-{{obs}}-apogee.png' width=300px/>
+			</a>
+		</td>
+	</tr>
+	{% endfor %}
+</table>
+
+</body>
+</html>

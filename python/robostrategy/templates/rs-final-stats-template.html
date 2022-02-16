@@ -1,0 +1,61 @@
+<html><head>
+<style>
+    table, th, tr, td {border: 1px solid black;
+                       border-collapse: collapse;
+}
+</style>
+
+</head>
+
+<body>
+
+<h2>{{plan}}</h2>
+
+<table style="border: 1px solid black;" cellspacing=0px>
+<thead>
+    <tr>
+    <th><b>Carton</b></th>
+    <th><b>Description</b></th>
+    <th><b>Targets</b></th>
+    <th><b>Gotten</b></th>
+    <th><b>Gotten (Filler)</b></th>
+    <th><b>Gotten (Open)</b></th>
+    <th><b>Gotten (Reassign)</b></th>
+    <th><b>Gotten (SRD)</b></th>
+    <th><b>Exposures </b></th>
+    <th><b>Exposures (Filler)</b></th>
+    <th><b>Exposures (Open)</b></th>
+    <th><b>Exposures (Reassign)</b></th>
+    <th><b>Exposures (SRD)</b></th>
+    <th><b>Epochs </b></th>
+    <th><b>Epochs (Filler)</b></th>
+    <th><b>Epochs (Open)</b></th>
+    <th><b>Epochs (Reassign)</b></th>
+    <th><b>Epochs (SRD)</b></th>
+    </tr>
+</thead>
+
+{% for c in cartons %}
+<tr>
+<td align='right'>{{c}}</td>
+<td align='right'>{{cartons[c].description}}</td>
+<td align='right'>{{cartons[c].ntarget}}</td>
+<td align='right'>{{cartons[c].ngot}}</td>
+<td align='right'>{{cartons[c].ngot_filler}}</td>
+<td align='right'>{{cartons[c].ngot_open}}</td>
+<td align='right'>{{cartons[c].ngot_reassign}}</td>
+<td align='right'>{{cartons[c].ngot_srd}}</td>
+<td align='right'>{{cartons[c].nexps}}</td>
+<td align='right'>{{cartons[c].nexps_filler}}</td>
+<td align='right'>{{cartons[c].nexps_open}}</td>
+<td align='right'>{{cartons[c].nexps_reassign}}</td>
+<td align='right'>{{cartons[c].nexps_srd}}</td>
+<td align='right'>{{cartons[c].nepochs}}</td>
+<td align='right'>{{cartons[c].nepochs_filler}}</td>
+<td align='right'>{{cartons[c].nepochs_open}}</td>
+<td align='right'>{{cartons[c].nepochs_reassign}}</td>
+<td align='right'>{{cartons[c].nepochs_srd}}</td>
+{% endfor %}
+
+</body>
+</html>
