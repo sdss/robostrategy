@@ -49,6 +49,10 @@ if __name__ == '__main__':
                         help='set to read reassign results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-C', '--complete', dest='complete',
+                        help='set to read complete results',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-X', '--final', dest='final',
                         help='set to read final results',
                         default=False, required=False,
@@ -62,6 +66,7 @@ if __name__ == '__main__':
     filler = args.filler
     final = args.final
     reassign = args.reassign
+    complete = args.complete
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -80,6 +85,9 @@ if __name__ == '__main__':
     if(reassign):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldReassignments')
+    if(complete):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsComplete')
     if(final):
         field_target_file = field_target_file.replace('targets/rsFieldAssignments',
                                                       'final/rsFieldAssignmentsFinal')
