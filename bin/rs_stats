@@ -74,6 +74,9 @@ if __name__ == '__main__':
     elif(filler):
         html_file = os.path.join(html_path, 'rs-filler-stats.html')
         stats_file = os.path.join(html_path, 'rsStatsFiller-{p}.fits'.format(p=plan))
+    elif(reassign):
+        html_file = os.path.join(html_path, 'rs-reassign-stats.html')
+        stats_file = os.path.join(html_path, 'rsStatsReassign-{p}.fits'.format(p=plan))
     else:
         html_file = os.path.join(html_path, 'rs-stats.html')
         stats_file = os.path.join(html_path, 'rsStats-{p}.fits'.format(p=plan))
