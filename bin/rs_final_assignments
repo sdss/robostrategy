@@ -40,6 +40,8 @@ def process_field(ifield):
         infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsOpen')
     if(filler):
         infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsFiller')
+    if(complete):
+        infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsComplete')
     
     outfile = sdss_path.full('rsFieldAssignments', plan=plan,
                              observatory=observatory, fieldid=field['fieldid'])
@@ -51,6 +53,7 @@ def process_field(ifield):
 
     hdulist = fits.open(outfile, mode='update')
     hdulist[0].header['FCADENCE'] = hdulist[0].header['FCADENCE'] + '_' + version
+    hdulist[0].header['FIELDID'] = field['fieldid']
     hdulist.flush()
     hdulist.close()
     return
@@ -76,6 +79,10 @@ if __name__ == '__main__':
                         help='set to use reassignment target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to use complete target results',
+                        default=False, required=False,
+                        action='store_true')
 
     observatories = ['apo', 'lco']
 
@@ -84,6 +91,10 @@ if __name__ == '__main__':
     opentargets = args.opentargets
     filler = args.filler
     reassign = args.reassign
+    complete = args.complete
+
+    if(int(opentargets) + int(reassign) + int(complete) + int(filler) > 1):
+        print("Cannot set more than one stage simultaneously!")
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -92,8 +103,6 @@ if __name__ == '__main__':
         if('version' in rsParams.cfg['CadenceVersions']):
             version = rsParams.cfg.get('CadenceVersions', 'version')
 
-    if(opentargets & reassign):
-        print("Cannot set --open and --reassign simultaneously!")
 
     for observatory in observatories:
         cadencelist = cadence.CadenceList(skybrightness_only=True)
