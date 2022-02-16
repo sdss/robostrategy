@@ -56,6 +56,8 @@ def assign_field(indx):
     f = field.Field(filename=field_filler_file, verbose=True,
                     fieldid=fieldid)
 
+    f.set_stage('complete')
+
     print("fieldid={f}: Running completion".format(f=fieldid), flush=True)
     f.complete()
 

@@ -18,15 +18,11 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import argparse
 import sys
 import multiprocessing
-import datetime
 import numpy as np
 import roboscheduler.cadence as cadence
 from robostrategy.extra_field import extra_Field
-import robostrategy.field as field
 import robostrategy.allocate
 import sdss_access.path
-import pdb
-import fitsio
 import time
 
 sdss_path = sdss_access.path.Path(release='sdss5',preserve_envvars=True)
@@ -54,6 +50,7 @@ def assign_spares(fieldid):
     else:
         print(f'{fieldid} properly set. Can probably erase ths code') # Check on this
 
+    f.set_stage('REASSIGN')
     any_extra = f.assign_spares()
     f.tofits(filename=field_reassigned_file)
     if any_extra:

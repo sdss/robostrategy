@@ -591,6 +591,13 @@ class Field(object):
         self._competing_targets = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
+        self.stage = None
+        return
+
+    def set_stage(self, stage=None):
+        self.stage = stage
+        if(self.verbose):
+            print("fieldid {fid}: Setting stage {stage}".format(fid=self.fieldid, stage=stage), flush=True)
         return
 
     def query_bright_stars(self, design_mode=None,
@@ -1054,6 +1061,7 @@ class Field(object):
             for assignment, target in zip(assignments, targets):
                 indx = self.rsid2indx[target['rsid']]
                 self.assignments['rsflags'][indx] = assignment['rsflags']
+                self.assignments['expflag'][indx] = assignment['expflag']
             self._set_has_spare_calib()
             self._set_satisfied()
             self._set_count(reset_equiv=False)
@@ -1232,7 +1240,9 @@ class Field(object):
                                                ('field_skybrightness', np.float32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('fiberType', np.unicode_, 10),
-                                               ('rsflags', np.int32)])
+                                               ('rsflags', np.int32),
+                                               ('expflag', np.int32,
+                                                (self.field_cadence.nexp_total,))])
             self.assignments = np.zeros(0, dtype=self.assignments_dtype)
 
             try:
@@ -4169,6 +4179,8 @@ class Field(object):
         if(self.nocalib):
             return
 
+        self.set_stage(stage=stage)
+
         if(self.verbose):
             print("fieldid {fid}: Assigning calibrations".format(fid=self.fieldid), flush=True)
         
@@ -4183,6 +4195,8 @@ class Field(object):
 
         if(self.verbose):
             print("fieldid {fid}:   (done assigning calibrations)".format(fid=self.fieldid), flush=True)
+
+        self.set_stage(stage=None)
         return
 
     def assign_science(self, stage='srd'):
@@ -4208,6 +4222,8 @@ class Field(object):
         This is usually used for stages after SRD, since it does not
         assign calibrations.
 """
+        self.set_stage(stage=stage)
+
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
 
@@ -4234,6 +4250,8 @@ class Field(object):
 
         if(self.verbose):
             print("fieldid {fid}:   (done assigning science)".format(fid=self.fieldid), flush=True)
+
+        self.set_stage(stage=None)
         return
 
     def assign_science_and_calibs(self, stage='srd',
@@ -4256,6 +4274,8 @@ class Field(object):
         Does not try to assign any targets for which
         coordinated_targets[rsid] is True.
 """
+        self.set_stage(stage=stage)
+
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
         np.random.seed(self.fieldid)
@@ -4429,6 +4449,8 @@ class Field(object):
         self._set_count(reset_equiv=False)
         if(self.nocalib is False):
             self._set_has_spare_calib()
+
+        self.set_stage(stage=None)
 
         if(self.verbose):
             print("fieldid {fid}:   (done assigning science and calib)".format(fid=self.fieldid), flush=True)
