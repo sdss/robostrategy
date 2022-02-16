@@ -9,6 +9,7 @@ import os
 import re
 import random
 import datetime
+import jinja2
 import numpy as np
 import fitsio
 import collections
@@ -121,7 +122,7 @@ def read_field(plan=None, observatory=None, fieldid=None,
         field id
 
     stage : str
-        stage of assignments ('', 'Open', 'Filler', 'Reassign')
+        stage of assignments ('', 'Open', 'Filler', 'Reassign', 'Complete', 'Final')
 
     targets : bool
         if True, read rsFieldTargets file, do not set cadence (default False)
@@ -141,6 +142,8 @@ def read_field(plan=None, observatory=None, fieldid=None,
     field : Field object
         field object read in
 """
+    trim_cadence_version = False
+
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     clist.fromfits(filename=cadences_file, unpickle=unpickle)
@@ -164,12 +167,14 @@ def read_field(plan=None, observatory=None, fieldid=None,
     if(stage.capitalize() == 'Final'):
         field_file = field_file.replace('targets/' + base,
                                         'final/' + base + 'Final')
+        trim_cadence_version = True
 
     if(speedy):
         f = FieldSpeedy(filename=field_file, fieldid=fieldid,
                         verbose=verbose)
     else:
-        f = Field(filename=field_file, fieldid=fieldid, verbose=verbose)
+        f = Field(filename=field_file, fieldid=fieldid, verbose=verbose,
+                  trim_cadence_version=trim_cadence_version)
 
     return(f)
 
@@ -507,12 +512,14 @@ class Field(object):
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
-                 bright_neighbors=True, verbose=False, veryverbose=False):
+                 bright_neighbors=True, verbose=False, veryverbose=False,
+                 trim_cadence_version=False):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
         self.verbose = verbose
         self.veryverbose = veryverbose
+        self._trim_cadence_version = trim_cadence_version
         self.fieldid = fieldid
         self.nocalib = nocalib
         self.nocollide = nocollide
@@ -961,6 +968,10 @@ class Field(object):
         self._ot = obstime.ObsTime(observatory=self.observatory)
         self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
         field_cadence = hdr['FCADENCE']
+        if(self._trim_cadence_version):
+            w = field_cadence.split('_')
+            if(w[-1][0] == 'v'):
+                field_cadence = '_'.join(w[:-1])
         if(self.nocalib is False):
             self.required_calibrations = collections.OrderedDict()
             for name in hdr:
@@ -4626,6 +4637,94 @@ class Field(object):
         self.decollide_unassigned()
         return
 
+    def assess_data(self):
+        """Return dictionary with assessment of current results
+
+        Returns
+        -------
+
+        results_data : dict
+            dictionary of results
+"""
+        results = dict()
+        results['field_cadence'] = self.field_cadence.name
+        results['nepochs'] = self.field_cadence.nepochs
+        results['nexp_total'] = self.field_cadence.nexp_total
+        
+        results['nocalib'] = self.nocalib
+        if(self.nocalib is False):
+            results['calibration_order'] = self.calibration_order
+            results['calibrations'] = dict()
+            results['required_calibrations'] = dict()
+            results['achievable_calibrations'] = dict()
+            for c in self.calibration_order:
+                results['calibrations'][c] = list(self.calibrations[c])
+                results['required_calibrations'][c] = list(self.required_calibrations[c])
+                results['achievable_calibrations'][c] = list(self.achievable_calibrations[c])
+
+        iboss = np.where((self.targets['fiberType'] == 'BOSS') &
+                         (self.assignments['assigned']) &
+                         (self.targets['category'] != 'science'))[0]
+        results['nboss'] = len(iboss)
+        iapogee = np.where((self.targets['fiberType'] == 'APOGEE') &
+                           (self.assignments['assigned']) &
+                           (self.targets['category'] != 'science'))[0]
+        results['napogee'] = len(iapogee)
+
+        nperexposure = np.zeros(self.field_cadence.nexp_total, dtype=int)
+        nhasapogee = np.zeros(self.field_cadence.nexp_total, dtype=int)
+        nnoapogee = np.zeros(self.field_cadence.nexp_total, dtype=int)
+        for iexp in range(self.field_cadence.nexp_total):
+            iin = np.where((self.assignments['robotID'][:, iexp] >= 1) &
+                           (self.targets['category'] == 'science'))[0]
+            nperexposure[iexp] = len(iin)
+
+            iapogee = np.where((self._robot2indx[:, iexp] >= 0) &
+                               (self.robotHasApogee == True))[0]
+            nhasapogee[iexp] = len(iapogee)
+
+            iboss = np.where((self._robot2indx[:, iexp] >= 0) &
+                             (self.robotHasApogee == False))[0]
+            nnoapogee[iexp] = len(iboss)
+
+        results['nperexposure_science'] = list(nperexposure)
+        results['nperexposure_hasapogee'] = list(nhasapogee)
+        results['nperexposure_noapogee'] = list(nnoapogee)
+
+        nperepoch = np.zeros(self.field_cadence.nepochs, dtype=int)
+        for epoch in range(self.field_cadence.nepochs):
+            iexpst = self.field_cadence.epoch_indx[epoch]
+            iexpnd = self.field_cadence.epoch_indx[epoch + 1]
+            iin = np.where(((self.assignments['robotID'][:, iexpst:iexpnd] >= 1).sum(axis=1) > 0) &
+                           (self.targets['category'] == 'science'))[0]
+            nperepoch[epoch] = len(iin)
+        results['nperepoch_science'] = list(nperepoch)
+
+        nboss_spare, napogee_spare, nboss_unused, napogee_unused = self.count_spares(return_unused=True)
+
+        results['nboss_spare'] = list(nboss_spare)
+        results['napogee_spare'] = list(napogee_spare)
+        results['nboss_unused'] = list(nboss_unused)
+        results['napogee_unused'] = list(napogee_unused)
+
+        cartons = np.unique(self.targets['carton'])
+        results['cartons'] = dict()
+        for carton in cartons:
+            isscience = (self.targets['category'] == 'science')
+            incarton = (self.targets['carton'] == carton)
+            within = (self.targets['within'] != 0)
+            issatisfied = (self.assignments['satisfied'] > 0)
+            icarton = np.where(incarton & isscience & within)[0]
+            igot = np.where(incarton & issatisfied & isscience)[0]
+            nexposures = (self.assignments['equivRobotID'][icarton, :] >= 0).sum()
+            if(len(icarton) > 0):
+                results['cartons'][carton] = dict()
+                results['cartons'][carton]['nwithin'] = len(icarton)
+                results['cartons'][carton]['nsatisfied'] = len(igot)
+                results['cartons'][carton]['nexposures'] = nexposures
+
+        return(results)
+
     def assess(self):
         """Assess the current results of assignment in field
 
@@ -4635,94 +4734,42 @@ class Field(object):
         results : str
             String describing results
 """
-        out = ""
+        tstr = """
+Field cadence: {{field_cadence}}
 
-        out = out + "Field cadence: {fc}\n".format(fc=self.field_cadence.name)
+{% if nocalib %}
+No calibrations included.
+{% else %}
+Calibration targets:
+{% for c in calibration_order %} {{c}}:{% for cn in calibrations[c] %} {{cn}}/{{required_calibrations[c][loop.index0]}}{% endfor %}
+{% endfor %}{% endif %}
 
-        if(self.nocalib is False):
-            out = out + "\n"
-            out = out + "Calibration targets:\n"
-            for c in self.calibration_order:
-                tmp = " {c}:"
-                out = out + tmp.format(c=c)
-                for cn, rcn in zip(self.calibrations[c], self.required_calibrations[c]):
-                    out = out + " {cn}/{rcn}".format(cn=cn, rcn=int(rcn))
-                out = out + "\n"
-        else:
-            out = out + "No calibrations\n"
+Science targets:
+ BOSS targets assigned: {{nboss_science}}
+ APOGEE targets assigned: {{napogee_science}}
+ Per epoch:{% for n in nperepoch_science %} {{n}}{% endfor %}
 
-        out = out + "\n"
-        out = out + "Science targets:\n"
-        iboss = np.where((self.targets['fiberType'] == 'BOSS') &
-                         (self.assignments['assigned']) &
-                         (self._is_calibration == False))[0]
-        out = out + " BOSS targets assigned: {n}\n".format(n=len(iboss))
-        iapogee = np.where((self.targets['fiberType'] == 'APOGEE') &
-                           (self.assignments['assigned']) &
-                           (self._is_calibration == False))[0]
-        out = out + " APOGEE targets assigned: {n}\n".format(n=len(iapogee))
+Robots used per exposure:
+ BOSS-only:{% for n in nperexposure_noapogee %} {{n}}{% endfor %}
+ APOGEE-BOSS:{% for n in nperexposure_hasapogee %} {{n}}{% endfor %}
 
-        perepoch = np.zeros(self.field_cadence.nepochs, dtype=np.int32)
-        out = out + " Targets per epoch:"
-        for epoch in range(self.field_cadence.nepochs):
-            iexpst = self.field_cadence.epoch_indx[epoch]
-            iexpnd = self.field_cadence.epoch_indx[epoch + 1]
-            rids = np.where(((self.assignments['robotID'][:, iexpst:iexpnd] >= 1).sum(axis=1) > 0) &
-                            (self._is_calibration == False))[0]
-            perepoch[epoch] = len(rids)
-            out = out + " {p}".format(p=perepoch[epoch])
-        out = out + "\n"
-        out = out + "\n"
+Spare fibers per exposure:
+ BOSS:{% for n in nboss_spare %} {{n}}{% endfor %}
+ APOGEE:{% for n in napogee_spare %} {{n}}{% endfor %}
 
-        out = out + "Robots used:\n"
-        hasApogee = np.array([self.mastergrid.robotDict[self.robotIDs[x]].hasApogee
-                              for x in range(500)], dtype=bool)
-        out = out + " BOSS-only:"
-        for iexp in range(self.field_cadence.nexp_total):
-            iused_boss = np.where((self._robot2indx[:, iexp] >= 0) &
-                                  (hasApogee == False))[0]
-            out = out + " {p}".format(p=len(iused_boss))
-        out = out + "\n"
-        out = out + " APOGEE-BOSS:"
-        for iexp in range(self.field_cadence.nexp_total):
-            iused_apogee = np.where((self._robot2indx[:, iexp] >= 0) &
-                                    (hasApogee == True))[0]
-            out = out + " {p}".format(p=len(iused_apogee))
-        out = out + "\n"
+Unassigned fibers per exposure:
+ BOSS:{% for n in nboss_unused %} {{n}}{% endfor %}
+ APOGEE:{% for n in napogee_unused %} {{n}}{% endfor %}
 
-        nboss_spare, napogee_spare, nboss_unused, napogee_unused = self.count_spares(return_unused=True)
-        out = out + "\nSpare fibers per exposure (including spare calibs):\n"
-        out = out + " BOSS: "
-        for iexp in range(self.field_cadence.nexp_total):
-            out = out + " {p}".format(p=nboss_spare[iexp])
-        out = out + "\n APOGEE: "
-        for iexp in range(self.field_cadence.nexp_total):
-            out = out + " {p}".format(p=napogee_spare[iexp])
-        out = out + "\n"
+Carton completion:
+{% for c in cartons %} {{c}}: \033[0;34m{{cartons[c].nsatisfied}} / {{cartons[c].nwithin}}\033[0;3m ({{cartons[c].nexposures}} exp)
+{% endfor %}
+"""
+        assessment = self.assess_data()
 
-        out = out + "\nUnassigned fibers per exposure:\n"
-        out = out + " BOSS: "
-        for iexp in range(self.field_cadence.nexp_total):
-            out = out + " {p}".format(p=nboss_unused[iexp])
-        out = out + "\n APOGEE: "
-        for iexp in range(self.field_cadence.nexp_total):
-            out = out + " {p}".format(p=napogee_unused[iexp])
-        out = out + "\n"
-
-        out = out + "\nCarton completion:\n"
-        cartons = np.unique(self.targets['carton'])
-        for carton in cartons:
-            isscience = (self.targets['category'] == 'science')
-            incarton = (self.targets['carton'] == carton)
-            issatisfied = (self.assignments['satisfied'] > 0)
-            icarton = np.where(incarton & isscience)[0]
-            igot = np.where(incarton & issatisfied & isscience)[0]
-            if(len(icarton) > 0):
-                tmp = " {carton}: {ngot} of {ncarton}\n".format(carton=carton,
-                                                                ngot=len(igot),
-                                                                ncarton=len(icarton))
-                out = out + tmp 
-        out = out + "\n"
+        env = jinja2.Environment()
+        template = env.from_string(tstr)
+        out = template.render(assessment)
 
         return(out)
 

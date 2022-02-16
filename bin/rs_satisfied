@@ -50,6 +50,10 @@ if __name__ == '__main__':
                         help='set to read reassignment target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-X', '--final', dest='final',
+                        help='set to read final target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -58,18 +62,11 @@ if __name__ == '__main__':
     filler = args.filler
     complete = args.complete
     reassign = args.reassign
+    final = args.final
 
-    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
-        print("Only one of -O, -R, -F, -K can be set!")
+    if(int(final) + int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
+        print("Only one of -O, -R, -F, -K, -X can be set!")
         sys.exit()
-
-    rsParams = params.RobostrategyParams(plan=plan)
-    if('Rotate' in rsParams.cfg['Fields']):
-        rotate = True
-        paname = rsParams.cfg['Fields']['Rotate']
-    else:
-        rotate = False
-        paname = ''
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -78,16 +75,30 @@ if __name__ == '__main__':
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
+    if(final):
+        allocate_file = allocate_file.replace('rsAllocation',
+                                              'final/rsAllocationFinal')
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                    observatory=observatory)
+    open_targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
+    filler_targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
+    final_targets_file = targets_file.replace('rsTargets', 'rsTargetsFinal')
+
     if(opentargets):
-        targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
-    if(filler | complete):
-        targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
+        targets_file = open_targets_file
+    elif(filler):
+        targets_file = filler_targets_file
+    elif(final):
+        targets_file = final_targets_file
+    
     full_targets = fitsio.read(targets_file)
+
+    if(len(full_targets) != len(np.unique(full_targets['rsid']))):
+        print("Uh oh---repeated rsid!")
+        sys.exit()
 
     rsid2indx = dict()
     for indx, full_target in enumerate(full_targets):
@@ -113,8 +124,8 @@ if __name__ == '__main__':
         satisfied[xfer] = full_targets[xfer]
 
     count = 0
-    for indx in np.arange(len(allocate.field_array)):
-        fieldid = allocate.field_array['fieldid'][indx]
+    fieldids = np.unique(allocate.field_array['fieldid'])
+    for fieldid in fieldids:
         if((fieldid % 10) == 0):
             print(fieldid)
 
@@ -134,6 +145,9 @@ if __name__ == '__main__':
         if(complete):
             field_assigned_file = field_assigned_file.replace('rsFieldAssignments',
                                                               'rsFieldAssignmentsComplete')
+        if(final):
+            field_assigned_file = field_assigned_file.replace('targets/rsFieldAssignments',
+                                                              'final/rsFieldAssignmentsFinal')
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
@@ -184,6 +198,9 @@ if __name__ == '__main__':
     if(reassign):
         satisfied_file = satisfied_file.replace('rsSatisfied',
                                                 'rsSatisfiedReassign')
+    if(final):
+        satisfied_file = satisfied_file.replace('rsSatisfied',
+                                                'final/rsSatisfiedFinal')
 
     hdr = robostrategy.header.rsheader()
     fitsio.write(satisfied_file, satisfied, header=hdr,

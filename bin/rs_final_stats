@@ -1,0 +1,189 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: May 19, 2020
+# @Filename: rs_stats
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import configparser
+import numpy as np
+import fitsio
+import sdss_access.path
+import jinja2
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Gather final numbers per carton both sites')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
+                                    'carton_description.cfg')
+    carton_description = dict()
+    if(os.path.exists(description_file)):
+        description_cfg = configparser.ConfigParser(allow_no_value=True)
+        description_cfg.optionxform = str
+        description_cfg.read(description_file)
+        if('Open' in description_cfg):
+            tmp_carton_description = description_cfg['Open']
+            for c in tmp_carton_description:
+                carton_description[c] = tmp_carton_description[c]
+        if('Filler' in description_cfg):
+            tmp_carton_description = description_cfg['Filler']
+            for c in tmp_carton_description:
+                carton_description[c] = tmp_carton_description[c]
+        if('Mapper' in description_cfg):
+            tmp_carton_description = description_cfg['Mapper']
+            for c in tmp_carton_description:
+                carton_description[c] = tmp_carton_description[c]
+
+    html_path = os.path.join(os.path.dirname(sdss_path.full('rsCompleteness',
+                                                            plan=plan,
+                                                            observatory='apo')),
+                             'final')
+
+    html_file = os.path.join(html_path, 'rs-final-stats.html')
+    stats_file = os.path.join(html_path, 'rsStatsFinal-{p}.fits'.format(p=plan))
+
+    stats_dtype = [('carton', np.dtype('a40'))]
+    for stage in ['', '_filler', '_open', '_reassign', '_srd']:
+        for obs in ['', '_apo', '_lco']:
+            for quant in ['ntarget', 'ngot', 'fgot', 'nexps', 'nepochs']:
+                if(quant == 'fgot'):
+                    datatype = np.float32
+                else:
+                    datatype = np.int32
+                stats_dtype.append((quant + stage + obs, datatype))
+    stats = np.zeros(0, dtype=stats_dtype)
+
+    stages = ['srd', 'reassign', 'open', 'filler', 'final']
+
+    for stage in stages:
+        print(stage)
+        stagename = '_' + stage
+        completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
+                                                            plan=plan,
+                                                            observatory='both'))
+
+        if(stage != 'srd'):
+            completeness_file = completeness_file.replace('rsCompleteness',
+                                                          'rsCompleteness{stage}').format(stage=stage.capitalize())
+
+        if(stage == 'final'):
+            stagename = ''
+            completeness_file = completeness_file.replace('rsCompleteness',
+                                                          'final/rsCompleteness')
+
+
+        completeness_hdr = fitsio.read_header(completeness_file, ext=1)
+
+        ncarton = np.int32(completeness_hdr['NCARTON'])
+        ncad = np.int32(completeness_hdr['NCADENCE'])
+        for icarton in np.arange(ncarton):
+            hdr = fitsio.read_header(completeness_file,
+                                     ext=(ncad + 1 + icarton) * 3 + 2)
+            carton = hdr['CARTON'].strip()
+            print(carton)
+            ntarget = hdr['NTARGETS']
+            ngot = hdr['NGOT']
+            fgot = hdr['FGOT']
+            ntarget_apo = hdr['NTAR_APO']
+            ngot_apo = hdr['NGOT_APO']
+            fgot_apo = hdr['FGOT_APO']
+            ntarget_lco = hdr['NTAR_LCO']
+            ngot_lco = hdr['NGOT_LCO']
+            fgot_lco = hdr['FGOT_LCO']
+
+            if('NEXPS' in hdr):
+                nexps = hdr['NEXPS']
+                nepochs = hdr['NEPOCHS']
+                nexps_lco = hdr['NEXPS_LCO']
+                nepochs_lco = hdr['NEPOCHS_LCO']
+                nexps_apo = hdr['NEXPS_APO']
+                nepochs_apo = hdr['NEPOCHS_APO']
+            else:
+                nexps = 0
+                nepochs = 0
+                nexps_lco = 0
+                nepochs_lco = 0
+                nexps_apo = 0
+                nepochs_apo = 0
+
+            if(len(stats) > 0):
+                plist = np.array([p.decode().strip()
+                                  for p in stats['carton']])
+                ip = np.where(plist == carton)[0]
+            else:
+                ip = []
+            if(len(ip) == 0):
+                stats_one = np.zeros(1, dtype=stats_dtype)
+                stats_one['carton'] = carton
+                stats = np.append(stats, stats_one)
+                plist = np.array([p.decode().strip()
+                                  for p in stats['carton']])
+                ip = np.where(plist == carton)[0]
+            ip = ip[0]
+            stats['ntarget' + stagename][ip] = ntarget
+            stats['ngot' + stagename][ip] = ngot
+            stats['fgot' + stagename][ip] = fgot
+            stats['nexps' + stagename][ip] = nexps
+            stats['nepochs' + stagename][ip] = nepochs
+            stats['ntarget' + stagename + '_lco'][ip] = ntarget_lco
+            stats['ngot' + stagename + '_lco'][ip] = ngot_lco
+            stats['fgot' + stagename + '_lco'][ip] = fgot_lco
+            stats['nexps' + stagename + '_lco'][ip] = nexps_lco
+            stats['nepochs' + stagename + '_lco'][ip] = nepochs_lco
+            stats['ntarget' + stagename + '_apo'][ip] = ntarget_apo
+            stats['ngot' + stagename + '_apo'][ip] = ngot_apo
+            stats['fgot' + stagename + '_apo'][ip] = fgot_apo
+            stats['nexps' + stagename + '_apo'][ip] = nexps_apo
+            stats['nepochs' + stagename + '_apo'][ip] = nepochs_apo
+
+    fitsio.write(stats_file, stats, clobber=True)
+
+    stats_dict = dict()
+    stats_dict['plan'] = plan
+    stats_dict['cartons'] = dict()
+    for s in stats:
+        carton = s['carton'].decode()
+        if(carton in carton_description):
+            description = carton_description[carton]
+        else:
+            description = ''
+        stats_dict['cartons'][carton] = dict()
+        stats_dict['cartons'][carton]['description'] = description
+        for n in s.dtype.names:
+            stats_dict['cartons'][carton][n] = s[n]
+
+    env = jinja2.Environment(
+        loader=jinja2.PackageLoader("robostrategy"),
+        autoescape=jinja2.select_autoescape()
+    )
+
+    template = env.get_template('rs-final-stats-template.html')
+    page = template.render(stats_dict)
+
+    fp = open(html_file, 'w')
+    fp.write(page)
+    fp.close()
+
