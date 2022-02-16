@@ -517,6 +517,7 @@ class Field(object):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
+        self.stage = None
         self.verbose = verbose
         self.veryverbose = veryverbose
         self._trim_cadence_version = trim_cadence_version
@@ -591,7 +592,6 @@ class Field(object):
         self._competing_targets = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
-        self.stage = None
         return
 
     def set_stage(self, stage=None):
@@ -1047,7 +1047,8 @@ class Field(object):
                                                rsid=targets['rsid'][itarget],
                                                iexp=0, reset_satisfied=False,
                                                reset_has_spare=False,
-                                               reset_count=False)
+                                               reset_count=False,
+                                               set_expflag=False)
             else:
                 iassigned = np.where(assignments['robotID'] >= 1)
                 for itarget, iexp in zip(iassigned[0], iassigned[1]):
@@ -1056,12 +1057,15 @@ class Field(object):
                                                iexp=iexp,
                                                reset_satisfied=False,
                                                reset_has_spare=False,
-                                               reset_count=False)
+                                               reset_count=False,
+                                               set_expflag=False)
 
+            hasexpflag = ('expflag' in assignments.dtype.names)
             for assignment, target in zip(assignments, targets):
                 indx = self.rsid2indx[target['rsid']]
                 self.assignments['rsflags'][indx] = assignment['rsflags']
-                self.assignments['expflag'][indx] = assignment['expflag']
+                if(hasexpflag):
+                    self.assignments['expflag'][indx] = assignment['expflag']
             self._set_has_spare_calib()
             self._set_satisfied()
             self._set_count(reset_equiv=False)
@@ -1403,7 +1407,7 @@ class Field(object):
             name of flag to set
 """
         indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
-        self.assignments['expflag'][indxs, iexp] = (self.assignments['expflag'][indxs] | self.expflagdict[flagname])
+        self.assignments['expflag'][indxs, iexp] = (self.assignments['expflag'][indxs, iexp] | self.expflagdict[flagname])
         return
 
     def check_expflag(self, rsid=None, iexp=None, flagname=None):
@@ -2751,7 +2755,7 @@ class Field(object):
 
     def assign_robot_exposure(self, robotID=None, rsid=None, iexp=None,
                               reset_satisfied=True, reset_has_spare=True,
-                              reset_count=True):
+                              reset_count=True, set_expflag=True):
         """Assign an rsid to a particular robot-exposure
 
         Parameters
@@ -2777,6 +2781,9 @@ class Field(object):
         reset_count : bool
             if True, reset the 'nexp' and 'nepochs' columns
             (default True)
+
+        set_expflag : bool
+            if True, set 'expflag' according to current value of stage
 
         Returns
         --------
@@ -2806,7 +2813,7 @@ class Field(object):
             self._robotnexp_max[robotindx, epoch] = self._robotnexp_max[robotindx, epoch] - 1
         self.assignments['assigned'][itarget] = 1
 
-        if(self.stage is not None):
+        if((self.stage is not None) & (set_expflag)):
             self.set_expflag(rsid=rsid, iexp=iexp, flagname=self.stage.upper())
 
         # If this is a calibration target, update calibration target tracker
@@ -3754,7 +3761,7 @@ class Field(object):
                         print("fieldid {fid}:  - {n} assigning as single bright (cycle {i})".format(n=len(isinglebright), i=icycle, fid=self.fieldid), flush=True)
                             
                     self._assign_singlebright(indxs=indxs[isinglebright])
-                    success[isinglebright] = self.assignments['satisfied'][indxs[isinglebright]]
+                    success[isinglebright] = (self._unsatisfied(indxs=indxs[isinglebright]) == False)
 
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[isinglebright].sum(), fid=self.fieldid), flush=True)
@@ -3768,7 +3775,7 @@ class Field(object):
                     if(self.verbose):
                         print("fieldid {fid}:  - {n} assigning as multi bright (cycle {i})".format(n=len(imultibright), i=icycle, fid=self.fieldid), flush=True)
                     self._assign_multibright(indxs=indxs[imultibright])
-                    success[imultibright] = self.assignments['satisfied'][indxs[imultibright]]
+                    success[imultibright] = (self._unsatisfied(indxs=indxs[imultibright]) == False)
 
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
@@ -3782,7 +3789,7 @@ class Field(object):
                     if(self.verbose):
                         print("fieldid {fid}:  - {n} assigning as multi dark (cycle {i})".format(n=len(imultidark), i=icycle, fid=self.fieldid), flush=True)
                     self._assign_multidark(indxs=indxs[imultidark])
-                    success[imultidark] = self.assignments['satisfied'][indxs[imultidark]]
+                    success[imultidark] = (self._unsatisfied(indxs=indxs[imultidark]) == False)
 
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[imultidark].sum(), fid=self.fieldid), flush=True)
@@ -4181,11 +4188,15 @@ class Field(object):
 
         self.set_stage(stage=stage)
 
+        stage_select = stage
+        if(stage == 'reassign'):
+            stage_select = 'srd'
+
         if(self.verbose):
             print("fieldid {fid}: Assigning calibrations".format(fid=self.fieldid), flush=True)
         
         icalib = np.where(self._is_calibration &
-                          (self.targets['stage'] == stage))[0]
+                          (self.targets['stage'] == stage_select))[0]
         np.random.shuffle(icalib)
         self.assign_cadences(rsids=self.targets['rsid'][icalib])
 
@@ -4224,6 +4235,10 @@ class Field(object):
 """
         self.set_stage(stage=stage)
 
+        stage_select = stage
+        if(stage == 'reassign'):
+            stage_select = 'srd'
+
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
 
@@ -4231,7 +4246,7 @@ class Field(object):
                             (self.targets['within']) &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
-                            (self.targets['stage'] == stage))[0]
+                            (self.targets['stage'] == stage_select))[0]
         np.random.seed(self.fieldid)
         random.seed(self.fieldid)
         np.random.shuffle(iscience)
@@ -4275,6 +4290,10 @@ class Field(object):
         coordinated_targets[rsid] is True.
 """
         self.set_stage(stage=stage)
+
+        stage_select = stage
+        if(stage == 'reassign'):
+            stage_select = 'srd'
 
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
@@ -4342,7 +4361,7 @@ class Field(object):
                             (self.targets['within']) &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
-                            (self.targets['stage'] == stage))[0]
+                            (self.targets['stage'] == stage_select))[0]
         np.random.shuffle(iscience)
 
         assigned_exposure_calib = collections.OrderedDict()
@@ -4369,7 +4388,7 @@ class Field(object):
                     print("fieldid {fid}:   ... {c}".format(fid=self.fieldid, c=c), flush=True)
                 iexps = np.where(assigned_exposure_calib[c] == False)[0]
                 icalib = np.where((self.targets['category'] == c) &
-                                  (self.targets['stage'] == stage))[0]
+                                  (self.targets['stage'] == stage_select))[0]
                 np.random.shuffle(icalib)
                 isort = np.argsort(self.targets['priority'][icalib],
                                    kind='stable')
@@ -4407,7 +4426,7 @@ class Field(object):
                         if(self.verbose):
                             print("   ... {c}".format(c=c))
                         icalib = np.where((self.targets['category'] == c) &
-                                          (self.targets['stage'] == stage))[0]
+                                          (self.targets['stage'] == stage_select))[0]
                         np.random.shuffle(icalib)
                         isort = np.argsort(self.targets['priority'][icalib],
                                            kind='stable')
@@ -4519,7 +4538,6 @@ class Field(object):
                     done = self.assign_exposures(rsid=rsid, iexps=iexps_epoch[not_observed])
                     ndone = done.sum()
                     if(ndone > 0):
-                        self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
                         ntargets_added = ntargets_added + 1
                         nexposures_added = nexposures_added + ndone
 
@@ -4556,7 +4574,6 @@ class Field(object):
                 done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed & sky_ok])
                 ndone = done.sum()
                 if(ndone > 0):
-                    self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
                     ntargets_added = ntargets_added + 1
                     nexposures_added = nexposures_added + ndone
 
@@ -4593,7 +4610,6 @@ class Field(object):
             done = self.assign_exposures(rsid=rsid, iexps=iexps[sky_ok])
             ndone = done.sum()
             if(ndone > 0):
-                self.set_flag(rsid=rsid, flagname='COMPLETE_UNASSIGNED')
                 ntargets_added = ntargets_added + 1
                 nexposures_added = nexposures_added + ndone
 
@@ -4627,7 +4643,6 @@ class Field(object):
                                          check_spare=False)
             ndone = done.sum()
             if(ndone > 0):
-                self.set_flag(rsid=rsid, flagname='COMPLETE_CALIBRATION')
                 ntargets_added = ntargets_added + 1
                 nexposures_added = nexposures_added + ndone
 
@@ -4652,11 +4667,13 @@ class Field(object):
            decollide_unassigned()
 
 """
+        self.set_stage(stage="complete")
         self.complete_epochs_assigned()
         self.complete_assigned()
         self.complete_unassigned()
         self.complete_calibrations()
         self.decollide_unassigned()
+        self.set_stage(stage=None)
         return
 
     def assess_data(self):
