@@ -59,10 +59,15 @@ _flagdict = {'STAGE_IS_NONE':1,
              'NOT_COVERED': 8,
              'NONE_ALLOWED': 16,
              'NO_AVAILABILITY': 32,
-             'ALREADY_ASSIGNED': 64,
-             'COMPLETE_ASSIGNED': 128,
-             'COMPLETE_UNASSIGNED': 256,
-             'COMPLETE_CALIBRATION': 512}
+             'ALREADY_ASSIGNED': 64}
+
+_expflagdict = {'SRD':1,
+                'REASSIGN':2,
+                'OPEN':4,
+                'FILLER':8,
+                'COMPLETE':16,
+                'OTHER':32}
+
 
 __all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus']
 
@@ -154,6 +159,8 @@ def read_field(plan=None, observatory=None, fieldid=None,
         field_file = field_file.replace(base, base + 'Open')
     if(stage.capitalize() == 'Filler'):
         field_file = field_file.replace(base, base + 'Filler')
+    if(stage.capitalize() == 'Complete'):
+        field_file = field_file.replace(base, base + 'Complete')
     if(stage.capitalize() == 'Final'):
         field_file = field_file.replace('targets/' + base,
                                         'final/' + base + 'Final')
@@ -185,27 +192,30 @@ class AssignmentStatus(object):
     Attributes
     ----------
 
-    rsid : np.int64
-        prospective target
-
-    robotID : np.int32
-        prospective robotID
-
-    iexps : ndarray of np.int32
-        prospective exposure numbers
-
-    expindx : ndarray of np.int32
-        mapping of iexp (exposure within field cadence) to index of iexps array
+    already : ndarray of bool
+        does the rsid already have an equivalent observation this exposure?
 
     assignable : ndarray of bool
         is the fiber free to assign and uncollided in exposure? 
         (initialized to True)
 
+    bright_neighbor_allowed : ndarray of bool
+        is this free of a bright neighbor (initialized to True)
+
     collided : ndarray of bool
         is the fiber collided in exposure? (initialized to False)
 
-    bright_neighbor_allowed : ndarray of bool
-        is this free of a bright neighbor (initialized to True)
+    expindx : ndarray of np.int32
+        mapping of iexp (exposure within field cadence) to index of iexps array
+
+    iexps : ndarray of np.int32
+        prospective exposure numbers
+
+    robotID : np.int32
+        prospective robotID
+
+    rsid : np.int64
+        prospective target
 
     spare : ndarray of bool
         is fiber already assigned a spare calibration target in exposure?
@@ -235,6 +245,7 @@ class AssignmentStatus(object):
         self.expindx = np.zeros(iexps.max() + 1, dtype=np.int32) - 1
         self.expindx[iexps] = np.arange(len(iexps), dtype=np.int32)
         self.assignable = np.ones(len(self.iexps), dtype=bool)
+        self.already = np.zeros(len(self.iexps), dtype=bool)
         self.collided = np.zeros(len(self.iexps), dtype=bool)
         self.bright_neighbor_allowed = np.ones(len(self.iexps), dtype=bool)
         self.spare = np.zeros(len(self.iexps), dtype=bool)
@@ -344,6 +355,11 @@ class Field(object):
         for each epoch for 'sky_boss', 'standard_boss', 'sky_apogee',
         'standard_apogee'
 
+    calibration_order : ndarray of str
+        Ordering of calibrations to perform assignment; note that spares
+        are preferentially assigned to the later listed; default is
+        ['sky_apogee', 'sky_boss', 'standard_apogee', 'standard_boss']
+
     collisionBuffer : float
         collision buffer for kaiju (in mm) IGNORED
 
@@ -355,6 +371,9 @@ class Field(object):
 
     design_mode : np.array of str
         keys to DesignModeDict for each epoch
+
+    expflagdict : Dict
+        dictionary of exposure flag values
 
     field_cadence : Cadence object
         cadence associated with field (set to None prior to set_field_cadence()
@@ -390,11 +409,6 @@ class Field(object):
         distance from racen, deccen to search for for targets (deg);
         set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
 
-    calibration_order : ndarray of str
-        Ordering of calibrations to perform assignment; note that spares
-        are preferentially assigned to the later listed; default is
-        ['sky_apogee', 'sky_boss', 'standard_apogee', 'standard_boss']
-
     required_calibrations : OrderedDict
         dictionary with numbers of required calibration sources specified
         for each exposure, for 'sky_boss', 'standard_boss', 'sky_apogee',
@@ -416,6 +430,9 @@ class Field(object):
     rsid2indx : Dict
         dictionary linking rsid (key) to index of targets and assignments arrays.
         (values). E.g. targets['rsid'][f.rsid2indx[rsid]] == rsid
+
+    stage : str
+        current stage (used for setting bits)
 
     targets : ndarray
         array of targets
@@ -563,6 +580,7 @@ class Field(object):
             self.set_field_cadence(field_cadence)
         self._set_radius()
         self.flagdict = _flagdict
+        self.expflagdict = _expflagdict
         self._competing_targets = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
@@ -1181,6 +1199,7 @@ class Field(object):
                 self._robotnexp_max[:, i] = n
             self.assignments_dtype = np.dtype([('assigned', np.int32),
                                                ('satisfied', np.int32),
+                                               ('science_satisfied', np.int32),
                                                ('extra', np.int32),
                                                ('nexps', np.int32),
                                                ('nepochs', np.int32),
@@ -1194,6 +1213,8 @@ class Field(object):
                                                 (self.field_cadence.nexp_total,)),
                                                ('holeID', np.dtype("|U15"), (self.field_cadence.nexp_total)),
                                                ('equivRobotID', np.int32,
+                                                (self.field_cadence.nexp_total,)),
+                                               ('scienceRobotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
                                                ('target_skybrightness', np.float32,
                                                 (self.field_cadence.nexp_total,)),
@@ -1342,6 +1363,71 @@ class Field(object):
         flagnames = []
         for fn in self.flagdict:
             if(flagval & self.flagdict[fn]):
+                flagnames.append(fn)
+        return(flagnames)
+
+    def set_expflag(self, rsid=None, iexp=None, flagname=None):
+        """Set a bitmask flag for a target's exposure
+
+        Parameters
+        ----------
+
+        rsid : np.int64
+            IDs of the target-cadence
+
+        iexp : np.int32
+            exposure
+
+        flagname : str
+            name of flag to set
+"""
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
+        self.assignments['expflag'][indxs, iexp] = (self.assignments['expflag'][indxs] | self.expflagdict[flagname])
+        return
+
+    def check_expflag(self, rsid=None, iexp=None, flagname=None):
+        """Check a bitmask flag for a target
+
+        Parameters
+        ----------
+
+        rsid : np.int64 or ndarray
+            IDs of the target-cadence
+
+        iexp : np.int32
+            exposure
+
+        flagname : str
+            name of flag to set
+
+        Returns
+        -------
+
+        setornot : ndarray of bool
+            True if flag is set, flag otherwise
+"""
+        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
+        setornot = ((self.assignments['expflag'][indxs] & self.expflagdict[flagname]) != 0)
+        return(setornot)
+
+    def get_expflag_names(self, flagval=None):
+        """Return names associated with exposure flag
+
+        Parameters
+        ----------
+
+        flagval : np.int32
+            flag
+
+        Returns
+        -------
+
+        flagnames : list
+            strings corresponding to each set bit
+"""
+        flagnames = []
+        for fn in self.expflagdict:
+            if(flagval & self.expflagdict[fn]):
                 flagnames.append(fn)
         return(flagnames)
 
@@ -1735,11 +1821,12 @@ class Field(object):
             assignments['fiberType'] = targets['fiberType']
             assignments['robotID'] = -1
             assignments['equivRobotID'] = -1
+            assignments['scienceRobotID'] = -1
             assignments['target_skybrightness'] = -1.
         else:
             for n in self.assignments_dtype.names:
-                listns = ['robotID', 'equivRobotID', 'target_skybrightness',
-                          'field_skybrightness']
+                listns = ['robotID', 'equivRobotID', 'scienceRobotID',
+                          'target_skybrightness', 'field_skybrightness']
                 if((n in listns) & (self.field_cadence.nexp_total == 1)):
                     assignments[n][:, 0] = assignment_array[n]
                 else:
@@ -1855,7 +1942,9 @@ class Field(object):
         # whose catalog, fiberType, lambda_eff, delta_ra, delta_dec 
         # are the same
         self._equivindx = collections.OrderedDict()
+        self._equivindx_science = collections.OrderedDict()
         self._equivkey = collections.OrderedDict()
+        self._equivkey_science = collections.OrderedDict()
         for itarget, target in enumerate(self.targets):
             ekey = (target['catalogid'], target['fiberType'],
                     target['lambda_eff'], target['delta_ra'],
@@ -1863,9 +1952,16 @@ class Field(object):
             if(ekey not in self._equivindx):
                 self._equivindx[ekey] = np.zeros(0, dtype=np.int32)
             self._equivindx[ekey] = np.append(self._equivindx[ekey],
-                                              np.array([itarget],
-                                                       dtype=int))
+                                              np.array([itarget], dtype=int))
             self._equivkey[itarget] = ekey
+            if(self.targets['category'][itarget] == 'science'):
+                if(ekey not in self._equivindx_science):
+                    self._equivindx_science[ekey] = np.zeros(0, dtype=np.int32)
+                self._equivindx_science[ekey] = np.append(self._equivindx_science[ekey],
+                                                          np.array([itarget],
+                                                                   dtype=int))
+                self._equivkey_science[itarget] = ekey
+                
 
         if(assignments is not None):
             self.assignments = np.append(self.assignments, assignments, axis=0)
@@ -2125,6 +2221,14 @@ class Field(object):
                     i = status.expindx[iexp]
                     status.assignable[i] = status.assignable[i] & status.bright_neighbor_allowed[i]
 
+            # Set "already" to whether the exposure is already allocated
+            # to this target (by any robot, including this one). But, if 
+            # it is also "assignable" that means that the reason it is
+            # already gotten is because of a spare calibration fiber. So
+            # do not count this. 
+            status.already = ((self.assignments['equivRobotID'][indx, status.iexps] >= 0) &
+                              (status.assignable == False))
+                              
         return
 
     def set_bright_neighbor_status(self, status=None, iexp=None):
@@ -2429,7 +2533,9 @@ class Field(object):
 
         # Count this epoch as available if there are enough free exposures
         nfree = status.assignable.sum()
-        available = nfree >= nexp
+        nalready = status.already.sum()
+
+        available = (nfree + nalready) >= nexp
 
         return available, status
 
@@ -2553,22 +2659,30 @@ class Field(object):
             return False
 
         # Get list of available exposures in the epoch
-        iexpst = self.field_cadence.epoch_indx[epoch]
-        iexpnd = self.field_cadence.epoch_indx[epoch + 1]
-        iexps = np.arange(iexpst, iexpnd, dtype=np.int32)
         if(status is None):
+            iexpst = self.field_cadence.epoch_indx[epoch]
+            iexpnd = self.field_cadence.epoch_indx[epoch + 1]
+            iexps = np.arange(iexpst, iexpnd, dtype=np.int32)
             isspare = self._is_spare(rsid=rsid, iexps=iexps)
             status = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=iexps)
             self.set_assignment_status(status=status, isspare=isspare)
 
         assignable = status.assignable_exposures()
 
-        # Bomb if there aren't enough available
-        if(len(assignable) < nexp):
+        # Bomb if there aren't enough available; note that this 
+        # implicitly assumes that if the target is already observed
+        # in an exposure, it cannot also be assignable in that exposure
+        nassignable = len(assignable)
+        nalready = status.already.sum()
+        ntotal = nassignable + nalready
+        if(ntotal < nexp):
             return False
 
+        # Don't assign more than necessary
+        ntoassign = nexp - nalready
+
         # Now actually assign (to first available exposures)
-        for iexp in assignable[0:nexp]:
+        for iexp in assignable[0:ntoassign]:
             self.unassign_assignable(status=status, iexp=iexp,
                                      reset_count=False,
                                      reset_satisfied=False,
@@ -2670,6 +2784,9 @@ class Field(object):
         if(self.targets['category'][itarget] == 'science'):
             self._robotnexp_max[robotindx, epoch] = self._robotnexp_max[robotindx, epoch] - 1
         self.assignments['assigned'][itarget] = 1
+
+        if(self.stage is not None):
+            self.set_expflag(rsid=rsid, iexp=iexp, flagname=self.stage.upper())
 
         # If this is a calibration target, update calibration target tracker
         if(self.nocalib is False):
@@ -3034,7 +3151,7 @@ class Field(object):
         statuses = [[]] * len(epochs)
 
         bad = (self.assignments['allowed'][self.rsid2indx[rsid], epochs] == 0)
-        if(bad.max() > 0):
+        if(bad.min() > 0):
             available = dict()
             available['available'] = False
             available['nAvailableRobotIDs'] = nAvailableRobotIDs
@@ -3248,7 +3365,7 @@ class Field(object):
                 
         return False
 
-    def _set_equiv(self, rsids=None, iexps=None):
+    def _set_equiv(self, rsids=None, iexps=None, science=False):
         """Set equivRobotID to reflect any compatible observations with this rsid
 
         Parameters
@@ -3259,6 +3376,9 @@ class Field(object):
 
         iexps : ndarray of np.int32
             exposures to update (default all field exposures)
+
+        science : bool
+            if True, set for science (default False)
 
         Notes
         -----
@@ -3271,37 +3391,54 @@ class Field(object):
             delta_ra
             delta_dec
 
-        and sets the robotIDs for all of them.
+        and sets the assignments['equivRobotID'] for all of them, if 
+        any of them have assignments['robotID'] set
+
+        If 'science' is True, this operation is performed only
+        among science targets and assignments['scienceRobotID']
+        is set instead.
 """
-        if(rsids is None):
-            iassigned = np.where(self.assignments['assigned'])[0]
-            rsids = self.targets['rsid'][iassigned]
+        if(science):
+            if(rsids is None):
+                iassigned = np.where(self.assignments['assigned'] &
+                                     (self.targets['category'] == 'science'))[0]
+                rsids = self.targets['rsid'][iassigned]
+            eindx = self._equivindx_science
+            ekey = self._equivkey_science
+            robotidname = 'scienceRobotID'
+        else:
+            if(rsids is None):
+                iassigned = np.where(self.assignments['assigned'])[0]
+                rsids = self.targets['rsid'][iassigned]
+            eindx = self._equivindx
+            ekey = self._equivkey
+            robotidname = 'equivRobotID'
+
 
         if(iexps is None):
             iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
 
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
-            allindxs = self._equivindx[self._equivkey[indx]]
+            allindxs = eindx[ekey[indx]]
 
-            if(len(allindxs) == 1):
-                self.assignments['equivRobotID'][allindxs, :] = self.assignments['robotID'][allindxs, :]
-                continue
-
-            for iexp in iexps:
-                robotIDs = self.assignments['robotID'][allindxs, iexp]
-                robotIDs = robotIDs[robotIDs >= 0]
-                if(len(robotIDs) > 0):
-                    if(len(robotIDs) > 1):
-                        print("Inconsistency: multiple equivalent rsids with robots assigned")
-                        return
-                    self.assignments['equivRobotID'][allindxs, iexp] = robotIDs[0]
-                else:
-                    self.assignments['equivRobotID'][allindxs, iexp] = -1
+            if(len(allindxs) > 1):
+                for iexp in iexps:
+                    robotIDs = self.assignments['robotID'][allindxs, iexp]
+                    robotIDs = robotIDs[robotIDs >= 0]
+                    if(len(robotIDs) > 0):
+                        if(len(robotIDs) > 1):
+                            print("Inconsistency: multiple equivalent rsids with robots assigned")
+                            return
+                        self.assignments[robotidname][allindxs, iexp] = robotIDs[0]
+                    else:
+                        self.assignments[robotidname][allindxs, iexp] = -1
+            else:
+                self.assignments[robotidname][allindxs, :] = self.assignments['robotID'][allindxs, :]
 
         return
             
-    def _set_satisfied(self, rsids=None, reset_equiv=True):
+    def _set_satisfied(self, rsids=None, reset_equiv=True, science=False):
         """Set satisfied flag based on assignments
 
         Parameters
@@ -3312,6 +3449,9 @@ class Field(object):
 
         reset_equiv : bool
             whether to reset equivRobotID before assessing (default True)
+
+        science : bool
+            if True, set for science (default False)
 
         Notes
         -----
@@ -3325,9 +3465,20 @@ class Field(object):
         Only set reset_equiv=False if you have already just run
         _set_equiv() for these rsids (or all of them). Doing so 
         will save doing that twice.
+
+        If 'science' is True, this operation is performed only
+        among science targets and the attribute _scienceSatisfied 
+        is set instead.
 """
+        if(science):
+            robotidname = 'scienceRobotID'
+            satisfiedname = 'science_satisfied'
+        else:
+            robotidname = 'equivRobotID'
+            satisfiedname = 'satisfied'
+
         if(reset_equiv):
-            self._set_equiv(rsids=rsids)
+            self._set_equiv(rsids=rsids, science=science)
 
         if(rsids is None):
             set_rsids = self.targets['rsid']
@@ -3341,7 +3492,7 @@ class Field(object):
 
         for rsid in set_rsids:
             indx = self.rsid2indx[rsid]
-            iexp = np.where(self.assignments['equivRobotID'][indx, :] >= 0)[0]
+            iexp = np.where(self.assignments[robotidname][indx, :] >= 0)[0]
             target_cadence = self.targets['cadence'][indx]
 
             if(target_cadence != ''):
@@ -3354,16 +3505,17 @@ class Field(object):
                                              return_solutions=False)):
                     if(len(iexp) >=
                        clist.cadences[target_cadence].nexp_total):
-                        self.assignments['satisfied'][indx] = 1
+                        sat = 1
                     else:
-                        self.assignments['satisfied'][indx] = 0
+                        sat = 0
                 else:
                     # if not, check consistency in detail
                     sat = clist.exposure_consistency(self.targets['cadence'][indx],
                                                      self.field_cadence.name, iexp)
-                    self.assignments['satisfied'][indx] = sat
             else:
-                self.assignments['satisfied'][indx] = 0
+                sat = 0
+
+            self.assignments[satisfiedname][indx] = sat
 
         return
 
@@ -3443,6 +3595,14 @@ class Field(object):
                (self.assignments['satisfied'][self.rsid2indx[rsid]] == 0)):
                 success[i] = self.assign_cadence(rsid=rsid)
         return(success)
+
+    def _unsatisfied(self, indxs):
+        # Return which are unsatisifed, and include ones which are
+        # satisfied but only because of a calibration target
+        self._set_satisfied(rsids=self.targets['rsid'][indxs], science=True)
+        unsatisfied = ((self.assignments['satisfied'][indxs] == 0) |
+                       (self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]))
+        return(unsatisfied)
 
     def assign_cadences(self, rsids=None, check_satisfied=True):
         """Assign a set of targets to robots
@@ -3528,7 +3688,7 @@ class Field(object):
             iassign = np.where((singlebright[indxs] == False) &
                                (multibright[indxs] == False) &
                                (multidark[indxs] == False) &
-                               (self.assignments['satisfied'][indxs] == 0) &
+                               (self._unsatisfied(indxs=indxs)) &
                                (self.targets['priority'][indxs] == priority))[0]
 
             if(self.verbose):
@@ -3566,22 +3726,22 @@ class Field(object):
             # it is more expensive in that case in terms of run-time.
             for icycle in range(2):
                 isinglebright = np.where(singlebright[indxs] &
-                                         (self.assignments['satisfied'][indxs] == 0) &
+                                         (self._unsatisfied(indxs=indxs)) & 
                                          (self.targets['priority'][indxs] == priority))[0]
                 if(len(isinglebright) > 0):
                     if(self.verbose):
                         print("fieldid {fid}:  - {n} assigning as single bright (cycle {i})".format(n=len(isinglebright), i=icycle, fid=self.fieldid), flush=True)
+                            
                     self._assign_singlebright(indxs=indxs[isinglebright])
                     success[isinglebright] = self.assignments['satisfied'][indxs[isinglebright]]
 
                     if(self.verbose):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[isinglebright].sum(), fid=self.fieldid), flush=True)
 
-
             # Assign multi-bright cases (one cycle)
             for icycle in range(1):
                 imultibright = np.where(multibright[indxs] &
-                                        (self.assignments['satisfied'][indxs] == 0) &
+                                        (self._unsatisfied(indxs=indxs)) &
                                         (self.targets['priority'][indxs] == priority))[0]
                 if(len(imultibright) > 0):
                     if(self.verbose):
@@ -3595,7 +3755,7 @@ class Field(object):
             # Assign multi-dark cases (one cycle)
             for icycle in range(1):
                 imultidark = np.where(multidark[indxs] &
-                                      (self.assignments['satisfied'][indxs] == 0) &
+                                      (self._unsatisfied(indxs=indxs)) &
                                       (self.targets['priority'][indxs] == priority))[0]
                 if(len(imultidark) > 0):
                     if(self.verbose):
@@ -4040,9 +4200,8 @@ class Field(object):
         if(self.verbose):
             print("fieldid {fid}: Assigning science".format(fid=self.fieldid), flush=True)
 
-        print(self.validate())
-
         iscience = np.where((self.targets['category'] == 'science') &
+                            (self.targets['within']) &
                             (self.targets['incadence']) &
                             (self.target_duplicated == 0) &
                             (self.targets['stage'] == stage))[0]
@@ -4190,10 +4349,10 @@ class Field(object):
                 self._set_satisfied(rsids=self.targets['rsid'][icalib])
 
             # If any exposure didn't get the achievable calibrations
-            # in any category, remove all science targets, assign the
-            # calibrations for those exposures and categories, and then
-            # reassign the science. Mark exposure and category as having
-            # assigned calibrations.
+            # in any category, remove all science targets for this 
+            # priority level, assign the calibrations for those exposures
+            # and categories, and then reassign the science. Mark exposure
+            # and category as having assigned calibrations.
             if(self.verbose):
                 print("fieldid {fid}: Checking for shortfalls".format(fid=self.fieldid), flush=True)
             shortfalls = collections.OrderedDict()
@@ -4246,7 +4405,7 @@ class Field(object):
                                                        reset_satisfied=False,
                                                        reset_count=False,
                                                        reset_has_spare=False)
-                            self.assignments['satisfied'][icalib] = 0
+                            self._set_satisfied(rsids=self.targets['rsid'][icalib])
                 self._set_count()
                 if(self.nocalib is False):
                     self._set_has_spare_calib()
@@ -4351,14 +4510,17 @@ class Field(object):
         iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
         iscience = np.where((self.targets['category'] == 'science') &
                             ((self.assignments['equivRobotID'] >= 0).sum(axis=1) > 0))[0]
+        skybrightness = self.field_cadence.skybrightness[self.field_cadence.epochs]
         if(len(iscience) > 0):
             isort = np.argsort(self.targets['priority'][iscience])
             iscience = iscience[isort]
             ntargets = ntargets + len(iscience)
             for itarget in iscience:
                 rsid = self.targets['rsid'][itarget]
+                minskybrightness = clist.cadences[self.targets['cadence'][itarget]].skybrightness.min()
                 not_observed = (self.assignments['equivRobotID'][itarget, iexps] < 0)
-                done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed])
+                sky_ok = (skybrightness[iexps] <= minskybrightness)
+                done = self.assign_exposures(rsid=rsid, iexps=iexps[not_observed & sky_ok])
                 ndone = done.sum()
                 if(ndone > 0):
                     self.set_flag(rsid=rsid, flagname='COMPLETE_ASSIGNED')
@@ -4390,9 +4552,12 @@ class Field(object):
         iscience = iscience[isort]
         ntargets_added = 0
         nexposures_added = 0
+        skybrightness = self.field_cadence.skybrightness[self.field_cadence.epochs]
         for itarget in iscience:
             rsid = self.targets['rsid'][itarget]
-            done = self.assign_exposures(rsid=rsid, iexps=iexps)
+            minskybrightness = clist.cadences[self.targets['cadence'][itarget]].skybrightness.min()
+            sky_ok = (skybrightness[iexps] <= minskybrightness)
+            done = self.assign_exposures(rsid=rsid, iexps=iexps[sky_ok])
             ndone = done.sum()
             if(ndone > 0):
                 self.set_flag(rsid=rsid, flagname='COMPLETE_UNASSIGNED')
@@ -4560,6 +4725,52 @@ class Field(object):
         out = out + "\n"
 
         return(out)
+
+    def warnings(self):
+        """Check for unusual circumstances
+
+        Returns
+        -------
+
+        nwarnings : int
+            number of unusual circumstances
+
+        Notes
+        -----
+
+        Checks if different exposures in the same epoch use different 
+        robotIDs for the same objects
+
+        Checks if exposure is wrong skybrightness for target
+"""
+        nwarnings = 0
+
+        for epoch in np.arange(self.field_cadence.nepochs, dtype=int):
+            iexps = np.where(self.field_cadence.epochs == epoch)[0]
+            gotinepoch = (((self.assignments['equivRobotID'][:, iexps] >= 0).sum(axis=1) > 0) &
+                          (self.targets['category'] == 'science'))
+            igotinepoch = np.where(gotinepoch)[0]
+            for itarget in igotinepoch:
+                igot = np.where(self.assignments['equivRobotID'][itarget, iexps] >= 0)[0]
+                robotIDs = np.unique(self.assignments['equivRobotID'][itarget, iexps[igot]])
+                if(len(robotIDs) > 1):
+                    print("Multiple robotIDs in epoch {epoch} for rsid {rsid}".format(epoch=epoch, rsid=self.targets['rsid'][itarget]), flush=True)
+                    nwarnings = nwarnings + 1
+
+
+        target_skybrightness = np.array([clist.cadences[c].skybrightness[0]
+                                         for c in self.targets['cadence']],
+                                         dtype=np.float32)
+        for iexp in np.arange(self.field_cadence.nexp_total, dtype=int):
+            epoch = self.field_cadence.epochs[iexp]
+            field_skybrightness = self.field_cadence.skybrightness[epoch]
+            itargets = np.where(self.assignments['equivRobotID'][:, iexp] >= 0)[0]
+            ibad = np.where((target_skybrightness[itargets] < field_skybrightness) &
+                            (self.targets['category'][itargets] == 'science'))[0]
+            if(len(ibad) > 0):
+                print("{n} targets in exposure {iexp} with skybrightness limits less than {fsb}".format(n=len(ibad), iexp=iexp, fsb=field_skybrightness))
+                print(self.targets['rsid'][itargets[ibad]])
+        return(nwarnings)
 
     def validate(self):
         """Validate a field solution
