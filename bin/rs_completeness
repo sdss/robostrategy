@@ -455,8 +455,8 @@ if __name__ == '__main__':
         subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                             'rsCompletenessReassign')
     if(final):
-        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                            'final/rsCompletenessFinal')
+        subcompleteness_file = subcompleteness_file.replace('bycarton/rsCompleteness',
+                                                            'final/bycarton/rsCompletenessFinal')
     fitsio.write(subcompleteness_file, outtargets[icadence], header=hdr,
                  clobber=True)
     fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)
@@ -590,8 +590,8 @@ if __name__ == '__main__':
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessFiller')
         if(final):
-            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                                'final/rsCompletenessFinal')
+            subcompleteness_file = subcompleteness_file.replace('bycarton/rsCompleteness',
+                                                                'final/bycarton/rsCompletenessFinal')
         if(complete):
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessComplete')
