@@ -83,8 +83,6 @@ if __name__ == '__main__':
             carton_description = description_cfg['Open']
         elif(filler):
             carton_description = description_cfg['Filler']
-        elif(complete):
-            carton_description = description_cfg['Complete']
         else:
             carton_description = description_cfg['Mapper']
     else:
@@ -138,6 +136,10 @@ if __name__ == '__main__':
     if(opentargets):
         html_file = os.path.join(html_path,
                                  'rs-open-{observatory}.html'.format(observatory=observatory))
+
+    if(reassign):
+        html_file = os.path.join(html_path,
+                                 'rs-reassign-{observatory}.html'.format(observatory=observatory))
 
     if(filler):
         html_file = os.path.join(html_path,
