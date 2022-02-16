@@ -334,6 +334,7 @@ if __name__ == '__main__':
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
 
+    stage = ''
     if(opentargets):
         stage = 'Open'
     if(filler):
