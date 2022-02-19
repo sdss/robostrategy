@@ -85,7 +85,7 @@ if __name__ == '__main__':
                                    observatory=observatory)
     open_targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
     filler_targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
-    final_targets_file = targets_file.replace('rsTargets', 'rsTargetsFinal')
+    final_targets_file = targets_file.replace('rsTargets', 'final/rsTargetsFinal')
 
     if(opentargets):
         targets_file = open_targets_file
