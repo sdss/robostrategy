@@ -49,7 +49,7 @@ if __name__ == '__main__':
                         help='set to read reassign results',
                         default=False, required=False,
                         action='store_true')
-    parser.add_argument('-C', '--complete', dest='complete',
+    parser.add_argument('-K', '--complete', dest='complete',
                         help='set to read complete results',
                         default=False, required=False,
                         action='store_true')
