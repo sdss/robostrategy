@@ -125,7 +125,7 @@ if __name__ == '__main__':
             field_cadences = ['mixed2_single_n2x1']
 
         if(forceTessOB):
-            if('mwm_tess_ob' in f['carton']):
+            if('manual_mwm_tess_ob' in f['carton']):
                 if('bright_8x4' in field_cadences):
                     field_cadences = ['bright_8x4']
                 if('bright_8x2' in field_cadences):
