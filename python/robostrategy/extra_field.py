@@ -106,15 +106,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         return(nsuccess)
 
 
-<<<<<<< HEAD
-=======
     def assign_extra_exps(self, rsids=None, max_extra=1):
-        # THIS CODE IS NOT DONE! I need to think about whether I have to implement things like
-        # Right now BHM only wants partial completion, but if you allow "extra exposures"
-        # On previously satsified things you need to think about how to apply the back-to-back
-        # and/or epochs rules in conjunction with already gotten things.
-        # I might need parametres like: back_to_back=False and same_epoch_only=True
-
         '''
         This is a generic code for assigning exposures outside of the nominal target cadence.
         This is modeled a bit after assign_cadences().
@@ -169,7 +161,6 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         return(nsuccess)
 
->>>>>>> rs_extra_exposures
     def assign_dark_extra(self,make_report=False):
         '''
         Code for assigning extra MWM dark time targets. Does nothing if the field
@@ -312,14 +303,14 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 # may change back to Nx1. For assign_spares, want requested exposures
                 # = 1 and requsted epochs = N
                 nexps_need = 1
-               
+
                 if nexps > 1:
                     if nepochs > 1:
                         raise ValueError("Did not expect mwm_tess_planet cadence to have both nexp and nepoch > 1")
                     nepochs_need = nexps
                 else:
                     nepochs_need = nepochs
-         
+
 
                 extra_rsids = self.targets['rsid'][iextra[subset]]
                 nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=nepochs_need,
