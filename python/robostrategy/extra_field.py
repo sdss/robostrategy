@@ -158,9 +158,25 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             # Assign up to max_extra . availableRobotIds is a list of lists
             # Outer list length is field nepoch? Inner list is len n robots (1 if first = True)
             n_assign = 0
-            iassigned = self.assignments['equivRobotID'][self.rsid2indx[rsid]] >= 0
+            not_assigned = self.assignments['equivRobotID'][self.rsid2indx[rsid]] < 0
 
-            # THIS IS WHERE I STOPPED. In the code for extra epochs. It made sense that you only wanted to
+            # Code here is based on field.py's "complete_epochs_assigned" with some tweaks
+            # Need to see if I need to collapse or do an np.where() on above line
+            pdb.set_trace()
+            n_avail = len(not_assigned)
+            if n_avail <= max_extra:
+                done = self.assign_exposures(rsid=risd, iexps=not_assigned)
+                n_assign += done.sum()
+            else:  #do one by one and break when hit max_extra
+                done = 0
+                for one_exp in not_assigned:
+                    one_done = self.assign_exposures(rsid=rsid, iexps=one_exp)
+                    done += one_done
+                    if done >= max_extra:
+                        break
+                n_assign += done
+
+            # THIS IS OLD/WHERE I PREVIOUSLY STOPPED. In the code for extra epochs. It made sense that you only wanted to
             # assign one batch of new exposures per epoch. However, for extra exposures that is not the case.
             # get as much as you can! I think you can get this with statusus.assignable_exposures
             for iepoch, per_exp_available in enumerate(free['availableRobotIDs']):
