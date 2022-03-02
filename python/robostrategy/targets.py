@@ -38,7 +38,7 @@ target_dtype = [('stage', np.unicode_, 6),
 def read_cartons(version=None, filename=None):
     """Read in cartons
 
-    Parameters:
+    Parameters
     ----------
 
     version : str
@@ -47,14 +47,14 @@ def read_cartons(version=None, filename=None):
     filename : str
         explicit file name of carton file
 
-    Returns:
+    Returns
     -------
 
     cartons : Table
         table with carton information
 
 
-    Notes:
+    Notes
     -----
 
     Reads file as fixed_width, |-delimited file with astropy.io.ascii
@@ -80,7 +80,7 @@ def read_cartons(version=None, filename=None):
 def get_targets(carton=None, version=None, justcount=False, c2c=None):
     """Pull targets from the targetdb
 
-    Parameters:
+    Parameters
     ----------
 
     cartons : str
