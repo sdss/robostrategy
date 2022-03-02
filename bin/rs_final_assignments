@@ -54,6 +54,7 @@ def process_field(ifield):
     hdulist = fits.open(outfile, mode='update')
     hdulist[0].header['FCADENCE'] = hdulist[0].header['FCADENCE'] + '_' + version
     hdulist[0].header['FIELDID'] = field['fieldid']
+    hdulist[1].data['cadence'] = hdulist[1].data['cadence'] + '_' + version
     hdulist.flush()
     hdulist.close()
     return
