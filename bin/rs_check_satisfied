@@ -1,0 +1,130 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_check_satisfied
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import multiprocessing
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.field as field
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def checkem(fieldid):
+    field_target_file = sdss_path.full('rsFieldAssignments',
+                                       plan=plan, observatory=observatory,
+                                       fieldid=fieldid)
+    if(opentargets):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsOpen')
+    if(filler):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsFiller')
+    if(reassign):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldReassignments')
+    if(complete):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsComplete')
+    if(final):
+        field_target_file = field_target_file.replace('targets/rsFieldAssignments',
+                                                      'final/rsFieldAssignmentsFinal')
+    f = field.Field(filename=field_target_file)
+    targets = fitsio.read(field_target_file, ext='TARGET')
+    assignments = fitsio.read(field_target_file, ext='ASSIGN')
+
+    nprob = f.validate()
+    print("fieldid {fid}: Number of validation problems: {nprob}".format(fid=fieldid, nprob=nprob), flush=True)
+
+    ibad = np.where((assignments['satisfied'] != f.assignments['satisfied']) &
+                    (targets['category'] == 'science'))[0]
+    print("fieldid {fid}: Number of disagreements in satisfied: {n}".format(fid=fieldid, n=len(ibad)), flush=True)
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final assignment based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-f', '--fieldid', dest='fieldid',
+                        type=int, help='fieldid number',
+                        required=False, default=None)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=int, help='starting fieldid number',
+                        required=False, default=None)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=int, help='end fieldid number',
+                        required=False, default=None)
+    parser.add_argument('-O', '--open', dest='opentargets',
+                        help='set to read open target results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-F', '--filler', dest='filler',
+                        help='set to read filler target results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-R', '--reassign', dest='reassign',
+                        help='set to read reassign results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete results',
+                        default=False, required=False,
+                        action='store_true')
+    parser.add_argument('-X', '--final', dest='final',
+                        help='set to read final results',
+                        default=False, required=False,
+                        action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    fieldid = args.fieldid
+    opentargets = args.opentargets
+    filler = args.filler
+    final = args.final
+    reassign = args.reassign
+    complete = args.complete
+    start = args.start
+    end = args.end
+
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=False)
+
+    if(fieldid is not None):
+        start = fieldid
+        end = fieldid
+
+    if(start is None):
+        start = 1
+    if(end is None):
+        end = 1
+
+    fieldids = range(start, end + 1)
+    with multiprocessing.Pool() as pool:
+        pool.map(checkem, fieldids)
