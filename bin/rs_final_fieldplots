@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_final_fieldplots
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import multiprocessing
+import argparse
+import sys
+import matplotlib.pyplot as plt
+import numpy as np
+import fitsio
+import robostrategy.plots
+import robostrategy.allocate
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+clobber = False
+
+def field_plot(fieldid):
+    fieldplotdir = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                'allocations', plan, 'final',
+                                'plots', str(fieldid))
+
+    field_assignments_file = sdss_path.full('rsFieldTargets',
+                                            plan=plan, observatory=observatory,
+                                            fieldid=fieldid)
+    field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
+                                                            'final/rsFieldAssignmentsFinal')
+
+    hdr = fitsio.read_header(field_assignments_file, ext=0)
+    nexp = np.int32(hdr['NEXP'])
+    targets = fitsio.read(field_assignments_file, ext='TARGET')
+    assignments = fitsio.read(field_assignments_file, ext='ASSIGN')
+
+    categories = ['science', 'standard_apogee', 'standard_boss',
+                  'sky_apogee', 'sky_boss']
+
+    for iexp in np.arange(nexp, dtype=int):
+        for category in categories:
+            plotdir = os.path.join(fieldplotdir, str(iexp))
+            os.makedirs(plotdir, exist_ok=True)
+            pngfile = os.path.join(plotdir, 'rsFieldAssignmentsFinal-{p}-{o}-{fieldid}-{iexp}-{c}.png')
+            pngfile = pngfile.format(p=plan, o=observatory,
+                                     fieldid=fieldid, iexp=iexp,
+                                     c=category)
+            
+            fig, ax = robostrategy.plots.plot_targets(targets=targets,
+                                                      assignments=assignments,
+                                                      iexp=iexp,
+                                                      robots=False,
+                                                      categories=[category])
+            tstr = 'fieldid={f}, exposure={iexp}, {c}'.format(f=fieldid,
+                                                              iexp=iexp,
+                                                              c=category)
+            ax.set_title(tstr)
+            fig.set_size_inches(6., 6.)
+            fig.savefig(pngfile)
+            plt.close(fig)
+
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Figures for field assignment')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=-1)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
+                        help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    nomultiprocess = args.nomultiprocess
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate_file = allocate_file.replace('rsAllocation',
+                                          'final/rsAllocationFinal')
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    fieldids = np.unique(allocate.field_array['fieldid'])
+
+    if(start < 0):
+        start = allocate.field_array['fieldid'].min()
+    if(end < 0):
+        end = allocate.field_array['fieldid'].max()
+
+    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
+                     (allocate.field_array['fieldid'] <= end))[0]
+    fieldids = np.unique(allocate.field_array['fieldid'][ikeep])
+
+    if(nomultiprocess):
+        for fieldid in fieldids:
+            field_plot(fieldid)
+    else:
+        with multiprocessing.Pool() as pool:
+            pool.map(field_plot, fieldids)
