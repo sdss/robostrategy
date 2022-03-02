@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Sept 26, 2018
-# @Filename: rs_spares
+# @Filename: rs_assess
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -18,6 +18,7 @@ import os
 import sys
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
+import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
@@ -68,9 +69,19 @@ if __name__ == '__main__':
     reassign = args.reassign
     complete = args.complete
 
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    cadence_version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            cadence_version = rsParams.cfg.get('CadenceVersions', 'version')
+
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
+    if(final):
+        cadences_file = cadences_file.replace('rsCadences',
+                                              'final/rsCadencesFinal')
     cadencelist.fromfits(filename=cadences_file, unpickle=False)
 
     field_target_file = sdss_path.full('rsFieldAssignments',
@@ -91,7 +102,11 @@ if __name__ == '__main__':
     if(final):
         field_target_file = field_target_file.replace('targets/rsFieldAssignments',
                                                       'final/rsFieldAssignmentsFinal')
-    f = field.Field(filename=field_target_file)
+
+    if(final):
+        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version)
+    else:
+        f = field.Field(filename=field_target_file)
 
     print(f.assess())
     nprob = f.validate()
