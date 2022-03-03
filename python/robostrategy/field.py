@@ -2416,7 +2416,7 @@ class Field(object):
                                   for x in colliders], dtype=int)
         itargets = self._robot2indx[colliderindxs, iexp]
         has_spare = self._has_spare_calib[self._calibration_index[itargets + 1], iexp] > 0
-        collidernotfixed = ((self.assignments['expflag'][colliderindxs, iexp] &
+        collidernotfixed = ((self.assignments['expflag'][itargets, iexp] &
                              self.expflagdict['FIXED']) == 0)
         status.spare_colliders[i] = self.targets['rsid'][itargets[has_spare & collidernotfixed]]
 
