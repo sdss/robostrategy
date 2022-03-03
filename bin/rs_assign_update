@@ -22,7 +22,7 @@ import multiprocessing
 import datetime
 import numpy as np
 import roboscheduler.cadence as cadence
-import robostrategy.field as field
+import robostrategy.extra_field as extra_field
 import robostrategy.allocate
 import robostrategy.params as params
 import sdss_access.path
@@ -57,9 +57,9 @@ def assign_update(indx):
     print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-    f = field.Field(filename=field_target_file, verbose=True,
-                    fieldid=fieldid, bright_neighbors=True,
-                    untrim_cadence_version=cadence_version)
+    f = extra_field.extra_Field(filename=field_target_file, verbose=True,
+                                fieldid=fieldid, bright_neighbors=True,
+                                untrim_cadence_version=cadence_version)
     f.fieldid = fieldid
 
     if(f.field_cadence is None):
@@ -75,6 +75,18 @@ def assign_update(indx):
 
         print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
         f.assign_science_and_calibs(stage='srd')
+
+        print("fieldid {fid}: Reassignments".format(fid=fieldid), flush=True)
+        f.assign_spares(stage='reassign')
+
+        print("fieldid {fid}: Assign open targets".format(fid=fieldid), flush=True)
+        f.assign_science(stage='open')
+
+        print("fieldid {fid}: Assign filler targets".format(fid=fieldid), flush=True)
+        f.assign_science(stage='filler')
+
+        print("fieldid {f}: Running completion".format(f=fieldid), flush=True)
+        f.complete()
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
