@@ -2137,6 +2137,7 @@ class Field(object):
             self._set_holeid()
             self._set_satisfied(science=False)
             self._set_satisfied(science=True)
+            self._set_count(reset_equiv=False)
             fitsio.write(filename, self.assignments, extname='ASSIGN')
         dmarr = None
         for i, d in enumerate(self.designModeDict):
@@ -2421,7 +2422,7 @@ class Field(object):
         status.spare_colliders[i] = self.targets['rsid'][itargets[has_spare & collidernotfixed]]
 
         # If they are not ALL spare, just set assignable
-        if(has_spare.min() <= 0):
+        if((has_spare & collidernotfixed).min() <= 0):
             status.assignable[i] = (status.assignable[i] and
                                     (status.collided[i] == False))
             return
@@ -3506,7 +3507,7 @@ class Field(object):
                     robotIDs = robotIDs[robotIDs >= 0]
                     if(len(robotIDs) > 0):
                         if(len(robotIDs) > 1):
-                            print("Inconsistency: multiple equivalent rsids with robots assigned")
+                            print("fieldid {fid}: Inconsistency: multiple equivalent rsids with robots assigned".format(fid=self.fieldid), flush=True)
                             return
                         robotID = robotIDs[0]
                     else:
@@ -4321,6 +4322,10 @@ class Field(object):
             print("fieldid {fid}:   (done assigning science)".format(fid=self.fieldid), flush=True)
 
         self.set_stage(stage=None)
+
+        self._set_satisfied()
+        self._set_satisfied(science=True)
+        self._set_count(reset_equiv=False)
         return
 
     def assign_science_and_calibs(self, stage='srd',
@@ -4609,8 +4614,6 @@ class Field(object):
         self._set_has_spare_calib()
         icalib = self._select_calibs(self.targets['category'] != 'science')
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
-                    
-        self._set_count()
         return
 
     def _assign_temporary_calibs(self, assigned_exposure_calib=None):
@@ -4835,6 +4838,9 @@ class Field(object):
         self.complete_calibrations()
         self.decollide_unassigned()
         self.set_stage(stage=None)
+        self._set_satisfied()
+        self._set_satisfied(science=True)
+        self._set_count(reset_equiv=False)
         return
 
     def assess_data(self):
