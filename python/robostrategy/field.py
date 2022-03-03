@@ -3678,11 +3678,12 @@ class Field(object):
         return(success)
 
     def _unsatisfied(self, indxs):
-        # Return which are unsatisifed, and include ones which are
+        # Return which are unsatisfed, and include ones which are
         # satisfied but only because of a calibration target
         self._set_satisfied(rsids=self.targets['rsid'][indxs], science=True)
         unsatisfied = ((self.assignments['satisfied'][indxs] == 0) |
-                       (self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]))
+                       ((self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]) &
+                        (self.targets['category'][indxs] == 'science')))
         return(unsatisfied)
 
     def assign_cadences(self, rsids=None, check_satisfied=True):
@@ -4046,7 +4047,8 @@ class Field(object):
 
         return
 
-    def _assign_cp_model(self, rsids=None, robotIDs=None, check_collisions=True):
+    def _assign_cp_model(self, rsids=None, force=[], deny=[],
+                         robotIDs=None, check_collisions=True):
         """Assigns using CP-SAT to optimize number of targets
 
         Parameters
@@ -4054,6 +4056,9 @@ class Field(object):
 
         rsids : ndarray of np.int64
             [N] rsids of targets to assign
+
+        force : list of np.int64
+            list of rsids to force (default [])
 
         robotIDs : ndarray of np.int32
             robots which are available to assign
@@ -4112,7 +4117,12 @@ class Field(object):
         for rsid in wwtr:
             tlist = [wwtr[rsid][r] for r in wwtr[rsid]]
             wwsum_target[rsid] = cp_model.LinearExpr.Sum(tlist)
-            model.Add(wwsum_target[rsid] <= 1)
+            if(rsid in force):
+                model.Add(wwsum_target[rsid] == 1)
+            elif(rsid in deny):
+                model.Add(wwsum_target[rsid] == 0)
+            else:
+                model.Add(wwsum_target[rsid] <= 1)
 
         # Do not allow collisions
         if(check_collisions):
@@ -4186,17 +4196,27 @@ class Field(object):
 
         Assigns only the ones matching the field cadence
 """
-        # Weeds out ones not in field cadence
-        keep = np.ones(len(rsids), dtype=np.int32)
-        for i, rsid in enumerate(rsids):
-            if(self.targets['cadence'][self.rsid2indx[rsid]] != self.field_cadence.name):
-                keep[i] = 0
-        ikeep = np.where(keep)[0]
-        rsids = rsids[ikeep]
+        all_rsids = self.targets['rsid']
 
-        robotIDs = self._assign_cp_model(rsids=rsids)
+        # Weeds out ones not in field cadence or list
+        bad = np.zeros(len(all_rsids), dtype=np.int32)
+        for i, rsid in enumerate(all_rsids):
+            if(self.targets['cadence'][i] != self.field_cadence.name):
+                bad[i] = 1
+            if(rsid not in rsids):
+                bad[i] = 1
+        deny = all_rsids[(bad > 0) & (self.assignments['assigned'] == 0)]
+        print(deny.sum())
 
-        for rsid, robotID in zip(rsids, robotIDs):
+        # Force any assigned
+        iforce = np.where(self.assignments['assigned'] > 0)[0]
+        force = all_rsids[iforce]
+        print(force.sum())
+
+        robotIDs = self._assign_cp_model(rsids=all_rsids, force=force,
+                                         deny=deny)
+
+        for rsid, robotID in zip(all_rsids, robotIDs):
             if(robotID >= 1):
                 for epoch in range(self.field_cadence.nepochs):
                     nexp = self.field_cadence.nexp[epoch]
