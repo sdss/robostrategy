@@ -13,9 +13,11 @@ clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 class extra_Field(Field):  #inherit all Field-defined stuff.
 
-    def assign_spares(self):
+    def assign_spares(self, stage='reassign'):
         ''' This is the main code that defines all the reassignment that will happen
         in a certain order'''
+
+        self.set_stage(stage=stage)
 
         # Make the assignments.
         # Return value is either True if any extra assignments occurred or False if not
@@ -23,6 +25,11 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         extra_rv = self.assign_rv_extra()
         extra_partial = self.assign_partial()
         extra_bright = self.assign_bright_extra()
+
+        self._set_satisfied()
+        self._set_satisfied(science=True)
+        self._set_count(reset_equiv=False)
+        self.set_stage(stage=None)
 
         any_success = extra_dark or extra_rv or extra_partial or extra_bright
         return any_success
@@ -122,7 +129,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         any_extra = False # initialize
 
         #Check whether field contains any dark exposures
-        if not clist.cadence_consistency('dark_1x1', self.field_cadence.name, return_solutions=False):
+        if not clist.cadence_consistency('_field_dark_single_1x1', self.field_cadence.name, return_solutions=False):
             return any_extra
 
         # Find gotten WDs and try to get extra epochs
