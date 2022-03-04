@@ -3250,7 +3250,7 @@ class Field(object):
 
         # Prefer BOSS-only robots if they are available
         hasApogee = self.robotHasApogee[validRobotIndxs]
-        validRobotIDs = validRobotIDs[hasApogee.argsort()]
+        validRobotIDs = validRobotIDs[hasApogee.argsort(kind='stable')]
 
         if(self.nocalib is False):
             isspare = self._is_spare(rsid=rsid)
@@ -3835,7 +3835,7 @@ class Field(object):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
 
             # Assign multi-dark cases (one cycle)
-            for icycle in range(1):
+            for icycle in range(2):
                 imultidark = np.where(multidark[indxs] &
                                       (self._unsatisfied(indxs=indxs)) &
                                       (self.targets['priority'][indxs] == priority))[0]
@@ -3876,7 +3876,7 @@ class Field(object):
             robotindx = np.array([self.robotID2indx[x] for x in robotIDs],
                                  dtype=int)
             hasApogee = self.robotHasApogee[robotindx]
-            robotIDs = robotIDs[np.argsort(hasApogee)]
+            robotIDs = robotIDs[np.argsort(hasApogee, kind='stable')]
 
             succeed = False
             for robotID in robotIDs:
@@ -3928,8 +3928,9 @@ class Field(object):
             robotindx = np.array([self.robotID2indx[x]
                                   for x in robotIDs], dtype=int)
             hasApogee = self.robotHasApogee[robotindx]
-            robotIDs = robotIDs[np.argsort(hasApogee)]
-            robotindx = robotindx[np.argsort(hasApogee)]
+            isort = np.argsort(hasApogee, kind='stable')
+            robotIDs = robotIDs[isort]
+            robotindx = robotindx[isort]
 
             statusDict = dict()
             expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
@@ -3993,13 +3994,15 @@ class Field(object):
         inotsat = np.where(self._unsatisfied(indxs) == True)[0]
         for rsid in rsids[inotsat]:
             indx = self.rsid2indx[rsid]
+            if(self._unsatisfied([indx])[0] == False):
+                continue
             nexp_cadence = clist.cadences[self.targets['cadence'][indx]].nexp_total
             robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
             np.random.shuffle(robotIDs)
             robotindx = np.array([self.robotID2indx[x]
                                   for x in robotIDs], dtype=int)
             hasApogee = self.robotHasApogee[robotindx]
-            robotIDs = robotIDs[np.argsort(hasApogee)]
+            robotIDs = robotIDs[np.argsort(hasApogee, kind='stable')]
 
             statusDict = dict()
             expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
@@ -4884,11 +4887,11 @@ class Field(object):
 
         iboss = np.where((self.targets['fiberType'] == 'BOSS') &
                          (self.assignments['assigned']) &
-                         (self.targets['category'] != 'science'))[0]
+                         (self.targets['category'] == 'science'))[0]
         results['nboss_science'] = len(iboss)
         iapogee = np.where((self.targets['fiberType'] == 'APOGEE') &
                            (self.assignments['assigned']) &
-                           (self.targets['category'] != 'science'))[0]
+                           (self.targets['category'] == 'science'))[0]
         results['napogee_science'] = len(iapogee)
 
         nperexposure = np.zeros(self.field_cadence.nexp_total, dtype=int)
