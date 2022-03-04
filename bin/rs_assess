@@ -58,6 +58,10 @@ if __name__ == '__main__':
                         help='set to read final results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-G', '--no-grids', dest='nogrids',
+                        help='read the field without creating grids',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -68,6 +72,7 @@ if __name__ == '__main__':
     final = args.final
     reassign = args.reassign
     complete = args.complete
+    nogrids = args.nogrids
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -104,9 +109,9 @@ if __name__ == '__main__':
                                                       'final/rsFieldAssignmentsFinal')
 
     if(final):
-        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version)
+        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version, allgrids=nogrids is False)
     else:
-        f = field.Field(filename=field_target_file)
+        f = field.Field(filename=field_target_file, allgrids=nogrids is False)
 
     print(f.assess())
     nprob = f.validate()
