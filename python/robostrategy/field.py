@@ -4051,7 +4051,7 @@ class Field(object):
         return
 
     def _assign_cp_model(self, force=[], deny=[],
-                         robotIDs=None, check_collisions=True,
+                         check_collisions=True,
                          calibrations=True, iexp=0):
         """Assigns using CP-SAT to optimize number of targets
 
@@ -4060,9 +4060,6 @@ class Field(object):
 
         force : list of np.int64
             list of rsids to force (default [])
-
-        robotIDs : ndarray of np.int32
-            robots which are available to assign
         
         iexp : int
             relevant exposure, used for allowability constraints (default 0)
@@ -4082,9 +4079,9 @@ class Field(object):
         Notes
         -----
 
-        Doesn't yet limit to robotIDs input
+        Will only assign targets "allowed" in the exposure;
+        "force" will not override this.
 
-        Plan to also allow certain rsids to be guaranteed
 """
         rsids = self.targets['rsid']
 
@@ -4105,15 +4102,13 @@ class Field(object):
         for robotID in rg.robotDict:
             r = rg.robotDict[robotID]
             for rsid in interlist(r.validTargetIDs, rsids):
-                allowed = self.assignments['allowed'][self.rsid2indx[rsid], iexp]
-                if(allowed):
-                    name = 'ww[{r}][{c}]'.format(r=robotID, c=rsid)
-                    if(rsid not in wwtr):
-                        wwtr[rsid] = dict()
-                    if(robotID not in wwrt):
-                        wwrt[robotID] = dict()
-                    wwrt[robotID][rsid] = model.NewBoolVar(name)
-                    wwtr[rsid][robotID] = wwrt[robotID][rsid]
+                name = 'ww[{r}][{c}]'.format(r=robotID, c=rsid)
+                if(rsid not in wwtr):
+                    wwtr[rsid] = dict()
+                if(robotID not in wwrt):
+                    wwrt[robotID] = dict()
+                wwrt[robotID][rsid] = model.NewBoolVar(name)
+                wwtr[rsid][robotID] = wwrt[robotID][rsid]
 
         # List of all robot-target pairs
         ww_list = [wwrt[y][x] for y in wwrt for x in wwrt[y]]
@@ -4138,7 +4133,10 @@ class Field(object):
         for rsid in wwtr:
             tlist = [wwtr[rsid][r] for r in wwtr[rsid]]
             wwsum_target[rsid] = cp_model.LinearExpr.Sum(tlist)
-            if(rsid in force):
+            allowed = self.assignments['allowed'][self.rsid2indx[rsid], iexp]
+            if(allowed == False):
+                model.Add(wwsum_target[rsid] == 0)
+            elif(rsid in force):
                 model.Add(wwsum_target[rsid] == 1)
             elif(rsid in deny):
                 model.Add(wwsum_target[rsid] == 0)
@@ -4421,11 +4419,15 @@ class Field(object):
             if(self.verbose):
                 print("fieldid {fid}: Assigning priority {p}".format(p=priority, fid=self.fieldid), flush=True)
             ipriority = np.where(isscience & (self.assignments['satisfied'] == 0) & (self.targets['priority'] == priority))[0]
+            if(len(ipriority) == 0):
+                print("fieldid {fid}:  - apparently all science targets at this priority level already satisfied".format(fid=self.fieldid), flush=True)
+                continue
             if(self.verbose):
                 print("fieldid {fid}:  - {n} assigning in CP".format(n=len(ipriority), fid=self.fieldid), flush=True)
             self.assign_full_cp_model(rsids=self.targets['rsid'][ipriority])
 
-            print(self.assess())
+            if(self.verbose):
+                print(self.assess())
 
             if(priority != priorities[-1]):
                 icalib = np.where(self.targets['category'] != 'science')[0]
