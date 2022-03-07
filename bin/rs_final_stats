@@ -83,7 +83,7 @@ if __name__ == '__main__':
                                                         plan=plan,
                                                         observatory='both'))
     completeness_file = completeness_file.replace('rsCompleteness',
-                                                  'final/rsCompleteness')
+                                                  'final/rsCompletenessFinal')
 
     targets = fitsio.read(completeness_file)
     
