@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: May 19, 2020
-# @Filename: rs_stats
+# @Filename: rs_final_stats
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -59,105 +59,71 @@ if __name__ == '__main__':
 
     html_path = os.path.join(os.path.dirname(sdss_path.full('rsCompleteness',
                                                             plan=plan,
-                                                            observatory='apo')),
+                                                            observatory='both')),
                              'final')
 
     html_file = os.path.join(html_path, 'rs-final-stats.html')
     stats_file = os.path.join(html_path, 'rsStatsFinal-{p}.fits'.format(p=plan))
 
     stats_dtype = [('carton', np.dtype('a40'))]
-    for stage in ['', '_filler', '_open', '_reassign', '_srd']:
-        for obs in ['', '_apo', '_lco']:
-            for quant in ['ntarget', 'ngot', 'fgot', 'nexps', 'nepochs']:
-                if(quant == 'fgot'):
-                    datatype = np.float32
-                else:
-                    datatype = np.int32
-                stats_dtype.append((quant + stage + obs, datatype))
-    stats = np.zeros(0, dtype=stats_dtype)
-
-    stages = ['srd', 'reassign', 'open', 'filler', 'final']
-
-    for stage in stages:
-        print(stage)
-        stagename = '_' + stage
-        completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
-                                                            plan=plan,
-                                                            observatory='both'))
-
-        if(stage != 'srd'):
-            completeness_file = completeness_file.replace('rsCompleteness',
-                                                          'rsCompleteness{stage}').format(stage=stage.capitalize())
-
-        if(stage == 'final'):
-            stagename = ''
-            completeness_file = completeness_file.replace('rsCompleteness',
-                                                          'final/rsCompleteness')
-
-
-        completeness_hdr = fitsio.read_header(completeness_file, ext=1)
-
-        ncarton = np.int32(completeness_hdr['NCARTON'])
-        ncad = np.int32(completeness_hdr['NCADENCE'])
-        for icarton in np.arange(ncarton):
-            hdr = fitsio.read_header(completeness_file,
-                                     ext=(ncad + 1 + icarton) * 3 + 2)
-            carton = hdr['CARTON'].strip()
-            print(carton)
-            ntarget = hdr['NTARGETS']
-            ngot = hdr['NGOT']
-            fgot = hdr['FGOT']
-            ntarget_apo = hdr['NTAR_APO']
-            ngot_apo = hdr['NGOT_APO']
-            fgot_apo = hdr['FGOT_APO']
-            ntarget_lco = hdr['NTAR_LCO']
-            ngot_lco = hdr['NGOT_LCO']
-            fgot_lco = hdr['FGOT_LCO']
-
-            if('NEXPS' in hdr):
-                nexps = hdr['NEXPS']
-                nepochs = hdr['NEPOCHS']
-                nexps_lco = hdr['NEXPS_LCO']
-                nepochs_lco = hdr['NEPOCHS_LCO']
-                nexps_apo = hdr['NEXPS_APO']
-                nepochs_apo = hdr['NEPOCHS_APO']
+    for obs in ['', '_apo', '_lco']:
+        for quant in ['ntarget', 'nsatisfied', 'ncovered', 'nallowed',
+                      'nincadence', 'nextra', 'fsatisfied', 'nepochs']:
+            if(quant == 'fsatisfied'):
+                datatype = np.float32
             else:
-                nexps = 0
-                nepochs = 0
-                nexps_lco = 0
-                nepochs_lco = 0
-                nexps_apo = 0
-                nepochs_apo = 0
+                datatype = np.int32
+            stats_dtype.append((quant + obs, datatype))
+        quant = 'nexps'
+        datatype = np.int32
+        for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
+            stats_dtype.append((quant + stage + obs, datatype))
 
-            if(len(stats) > 0):
-                plist = np.array([p.decode().strip()
-                                  for p in stats['carton']])
-                ip = np.where(plist == carton)[0]
+    completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
+                                                        plan=plan,
+                                                        observatory='both'))
+    completeness_file = completeness_file.replace('rsCompleteness',
+                                                  'final/rsCompleteness')
+
+    targets = fitsio.read(completeness_file)
+    
+    # Statistics per carton
+    cartons = np.unique(targets['carton'])
+
+    stats = np.zeros(len(cartons), dtype=stats_dtype)
+
+    for obs in ['', '_apo', '_lco']:
+
+        issatisfied = (targets['satisfied' + obs] > 0)
+        isincadence = (targets['incadence' + obs] > 0)
+        isallowed = (targets['allowed' + obs] > 0)
+        iscovered = (targets['covered' + obs] > 0)
+        isextra = (targets['extra' + obs] > 0)
+
+        stages = ['srd', 'reassign', 'open', 'filler', 'complete']
+        for i, carton in enumerate(cartons):
+            isincarton = (targets['carton'] == carton)
+            ncarton = (isincarton).sum()
+            ncovered = (isincarton & iscovered).sum()
+            nincadence = (isincarton & iscovered & isincadence).sum()
+            nallowed = (isincarton & iscovered & isincadence & isallowed).sum()
+            nextra = (isincarton & iscovered & isincadence & isallowed & isextra).sum()
+            nsatisfied = (isincarton & issatisfied).sum()
+            if(ncarton == 0):
+                fsatisfied = -1.
             else:
-                ip = []
-            if(len(ip) == 0):
-                stats_one = np.zeros(1, dtype=stats_dtype)
-                stats_one['carton'] = carton
-                stats = np.append(stats, stats_one)
-                plist = np.array([p.decode().strip()
-                                  for p in stats['carton']])
-                ip = np.where(plist == carton)[0]
-            ip = ip[0]
-            stats['ntarget' + stagename][ip] = ntarget
-            stats['ngot' + stagename][ip] = ngot
-            stats['fgot' + stagename][ip] = fgot
-            stats['nexps' + stagename][ip] = nexps
-            stats['nepochs' + stagename][ip] = nepochs
-            stats['ntarget' + stagename + '_lco'][ip] = ntarget_lco
-            stats['ngot' + stagename + '_lco'][ip] = ngot_lco
-            stats['fgot' + stagename + '_lco'][ip] = fgot_lco
-            stats['nexps' + stagename + '_lco'][ip] = nexps_lco
-            stats['nepochs' + stagename + '_lco'][ip] = nepochs_lco
-            stats['ntarget' + stagename + '_apo'][ip] = ntarget_apo
-            stats['ngot' + stagename + '_apo'][ip] = ngot_apo
-            stats['fgot' + stagename + '_apo'][ip] = fgot_apo
-            stats['nexps' + stagename + '_apo'][ip] = nexps_apo
-            stats['nepochs' + stagename + '_apo'][ip] = nepochs_apo
+                fsatisfied = np.float32(nsatisfied) / np.float32(ncarton)
+
+            stats['ntarget' + obs][i] = ncarton
+            stats['nsatisfied' + obs][i] = nsatisfied
+            stats['ncovered' + obs][i] = ncovered
+            stats['nallowed' + obs][i] = nallowed
+            stats['nincadence' + obs][i] = nincadence
+            stats['fsatisfied' + obs][i] = fsatisfied
+            stats['nepochs' + obs][i] = targets['nepochs' + obs][isincarton].sum()
+        
+            for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                stats['nexps' + stage + obs][i] = targets['nepochs' + stage + obs][isincarton].sum()
 
     fitsio.write(stats_file, stats, clobber=True)
 

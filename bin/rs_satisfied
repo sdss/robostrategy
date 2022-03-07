@@ -14,9 +14,9 @@ import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
 import robostrategy
+import robostrategy.field
 import robostrategy.header
 import robostrategy.allocate
-import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5',
@@ -71,6 +71,9 @@ if __name__ == '__main__':
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
+    if(final):
+        cadences_file = cadences_file.replace('rsCadences',
+                                              'final/rsCadencesFinal')
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
@@ -104,6 +107,9 @@ if __name__ == '__main__':
     for indx, full_target in enumerate(full_targets):
         rsid2indx[full_target['rsid']] = indx
 
+    stages = ['srd', 'reassign', 'open', 'filler', 'complete']
+    nstages = len(stages)
+
     satisfied_dtype = np.dtype([('carton_to_target_pk', np.int64),
                                 ('rsid', np.int64),
                                 ('catalogid', np.int64),
@@ -116,7 +122,13 @@ if __name__ == '__main__':
                                 ('assigned', np.int32),
                                 ('extra', np.int32),
                                 ('nexps', np.int32),
+                                ('nexps_srd', np.int32),
+                                ('nexps_reassign', np.int32),
+                                ('nexps_open', np.int32),
+                                ('nexps_filler', np.int32),
+                                ('nexps_complete', np.int32),
                                 ('nepochs', np.int32)])
+
     satisfied = np.zeros(len(full_targets), dtype=satisfied_dtype)
 
     xferlist = ['carton_to_target_pk', 'rsid', 'catalogid', 'ra', 'dec', 'cadence']
@@ -182,6 +194,15 @@ if __name__ == '__main__':
                                         assignments['nexps'][iin])
             satisfied['nepochs'][isat] = (satisfied['nepochs'][isat] +
                                           assignments['nepochs'][iin])
+            for stage in stages:
+                flag = robostrategy.field._expflagdict[stage.upper()]
+                instage = (assignments['expflag'][iin, ...] & flag) != 0
+                if(len(instage.shape) > 1):
+                    satisfied['nexps_' + stage][isat] = (satisfied['nexps_' + stage][isat] +
+                                                         instage.sum(axis=1))
+                else:
+                    satisfied['nexps_' + stage][isat] = (satisfied['nexps_' + stage][isat] +
+                                                         instage)
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)
