@@ -2836,6 +2836,9 @@ class Field(object):
         itarget = self.rsid2indx[rsid]
 
         if(self.assignments['robotID'][itarget, iexp] >= 0):
+            print(self.assignments['robotID'][itarget, iexp])
+            print(robotID)
+            print(rsid)
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
                                    reset_satisfied=True, reset_has_spare=True)
 
@@ -2886,7 +2889,8 @@ class Field(object):
         return
 
     def assign_exposures(self, rsid=None, iexps=None, check_spare=True,
-                         reset_satisfied=True, reset_has_spare=True):
+                         reset_satisfied=True, reset_has_spare=True,
+                         set_fixed=False):
         """Assign an rsid to particular exposures
 
         Parameters
@@ -2897,6 +2901,9 @@ class Field(object):
 
         iexps : ndarray of np.int32
             exposures to assign to
+
+        set_fixed : bool
+            set the FIXED flag to prevent this target being taken away (default False)
 
         reset_satisfied : bool
             if True, reset the 'satisfied' column based on this assignment
@@ -2937,7 +2944,8 @@ class Field(object):
                 self.assign_robot_exposure(rsid=rsid, robotID=robotID, iexp=iexp,
                                            reset_count=False,
                                            reset_satisfied=False,
-                                           reset_has_spare=False)
+                                           reset_has_spare=False,
+                                           set_fixed=set_fixed)
                 iorig = np.where(iexps == iexp)[0]
                 done[iorig] = True
 
@@ -2972,7 +2980,7 @@ class Field(object):
 
     def unassign_exposure(self, rsid=None, iexp=None, reset_assigned=True,
                           reset_satisfied=True, reset_has_spare=True,
-                          reset_count=True):
+                          reset_count=True, respect_fixed=False):
         """Unassign an rsid from a particular exposure
 
         Parameters
@@ -2999,18 +3007,27 @@ class Field(object):
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix after unassignment
             (default True)
+
+        respect_fixed : bool
+            if True, refuse to unassign a fixed exposure for a target (default False)
 """
         itarget = self.rsid2indx[rsid]
-        category = self.targets['category'][itarget]
         robotID = self.assignments['robotID'][itarget, iexp]
+        category = self.targets['category'][itarget]
+
+        if(self.assignments['expflag'][itarget, iexp] & self.expflagdict['FIXED']):
+            if(respect_fixed is False):
+                print("fieldid {fid}: WARNING, removing supposedly fixed assignment, rsid={rsid} iexp={iexp} robotID={robotID}, expflag={expflag}".format(rsid=rsid, iexp=iexp, robotID=robotID, fid=self.fieldid, expflag=self.assignments['expflag'][itarget, iexp]), flush=True)
+                breakpoint()
+            else:
+                return
+
         if(robotID >= 1):
             robotindx = self.robotID2indx[robotID]
             if(self.allgrids):
                 rg = self.robotgrids[iexp]
                 rg.unassignTarget(rsid)
             self.assignments['robotID'][itarget, iexp] = -1
-            if(self.assignments['expflag'][itarget, iexp] & self.expflagdict['FIXED']):
-                print("fieldid {fid}: WARNING, removing supposedly fixed assignment, rsid={rsid} iexp={iexp} robotID={robotID}, expflag={expflag}".format(rsid=rsid, iexp=iexp, robotID=robotID, fid=self.fieldid, expflag=self.assignments['expflag'][itarget, iexp]), flush=True)
             self.assignments['expflag'][itarget, iexp] = 0
             self._robot2indx[robotindx, iexp] = -1
             epoch = self.field_cadence.epochs[iexp]
@@ -3042,7 +3059,7 @@ class Field(object):
 
     def unassign_epoch(self, rsid=None, epoch=None, reset_assigned=True,
                        reset_satisfied=True, reset_has_spare=True,
-                       reset_count=True):
+                       reset_count=True, respect_fixed=False):
         """Unassign an rsid from a particular epoch
 
         Parameters
@@ -3070,6 +3087,9 @@ class Field(object):
             if True, reset the '_has_spare' matrix after unassignment
             (default True)
 
+        respect_fixed : bool
+            if True, refuse to unassign a fixed exposure for a target (default False)
+
         Returns
         -------
 
@@ -3081,7 +3101,8 @@ class Field(object):
         iexps = np.arange(iexpst, iexpnd)
         for iexp in iexps:
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=False,
-                                   reset_satisfied=False, reset_has_spare=False, reset_count=False)
+                                   reset_satisfied=False, reset_has_spare=False,
+                                   reset_count=False, respect_fixed=respect_fixed)
 
         if(reset_assigned):
             self._set_assigned(itarget=self.rsid2indx[rsid])
@@ -3101,7 +3122,7 @@ class Field(object):
         return 0
 
     def unassign(self, rsids=None, reset_assigned=True, reset_satisfied=True,
-                 reset_has_spare=True, reset_count=True):
+                 reset_has_spare=True, reset_count=True, respect_fixed=False):
         """Unassign a set of rsids entirely
 
         Parameters
@@ -3122,6 +3143,9 @@ class Field(object):
         reset_has_spare : bool
             if True, reset the '_has_spare' matrix after unassignment
             (default True)
+
+        respect_fixed : bool
+            if True, refuse to unassign a fixed exposure for a target (default False)
 """
         if(len(rsids) == 0):
             return
@@ -3129,7 +3153,8 @@ class Field(object):
         for rsid in rsids:
             for epoch in range(self.field_cadence.nepochs):
                 self.unassign_epoch(rsid=rsid, epoch=epoch, reset_assigned=False,
-                                    reset_satisfied=False, reset_has_spare=False)
+                                    reset_satisfied=False, reset_has_spare=False,
+                                    respect_fixed=respect_fixed)
 
         if(reset_assigned):
             for rsid in rsids:
@@ -4265,6 +4290,50 @@ class Field(object):
         self.set_stage(stage=None)
         return
 
+    def assign_standard_apogee(self, stage='srd'):
+        """Assign APOGEE standards
+
+        Parameters
+        ----------
+
+        stage : str
+            stage of targets to use (default 'srd')
+
+        Notes
+        -----
+
+        Sorts standard_apogee targets by brightness, and assigns them 
+        in a "fixed" manner in that order, up to the requirement.
+"""
+        if(self.nocalib):
+            return
+
+        self.set_stage(stage=stage)
+
+        if(self.verbose):
+            print("fieldid {fid}: Assigning standard_apogee calibrations".format(fid=self.fieldid), flush=True)
+        
+        ias = np.where(self.targets['category'] == 'standard_apogee')[0]
+        isort = np.argsort(self.targets['magnitude'][ias, 6])
+        rsids = self.targets['rsid'][ias[isort]]
+        
+        for rsid in rsids:
+            iexps = np.where(self.calibrations['standard_apogee'] < self.required_calibrations['standard_apogee'])[0]
+            if(len(iexps) > 0):
+                self.assign_exposures(rsid=rsid, iexps=iexps, check_spare=False,
+                                      reset_satisfied=False, reset_has_spare=False,
+                                      set_fixed=True)
+
+        self._set_satisfied(rsids=rsids)
+        self._set_count(reset_equiv=False)
+        self._set_has_spare_calib()
+
+        if(self.verbose):
+            print("fieldid {fid}:   (done assigning standard_apogee)".format(fid=self.fieldid), flush=True)
+
+        self.set_stage(stage=None)
+        return
+
     def assign_science(self, stage='srd'):
         """Assign all science targets
         
@@ -4385,10 +4454,11 @@ class Field(object):
                                    kind='stable')
                 icalib = icalib[isort]
                 for i in icalib:
-                    self.assign_exposures(rsid=self.targets['rsid'][i],
-                                          iexps=np.array([iexp],
-                                                         dtype=np.int32),
-                                          reset_satisfied=False)
+                    if(self.assignments['robotID'][i, iexp] == -1):
+                        self.assign_exposures(rsid=self.targets['rsid'][i],
+                                              iexps=np.array([iexp],
+                                                             dtype=np.int32),
+                                              reset_satisfied=False)
             for c in self.calibration_order:
                 if(self.calibrations[c][iexp] <
                    self.required_calibrations[c][iexp]):
@@ -4396,8 +4466,11 @@ class Field(object):
                 else:
                     self.achievable_calibrations[c][iexpall] = self.required_calibrations[c][iexp]
 
+        print("fieldid {fid}: Unassigning calibrations (except fixed ones)".format(fid=self.fieldid),
+              flush=True)
         iassigned = np.where(self.assignments['assigned'])[0]
-        self.unassign(rsids=self.targets['rsid'][iassigned])
+        self.unassign(rsids=self.targets['rsid'][iassigned],
+                      respect_fixed=True)
 
         inotscience = np.where(self.targets['category'] != 'science')[0]
         self.set_flag(rsid=self.targets['rsid'][inotscience],
@@ -4605,11 +4678,13 @@ class Field(object):
                 if(assigned_exposure_calib[c][iexp] == False):
                     icalib = self._select_calibs(self.targets['category'] == c)
                     for i in icalib:
-                        self.unassign_exposure(rsid=self.targets['rsid'][i],
-                                               iexp=iexp,
-                                               reset_satisfied=False,
-                                               reset_count=False,
-                                               reset_has_spare=False)
+                        if(self.check_expflag(rsid=self.targets['rsid'][i],
+                                              iexp=iexp, flagname='FIXED') is False):
+                            self.unassign_exposure(rsid=self.targets['rsid'][i],
+                                                   iexp=iexp,
+                                                   reset_satisfied=False,
+                                                   reset_count=False,
+                                                   reset_has_spare=False)
 
         self._set_has_spare_calib()
         icalib = self._select_calibs(self.targets['category'] != 'science')
@@ -4631,8 +4706,10 @@ class Field(object):
                                kind='stable')
             icalib = icalib[isort]
             for i in icalib:
-                self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps,
-                                      reset_satisfied=False)
+                inotdone = np.where(self.assignments['robotID'][i, iexps] == -1)[0]
+                if(len(inotdone) > 0):
+                    self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps[inotdone],
+                                          reset_satisfied=False)
 
         icalib = self._select_calibs(self.targets['category'] != 'science')
         self._set_satisfied(rsids=self.targets['rsid'][icalib])

@@ -73,6 +73,9 @@ def assign_update(indx):
         print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
         f.clear_assignments()
 
+        print("fieldid {fid}: Assign standard_apogee".format(fid=fieldid), flush=True)
+        f.assign_standard_apogee(stage='srd')
+
         print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
         f.assign_science_and_calibs(stage='srd')
 
