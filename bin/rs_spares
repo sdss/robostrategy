@@ -92,8 +92,7 @@ def count_spares(indx):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldReassignments')
 
-    f = field.Field(filename=field_target_file, allgrids=False,
-                    trim_cadence_version=True)
+    f = field.Field(filename=field_target_file, allgrids=False)
 
     spares_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
@@ -203,6 +202,9 @@ if __name__ == '__main__':
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
+    if(final):
+        cadences_file = cadences_file.replace('rsCadences',
+                                              'final/rsCadencesFinal')
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
