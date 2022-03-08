@@ -127,6 +127,7 @@ if __name__ == '__main__':
                 stats['ntarget' + obs][i] = ncarton
                 stats['nsatisfied' + obs][i] = nsatisfied
                 stats['ncovered' + obs][i] = ncovered
+                stats['nextra' + obs][i] = nextra
                 stats['nallowed' + obs][i] = nallowed
                 stats['nincadence' + obs][i] = nincadence
                 stats['fsatisfied' + obs][i] = fsatisfied
