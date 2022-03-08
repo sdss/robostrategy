@@ -1445,7 +1445,7 @@ class Field(object):
         ----------
 
         rsid : np.int64 or ndarray
-            IDs of the target-cadence
+            ID of the target-cadence
 
         iexp : np.int32
             exposure
@@ -1459,8 +1459,8 @@ class Field(object):
         setornot : ndarray of bool
             True if flag is set, flag otherwise
 """
-        indxs = np.array([self.rsid2indx[r] for r in self._arrayify(rsid)], dtype=int)
-        setornot = ((self.assignments['expflag'][indxs] & self.expflagdict[flagname]) != 0)
+        indx = self.rsid2indx[rsid]
+        setornot = ((self.assignments['expflag'][indx, iexp] & self.expflagdict[flagname]) != 0)
         return(setornot)
 
     def get_expflag_names(self, flagval=None):
@@ -2417,8 +2417,9 @@ class Field(object):
                                   for x in colliders], dtype=int)
         itargets = self._robot2indx[colliderindxs, iexp]
         has_spare = self._has_spare_calib[self._calibration_index[itargets + 1], iexp] > 0
-        collidernotfixed = ((self.assignments['expflag'][itargets, iexp] &
-                             self.expflagdict['FIXED']) == 0)
+        collidernotfixed = (((self.assignments['expflag'][itargets, iexp] &
+                              self.expflagdict['FIXED']) == 0) &
+                            (itargets >= 0))
         status.spare_colliders[i] = self.targets['rsid'][itargets[has_spare & collidernotfixed]]
 
         # If they are not ALL spare, just set assignable
@@ -2836,9 +2837,6 @@ class Field(object):
         itarget = self.rsid2indx[rsid]
 
         if(self.assignments['robotID'][itarget, iexp] >= 0):
-            print(self.assignments['robotID'][itarget, iexp])
-            print(robotID)
-            print(rsid)
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
                                    reset_satisfied=True, reset_has_spare=True)
 
@@ -2927,7 +2925,8 @@ class Field(object):
         validRobotIndxs = np.array([self.robotID2indx[x]
                                     for x in validRobotIDs], dtype=int)
         hasApogee = self.robotHasApogee[validRobotIndxs]
-        validRobotIDs = validRobotIDs[np.argsort(hasApogee)]
+        validRobotIDs = validRobotIDs[np.argsort(hasApogee,
+                                                 kind='stable')]
         done = np.zeros(len(iexps), dtype=bool)
 
         for robotID in validRobotIDs:
@@ -3018,7 +3017,6 @@ class Field(object):
         if(self.assignments['expflag'][itarget, iexp] & self.expflagdict['FIXED']):
             if(respect_fixed is False):
                 print("fieldid {fid}: WARNING, removing supposedly fixed assignment, rsid={rsid} iexp={iexp} robotID={robotID}, expflag={expflag}".format(rsid=rsid, iexp=iexp, robotID=robotID, fid=self.fieldid, expflag=self.assignments['expflag'][itarget, iexp]), flush=True)
-                breakpoint()
             else:
                 return
 
@@ -3262,7 +3260,6 @@ class Field(object):
 
         validRobotIDs = self.masterTargetDict[rsid].validRobotIDs
         validRobotIDs = np.array(validRobotIDs, dtype=np.int32)
-        np.random.shuffle(validRobotIDs)
         validRobotIndxs = np.array([self.robotID2indx[x]
                                     for x in validRobotIDs], dtype=int)
 
@@ -4679,7 +4676,7 @@ class Field(object):
                     icalib = self._select_calibs(self.targets['category'] == c)
                     for i in icalib:
                         if(self.check_expflag(rsid=self.targets['rsid'][i],
-                                              iexp=iexp, flagname='FIXED') is False):
+                                              iexp=iexp, flagname='FIXED') == False):
                             self.unassign_exposure(rsid=self.targets['rsid'][i],
                                                    iexp=iexp,
                                                    reset_satisfied=False,
