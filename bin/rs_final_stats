@@ -33,9 +33,13 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
+                        help='do not clobber', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
+    noclobber = args.noclobber
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                     'carton_description.cfg')
@@ -65,73 +69,82 @@ if __name__ == '__main__':
     html_file = os.path.join(html_path, 'rs-final-stats.html')
     stats_file = os.path.join(html_path, 'rsStatsFinal-{p}.fits'.format(p=plan))
 
-    stats_dtype = [('carton', np.dtype('a40'))]
-    for obs in ['', '_apo', '_lco']:
-        for quant in ['ntarget', 'nsatisfied', 'ncovered', 'nallowed',
-                      'nincadence', 'nextra', 'fsatisfied', 'nepochs']:
-            if(quant == 'fsatisfied'):
-                datatype = np.float32
-            else:
-                datatype = np.int32
-            stats_dtype.append((quant + obs, datatype))
-        quant = 'nexps'
-        datatype = np.int32
-        for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
-            stats_dtype.append((quant + stage + obs, datatype))
-
-    completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
-                                                        plan=plan,
-                                                        observatory='both'))
-    completeness_file = completeness_file.replace('rsCompleteness',
-                                                  'final/rsCompletenessFinal')
-
-    targets = fitsio.read(completeness_file)
-    
-    # Statistics per carton
-    cartons = np.unique(targets['carton'])
-
-    stats = np.zeros(len(cartons), dtype=stats_dtype)
-
-    for obs in ['', '_apo', '_lco']:
-
-        issatisfied = (targets['satisfied' + obs] > 0)
-        isincadence = (targets['incadence' + obs] > 0)
-        isallowed = (targets['allowed' + obs] > 0)
-        iscovered = (targets['covered' + obs] > 0)
-        isextra = (targets['extra' + obs] > 0)
-
-        stages = ['srd', 'reassign', 'open', 'filler', 'complete']
-        for i, carton in enumerate(cartons):
-            isincarton = (targets['carton'] == carton)
-            ncarton = (isincarton).sum()
-            ncovered = (isincarton & iscovered).sum()
-            nincadence = (isincarton & iscovered & isincadence).sum()
-            nallowed = (isincarton & iscovered & isincadence & isallowed).sum()
-            nextra = (isincarton & iscovered & isincadence & isallowed & isextra).sum()
-            nsatisfied = (isincarton & issatisfied).sum()
-            if(ncarton == 0):
-                fsatisfied = -1.
-            else:
-                fsatisfied = np.float32(nsatisfied) / np.float32(ncarton)
-
-            stats['ntarget' + obs][i] = ncarton
-            stats['nsatisfied' + obs][i] = nsatisfied
-            stats['ncovered' + obs][i] = ncovered
-            stats['nallowed' + obs][i] = nallowed
-            stats['nincadence' + obs][i] = nincadence
-            stats['fsatisfied' + obs][i] = fsatisfied
-            stats['nepochs' + obs][i] = targets['nepochs' + obs][isincarton].sum()
-        
+    if((os.path.exists(stats_file) == False) | (noclobber == False)):
+        print(noclobber)
+        print("Making {s}".format(s=stats_file))
+        stats_dtype = [('carton', np.unicode_, 40)]
+        for obs in ['', '_apo', '_lco']:
+            for quant in ['ntarget', 'nsatisfied', 'ncovered', 'nallowed',
+                          'nincadence', 'nextra', 'fsatisfied', 'nepochs']:
+                if(quant == 'fsatisfied'):
+                    datatype = np.float32
+                else:
+                    datatype = np.int32
+                stats_dtype.append((quant + obs, datatype))
+            quant = 'nexps'
+            datatype = np.int32
             for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
-                stats['nexps' + stage + obs][i] = targets['nepochs' + stage + obs][isincarton].sum()
+                stats_dtype.append((quant + stage + obs, datatype))
 
-    fitsio.write(stats_file, stats, clobber=True)
+        completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
+                                                            plan=plan,
+                                                            observatory='both'))
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'final/rsCompletenessFinal')
+
+        targets = fitsio.read(completeness_file)
+    
+        # Statistics per carton
+        cartons = np.unique(targets['carton'])
+
+        stats = np.zeros(len(cartons), dtype=stats_dtype)
+
+        for i, carton in enumerate(cartons):
+            stats['carton'][i] = carton
+
+        for obs in ['', '_apo', '_lco']:
+
+            issatisfied = (targets['satisfied' + obs] > 0)
+            isincadence = (targets['incadence' + obs] > 0)
+            isallowed = (targets['allowed' + obs] > 0)
+            iscovered = (targets['covered' + obs] > 0)
+            isextra = (targets['extra' + obs] > 0)
+
+            stages = ['srd', 'reassign', 'open', 'filler', 'complete']
+            for i, carton in enumerate(cartons):
+                isincarton = (targets['carton'] == carton)
+                ncarton = (isincarton).sum()
+                ncovered = (isincarton & iscovered).sum()
+                nincadence = (isincarton & iscovered & isincadence).sum()
+                nallowed = (isincarton & iscovered & isincadence & isallowed).sum()
+                nextra = (isincarton & iscovered & isincadence & isallowed & isextra).sum()
+                nsatisfied = (isincarton & issatisfied).sum()
+                if(ncarton == 0):
+                    fsatisfied = -1.
+                else:
+                    fsatisfied = np.float32(nsatisfied) / np.float32(ncarton)
+
+                stats['ntarget' + obs][i] = ncarton
+                stats['nsatisfied' + obs][i] = nsatisfied
+                stats['ncovered' + obs][i] = ncovered
+                stats['nextra' + obs][i] = nextra
+                stats['nallowed' + obs][i] = nallowed
+                stats['nincadence' + obs][i] = nincadence
+                stats['fsatisfied' + obs][i] = fsatisfied
+                stats['nepochs' + obs][i] = targets['nepochs' + obs][isincarton].sum()
+        
+                for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                    stats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isincarton].sum()
+
+        fitsio.write(stats_file, stats, clobber=True)
+    else:
+        stats = fitsio.read(stats_file)
 
     stats_dict = dict()
     stats_dict['plan'] = plan
     stats_dict['cartons'] = dict()
     for s in stats:
-        carton = s['carton'].decode()
+        carton = s['carton']
         if(carton in carton_description):
             description = carton_description[carton]
         else:

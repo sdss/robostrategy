@@ -17,21 +17,18 @@
     <th><b>Carton</b></th>
     <th><b>Description</b></th>
     <th><b>Targets</b></th>
-    <th><b>Gotten</b></th>
-    <th><b>Gotten (Filler)</b></th>
-    <th><b>Gotten (Open)</b></th>
-    <th><b>Gotten (Reassign)</b></th>
-    <th><b>Gotten (SRD)</b></th>
+    <th><b>Satisfied</b></th>
+    <th><b>Reassigned</b></th>
+    <th><b>Allowed</b></th>
+    <th><b>In Cadence</b></th>
+    <th><b>Covered</b></th>
+    <th><b>Epochs</b></th>
     <th><b>Exposures </b></th>
-    <th><b>Exposures (Filler)</b></th>
-    <th><b>Exposures (Open)</b></th>
-    <th><b>Exposures (Reassign)</b></th>
     <th><b>Exposures (SRD)</b></th>
-    <th><b>Epochs </b></th>
-    <th><b>Epochs (Filler)</b></th>
-    <th><b>Epochs (Open)</b></th>
-    <th><b>Epochs (Reassign)</b></th>
-    <th><b>Epochs (SRD)</b></th>
+    <th><b>Exposures (Reassign)</b></th>
+    <th><b>Exposures (Open)</b></th>
+    <th><b>Exposures (Filler)</b></th>
+    <th><b>Exposures (Complete)</b></th>
     </tr>
 </thead>
 
@@ -40,21 +37,18 @@
 <td align='right' style="color: blue;">{{c}}</td>
 <td align='right'>{{cartons[c].description}}</td>
 <td align='right' style="color: blue;">{{cartons[c].ntarget}}</td>
-<td align='right' style="color: blue;">{{cartons[c].ngot}}</td>
-<td align='right'>{{cartons[c].ngot_filler}}</td>
-<td align='right'>{{cartons[c].ngot_open}}</td>
-<td align='right'>{{cartons[c].ngot_reassign}}</td>
-<td align='right'>{{cartons[c].ngot_srd}}</td>
-<td align='right' style="color: blue;">{{cartons[c].nexps}}</td>
-<td align='right'>{{cartons[c].nexps_filler}}</td>
-<td align='right'>{{cartons[c].nexps_open}}</td>
-<td align='right'>{{cartons[c].nexps_reassign}}</td>
-<td align='right'>{{cartons[c].nexps_srd}}</td>
+<td align='right' style="color: blue;">{{cartons[c].nsatisfied}}</td>
+<td align='right'>{{cartons[c].nextra}}</td>
+<td align='right'>{{cartons[c].nallowed}}</td>
+<td align='right'>{{cartons[c].nincadence}}</td>
+<td align='right'>{{cartons[c].ncovered}}</td>
 <td align='right' style="color: blue;">{{cartons[c].nepochs}}</td>
-<td align='right'>{{cartons[c].nepochs_filler}}</td>
-<td align='right'>{{cartons[c].nepochs_open}}</td>
-<td align='right'>{{cartons[c].nepochs_reassign}}</td>
-<td align='right'>{{cartons[c].nepochs_srd}}</td>
+<td align='right' style="color: blue;">{{cartons[c].nexps}}</td>
+<td align='right'>{{cartons[c].nexps_srd}}</td>
+<td align='right'>{{cartons[c].nexps_reassign}}</td>
+<td align='right'>{{cartons[c].nexps_open}}</td>
+<td align='right'>{{cartons[c].nexps_filler}}</td>
+<td align='right'>{{cartons[c].nexps_complete}}</td>
 {% endfor %}
 
 </body>
