@@ -251,14 +251,14 @@ if __name__ == '__main__':
                 else:
                     istype = ((targets['fiberType'] == fiberType) &
                               (targets['category'] == 'science'))
-                    for obs in ['', '_apo', '_lco']:
-                        ic = np.where(istype & (targets['nexps' + obs] > 0))[0]
-                        ncatalogid = len(np.unique(targets['catalogid'][ic]))
-                        fstats['ncatalogid' + isscience + obs][i] = ncatalogid
-                        fstats['nexps_total' + isscience + obs][i] = 0
-                        for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
-                            fstats['nexps' + stage + isscience + obs][i] = targets['nexps' + stage + isscience + obs][istype].sum()
-                            fstats['nexps_total' + obs][i] = fstats['nexps_total' + isscience + obs][i] + fstats['nexps' + stage + isscience + obs][i]
+                for obs in ['', '_apo', '_lco']:
+                    ic = np.where(istype & (targets['nexps' + obs] > 0))[0]
+                    ncatalogid = len(np.unique(targets['catalogid'][ic]))
+                    fstats['ncatalogid' + isscience + obs][i] = ncatalogid
+                    fstats['nexps_total' + isscience + obs][i] = 0
+                    for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                        fstats['nexps' + stage + isscience + obs][i] = targets['nexps'][istype].sum()
+                        fstats['nexps_total' + obs][i] = fstats['nexps_total' + isscience + obs][i] + fstats['nexps' + stage + isscience + obs][i]
 
         fitsio.write(stats_file, fstats, clobber=False, extname='FIBERS')
 
