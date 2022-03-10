@@ -4782,7 +4782,7 @@ class Field(object):
         self.decollide_unassigned()
         return
 
-    def complete_calibrations(self):
+    def complete_calibrations(self, category=''):
         """Add any available exposures for any calibration targets"""
 
         print("fieldid {fid}: Add any calibration targets".format(fid=self.fieldid), flush=True)
@@ -4790,8 +4790,8 @@ class Field(object):
         # Assign any calibrations that can be additionally
         # assigned WITHOUT allowing spare calibrations to be
         # bumped.
-        icalib = self._select_calibs(self.targets['category'] != 'science')
-        print("fieldid {fid}:    {n} calibration targets to check".format(fid=self.fieldid, n=len(icalib)), flush=True)
+        icalib = self._select_calibs(self.targets['category'] == category)
+        print("fieldid {fid}:    {n} {cc} targets to check".format(fid=self.fieldid, n=len(icalib), cc=category), flush=True)
         if(len(icalib) == 0):
             return
 
@@ -4835,7 +4835,8 @@ class Field(object):
         self.complete_epochs_assigned()
         self.complete_assigned()
         self.complete_unassigned()
-        self.complete_calibrations()
+        for category in ['standard_apogee', 'standard_boss', 'sky_apogee', 'sky_boss']:
+            self.complete_calibrations(category=category)
         self.decollide_unassigned()
         self.set_stage(stage=None)
         self._set_satisfied()
