@@ -127,6 +127,7 @@ if __name__ == '__main__':
                                 ('nexps_open', np.int32),
                                 ('nexps_filler', np.int32),
                                 ('nexps_complete', np.int32),
+                                ('nexps_equiv', np.int32),
                                 ('nepochs', np.int32)])
 
     satisfied = np.zeros(len(full_targets), dtype=satisfied_dtype)
@@ -164,16 +165,25 @@ if __name__ == '__main__':
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
             assignments = fitsio.read(field_assigned_file, ext='ASSIGN')
+            robots = fitsio.read(field_assigned_file, ext='ROBOTS')
         except:
             print("Missing file {f}".format(f=field_assigned_file))
             header = None
             targets = None
             assignments = None
 
+        if(int(header['NEXP']) > 500):
+            print("fieldid {f}: Assuming this is RM field, with cadence {fc}".format(f=fieldid, fc=header['FCADENCE']), flush=True)
+            isrm = True
+        else:
+            isrm = False
+
         if(assignments is not None):
             isin = np.array([r in rsid2indx for r in targets['rsid']],
                             dtype=bool)
             iin = np.where(isin)[0]
+            if((len(iin) != len(targets)) & (final)):
+                print("WARNING: fieldid={f} not all targets in summary file in final stage".format(f=fieldid), flush=True)
             isat = np.array([rsid2indx[rsid] for rsid in targets['rsid'][iin]],
                             dtype=np.int32)
             satisfied['satisfied'][isat] = (satisfied['satisfied'][isat] +
@@ -194,15 +204,37 @@ if __name__ == '__main__':
                                         assignments['nexps'][iin])
             satisfied['nepochs'][isat] = (satisfied['nepochs'][isat] +
                                           assignments['nepochs'][iin])
+
+            # Need to hack for RM fields
+            if(isrm):
+                nassigned = (assignments['robotID'][iin, ...] >= 0)
+                if(len(nassigned.shape) > 1):
+                    satisfied['nexps_srd'][isat] = (satisfied['nexps_srd'][isat] +
+                                                    nassigned.sum(axis=1))
+                else:
+                    satisfied['nexps_srd'][isat] = (satisfied['nexps_srd'][isat] +
+                                                    nassigned)
+            
+            ntot = 0
             for stage in stages:
                 flag = robostrategy.field._expflagdict[stage.upper()]
-                instage = (assignments['expflag'][iin, ...] & flag) != 0
+                instage = ((assignments['expflag'][iin, ...] & flag) != 0)
                 if(len(instage.shape) > 1):
                     satisfied['nexps_' + stage][isat] = (satisfied['nexps_' + stage][isat] +
                                                          instage.sum(axis=1))
                 else:
                     satisfied['nexps_' + stage][isat] = (satisfied['nexps_' + stage][isat] +
                                                          instage)
+                ntot = ntot + instage.sum()
+
+            isequiv = ((assignments['equivRobotID'][iin, ...] >= 0) &
+                       (assignments['robotID'][iin, ...] < 0))
+            if(len(isequiv.shape) > 1):
+                satisfied['nexps_equiv'][isat] = (satisfied['nexps_equiv'][isat] +
+                                                  isequiv.sum(axis=1))
+            else:
+                satisfied['nexps_equiv'][isat] = (satisfied['nexps_equiv'][isat] +
+                                                  isequiv)
 
     assigned_file = sdss_path.full('rsAssignments', plan=plan,
                                    observatory=observatory)

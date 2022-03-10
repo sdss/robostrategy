@@ -173,7 +173,7 @@ if __name__ == '__main__':
     if(final):
         targets_file = targets_file.replace('rsTargets', 'final/rsTargetsFinal')
 
-    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE']
+    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'EQUIV']
     nstages = len(stages)
 
     targets = fitsio.read(targets_file)
@@ -186,6 +186,7 @@ if __name__ == '__main__':
                                               ('nexps_open_lco', np.int32),
                                               ('nexps_filler_lco', np.int32),
                                               ('nexps_complete_lco', np.int32),
+                                              ('nexps_equiv_lco', np.int32),
                                               ('nepochs_lco', np.int32),
                                               ('assigned_lco', np.int32),
                                               ('extra_lco', np.int32),
@@ -199,6 +200,7 @@ if __name__ == '__main__':
                                               ('nexps_open_apo', np.int32),
                                               ('nexps_filler_apo', np.int32),
                                               ('nexps_complete_apo', np.int32),
+                                              ('nexps_equiv_apo', np.int32),
                                               ('nepochs_apo', np.int32),
                                               ('assigned_apo', np.int32),
                                               ('extra_apo', np.int32),
@@ -212,6 +214,7 @@ if __name__ == '__main__':
                                               ('nexps_open', np.int32),
                                               ('nexps_filler', np.int32),
                                               ('nexps_complete', np.int32),
+                                              ('nexps_equiv', np.int32),
                                               ('nepochs', np.int32),
                                               ('assigned', np.int32),
                                               ('extra', np.int32),
@@ -227,6 +230,7 @@ if __name__ == '__main__':
                                               ('nexps_open', np.int32),
                                               ('nexps_filler', np.int32),
                                               ('nexps_complete', np.int32),
+                                              ('nexps_equiv', np.int32),
                                               ('nepochs', np.int32),
                                               ('assigned', np.int32),
                                               ('extra', np.int32),
@@ -315,9 +319,9 @@ if __name__ == '__main__':
             iname = 'incadence_{obs}'.format(obs=obs)
             outtargets[sname] = (outtargets[sname] +
                                  satisfied['satisfied'])
-            outtargets[xname] = (outtargets[sname] +
+            outtargets[xname] = (outtargets[xname] +
                                  satisfied['nexps'])
-            outtargets[ename] = (outtargets[sname] +
+            outtargets[ename] = (outtargets[ename] +
                                  satisfied['nepochs'])
             outtargets[aname] = (outtargets[aname] +
                                  satisfied['assigned'])
@@ -329,7 +333,7 @@ if __name__ == '__main__':
                                  satisfied['incadence'])
             for stage in stages:
                 xname = 'nexps_{s}_{obs}'.format(s=stage.lower(), obs=obs)
-                outtargets[xname] = (outtargets[sname] +
+                outtargets[xname] = (outtargets[xname] +
                                      satisfied['nexps_' + stage.lower()])
 
     iboss = np.where((outtargets['fiberType'] == 'BOSS') &

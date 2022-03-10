@@ -9,7 +9,9 @@
 
 <body>
 
-<h2>{{plan}}</h2>
+<h1>{{plan}}</h1>
+
+<h2>Statistics by carton</h2>
 
 <table style="border: 1px solid black;" cellspacing=0px>
 <thead>
@@ -24,14 +26,17 @@
     <th><b>Covered</b></th>
     <th><b>Epochs</b></th>
     <th><b>Exposures </b></th>
+    <th><b>Exposures (Direct)</b></th>
     <th><b>Exposures (SRD)</b></th>
     <th><b>Exposures (Reassign)</b></th>
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
+    <th><b>Exposures (Equiv)</b></th>
     </tr>
 </thead>
 
+<tbody>
 {% for c in cartons %}
 <tr>
 <td align='right' style="color: blue;">{{c}}</td>
@@ -44,12 +49,168 @@
 <td align='right'>{{cartons[c].ncovered}}</td>
 <td align='right' style="color: blue;">{{cartons[c].nepochs}}</td>
 <td align='right' style="color: blue;">{{cartons[c].nexps}}</td>
+<td align='right'>{{cartons[c].nexps_direct}}</td>
 <td align='right'>{{cartons[c].nexps_srd}}</td>
 <td align='right'>{{cartons[c].nexps_reassign}}</td>
 <td align='right'>{{cartons[c].nexps_open}}</td>
 <td align='right'>{{cartons[c].nexps_filler}}</td>
 <td align='right'>{{cartons[c].nexps_complete}}</td>
+<td align='right'>{{cartons[c].nexps_equiv}}</td>
 {% endfor %}
+</tbody>
+</table>
+
+<h2>Statistics by program</h2>
+
+<table style="border: 1px solid black;" cellspacing=0px>
+<thead>
+    <tr>
+    <th><b>Program</b></th>
+    <th><b>Description</b></th>
+    <th><b>Targets</b></th>
+    <th><b>Satisfied</b></th>
+    <th><b>Reassigned</b></th>
+    <th><b>Allowed</b></th>
+    <th><b>In Cadence</b></th>
+    <th><b>Covered</b></th>
+    <th><b>Epochs</b></th>
+    <th><b>Exposures </b></th>
+    <th><b>Exposures (Direct)</b></th>
+    <th><b>Exposures (SRD)</b></th>
+    <th><b>Exposures (Reassign)</b></th>
+    <th><b>Exposures (Open)</b></th>
+    <th><b>Exposures (Filler)</b></th>
+    <th><b>Exposures (Complete)</b></th>
+    <th><b>Exposures (Equiv)</b></th>
+    </tr>
+</thead>
+<tbody>
+
+{% for p in programs %}
+<tr>
+<td align='right' style="color: blue;">{{p}}</td>
+<td align='right'>{{programs[p].description}}</td>
+<td align='right' style="color: blue;">{{programs[p].ntarget}}</td>
+<td align='right' style="color: blue;">{{programs[p].nsatisfied}}</td>
+<td align='right'>{{programs[p].nextra}}</td>
+<td align='right'>{{programs[p].nallowed}}</td>
+<td align='right'>{{programs[p].nincadence}}</td>
+<td align='right'>{{programs[p].ncovered}}</td>
+<td align='right' style="color: blue;">{{programs[p].nepochs}}</td>
+<td align='right' style="color: blue;">{{programs[p].nexps}}</td>
+<td align='right'>{{programs[p].nexps_direct}}</td>
+<td align='right'>{{programs[p].nexps_srd}}</td>
+<td align='right'>{{programs[p].nexps_reassign}}</td>
+<td align='right'>{{programs[p].nexps_open}}</td>
+<td align='right'>{{programs[p].nexps_filler}}</td>
+<td align='right'>{{programs[p].nexps_complete}}</td>
+<td align='right'>{{programs[p].nexps_equiv}}</td>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>Statistics by category</h2>
+
+<table style="border: 1px solid black;" cellspacing=0px>
+<thead>
+    <tr>
+    <th><b>Category</b></th>
+    <th><b>Description</b></th>
+    <th><b>Targets</b></th>
+    <th><b>Satisfied</b></th>
+    <th><b>Reassigned</b></th>
+    <th><b>Allowed</b></th>
+    <th><b>In Cadence</b></th>
+    <th><b>Covered</b></th>
+    <th><b>Epochs</b></th>
+    <th><b>Exposures </b></th>
+    <th><b>Exposures (Direct)</b></th>
+    <th><b>Exposures (SRD)</b></th>
+    <th><b>Exposures (Reassign)</b></th>
+    <th><b>Exposures (Open)</b></th>
+    <th><b>Exposures (Filler)</b></th>
+    <th><b>Exposures (Complete)</b></th>
+    <th><b>Exposures (Equiv)</b></th>
+    </tr>
+</thead>
+<tbody>
+
+{% for c in categorys %}
+<tr>
+<td align='right' style="color: blue;">{{c}}</td>
+<td align='right'>{{categorys[c].description}}</td>
+<td align='right' style="color: blue;">{{categorys[c].ntarget}}</td>
+<td align='right' style="color: blue;">{{categorys[c].nsatisfied}}</td>
+<td align='right'>{{categorys[c].nextra}}</td>
+<td align='right'>{{categorys[c].nallowed}}</td>
+<td align='right'>{{categorys[c].nincadence}}</td>
+<td align='right'>{{categorys[c].ncovered}}</td>
+<td align='right' style="color: blue;">{{categorys[c].nepochs}}</td>
+<td align='right' style="color: blue;">{{categorys[c].nexps}}</td>
+<td align='right'>{{categorys[c].nexps_direct}}</td>
+<td align='right'>{{categorys[c].nexps_srd}}</td>
+<td align='right'>{{categorys[c].nexps_reassign}}</td>
+<td align='right'>{{categorys[c].nexps_open}}</td>
+<td align='right'>{{categorys[c].nexps_filler}}</td>
+<td align='right'>{{categorys[c].nexps_complete}}</td>
+<td align='right'>{{categorys[c].nexps_equiv}}</td>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>Exposures by fiber type</h2>
+
+<table style="border: 1px solid black;" cellspacing=0px>
+<thead>
+    <tr>
+    <th><b>fiberType</b></th>
+    <th><b>Unique Science catalogids</b></th>
+    <th><b>Science Exposures (Direct)</b></th>
+    <th><b>Science Exposures (SRD)</b></th>
+    <th><b>Science Exposures (Reassign)</b></th>
+    <th><b>Science Exposures (Open)</b></th>
+    <th><b>Science Exposures (Filler)</b></th>
+    <th><b>Science Exposures (Complete)</b></th>
+    </tr>
+</thead>
+<tbody>
+
+{% for f in fiberTypes %}
+<tr>
+<td align='right' style="color: blue;">{{f}}</td>
+<td align='right' style="color: blue;">{{fiberTypes[f].ncatalogid_science}}</td>
+<td align='right' style="color: blue;">{{fiberTypes[f].nexps_direct_science}}</td>
+<td align='right'>{{fiberTypes[f].nexps_srd_science}}</td>
+<td align='right'>{{fiberTypes[f].nexps_reassign_science}}</td>
+<td align='right'>{{fiberTypes[f].nexps_open_science}}</td>
+<td align='right'>{{fiberTypes[f].nexps_filler_science}}</td>
+<td align='right'>{{fiberTypes[f].nexps_complete_science}}</td>
+<td align='right'>{{fiberTypes[f].nexps_equiv_science}}</td>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>Exposures by fiber type (direct robot count)</h2>
+
+<table style="border: 1px solid black;" cellspacing=0px>
+<thead>
+    <tr>
+    <th><b>fiberType</b></th>
+    <th><b>Science Exposures (Direct)</b></th>
+    <th><b>Total Exposures (Direct)</b></th>
+    </tr>
+</thead>
+
+<tbody>
+
+{% for r in robots %}
+<tr>
+<td align='right' style="color: blue;">{{r}}</td>
+<td align='right' style="color: blue;">{{robots[r].nexps_direct_science}}</td>
+<td align='right' style="color: blue;">{{robots[r].nexps_direct}}</td>
+{% endfor %}
+</tbody>
+</table>
 
 </body>
 </html>

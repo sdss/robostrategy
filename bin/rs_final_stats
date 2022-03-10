@@ -73,6 +73,49 @@ if __name__ == '__main__':
         print(noclobber)
         print("Making {s}".format(s=stats_file))
 
+        # March through robots to calculate similar stats for consistency
+        stats_dtype = [('fiberType', np.unicode_, 40),
+                       ('nexps_direct', np.int32),
+                       ('nexps_direct_apo', np.int32),
+                       ('nexps_direct_lco', np.int32),
+                       ('nexps_direct_science', np.int32),
+                       ('nexps_direct_science_apo', np.int32),
+                       ('nexps_direct_science_lco', np.int32)]
+
+        rstats = np.zeros(2, dtype=stats_dtype)
+        rstats['fiberType'][0] = 'BOSS'
+        rstats['fiberType'][1] = 'APOGEE'
+
+        for obs in ['apo', 'lco']:
+            fields = fitsio.read('final/rsAllocationFinal-{p}-{o}.fits'.format(p=plan, o=obs))
+            fieldids = np.unique(fields['fieldid'])
+            for fieldid in fieldids:
+                targets = fitsio.read('final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid), ext='TARGET')
+                robots = fitsio.read('final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid), ext='ROBOTS')
+                iboss = np.where((robots['rsid'] >= 0) &
+                                 (robots['fiberType'] == 'BOSS'))
+                iapogee = np.where((robots['rsid'] >= 0) &
+                                   (robots['fiberType'] == 'APOGEE'))
+                nboss = len(iboss[0])
+                rstats['nexps_direct_' + obs][0] = rstats['nexps_direct_' + obs][0] + nboss
+                napogee = len(iapogee[0])
+                rstats['nexps_direct_' + obs][1] = rstats['nexps_direct_' + obs][1] + napogee
+
+                itargets = robots['itarget'][iboss]
+                iboss_science = np.where(targets['category'][itargets] == 'science')[0]
+                nboss_science = len(iboss_science)
+                itargets = robots['itarget'][iapogee]
+                iapogee_science = np.where(targets['category'][itargets] == 'science')[0]
+                napogee_science = len(iapogee_science)
+                rstats['nexps_direct_science_' + obs][0] = rstats['nexps_direct_science_' + obs][0] + nboss_science
+                napogee = len(iapogee)
+                rstats['nexps_direct_science_' + obs][1] = rstats['nexps_direct_science_' + obs][1] + napogee_science
+
+        rstats['nexps_direct'] = rstats['nexps_direct_apo'] + rstats['nexps_direct_lco']
+        rstats['nexps_direct_science'] = rstats['nexps_direct_science_apo'] + rstats['nexps_direct_science_lco']
+
+        fitsio.write(stats_file, rstats, clobber=True, extname='ROBOTS')
+
         stats_dtype = [('carton', np.unicode_, 40)]
         for obs in ['', '_apo', '_lco']:
             for quant in ['ntarget', 'nsatisfied', 'ncovered', 'nallowed',
@@ -84,7 +127,7 @@ if __name__ == '__main__':
                 stats_dtype.append((quant + obs, datatype))
             quant = 'nexps'
             datatype = np.int32
-            for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
+            for stage in ['', '_direct', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
                 stats_dtype.append((quant + stage + obs, datatype))
 
         completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
@@ -134,10 +177,13 @@ if __name__ == '__main__':
                 cstats['fsatisfied' + obs][i] = fsatisfied
                 cstats['nepochs' + obs][i] = targets['nepochs' + obs][isincarton].sum()
         
-                for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
                     cstats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isincarton].sum()
+                cstats['nexps_direct' + obs][i] = 0
+                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                    cstats['nexps_direct' + obs][i] = cstats['nexps_direct' + obs][i] +  cstats['nexps' + stage + obs][i]
 
-        fitsio.write(stats_file, cstats, clobber=True, extname='CARTON')
+        fitsio.write(stats_file, cstats, clobber=False, extname='CARTON')
     
         # Statistics per program
         programs = np.unique(targets['program'])
@@ -179,8 +225,11 @@ if __name__ == '__main__':
                 pstats['fsatisfied' + obs][i] = fsatisfied
                 pstats['nepochs' + obs][i] = targets['nepochs' + obs][isinprogram].sum()
         
-                for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
                     pstats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isinprogram].sum()
+                pstats['nexps_direct' + obs][i] = 0
+                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                    pstats['nexps_direct' + obs][i] = pstats['nexps_direct' + obs][i] +  pstats['nexps' + stage + obs][i]
 
         fitsio.write(stats_file, pstats, clobber=False, extname='PROGRAM')
     
@@ -188,10 +237,10 @@ if __name__ == '__main__':
         categorys = np.unique(targets['category'])
 
         stats_dtype[0] = ('category', np.unicode_, 40)
-        pstats = np.zeros(len(categorys), dtype=stats_dtype)
+        xstats = np.zeros(len(categorys), dtype=stats_dtype)
 
         for i, category in enumerate(categorys):
-            pstats['category'][i] = category
+            xstats['category'][i] = category
 
         for obs in ['', '_apo', '_lco']:
 
@@ -215,19 +264,23 @@ if __name__ == '__main__':
                 else:
                     fsatisfied = np.float32(nsatisfied) / np.float32(ncategory)
 
-                pstats['ntarget' + obs][i] = ncategory
-                pstats['nsatisfied' + obs][i] = nsatisfied
-                pstats['ncovered' + obs][i] = ncovered
-                pstats['nextra' + obs][i] = nextra
-                pstats['nallowed' + obs][i] = nallowed
-                pstats['nincadence' + obs][i] = nincadence
-                pstats['fsatisfied' + obs][i] = fsatisfied
-                pstats['nepochs' + obs][i] = targets['nepochs' + obs][isincategory].sum()
+                xstats['ntarget' + obs][i] = ncategory
+                xstats['nsatisfied' + obs][i] = nsatisfied
+                xstats['ncovered' + obs][i] = ncovered
+                xstats['nextra' + obs][i] = nextra
+                xstats['nallowed' + obs][i] = nallowed
+                xstats['nincadence' + obs][i] = nincadence
+                xstats['fsatisfied' + obs][i] = fsatisfied
+                xstats['nepochs' + obs][i] = targets['nepochs' + obs][isincategory].sum()
         
-                for stage in ['', '_srd', '_reassign', '_open', '_filler', '_complete']:
-                    pstats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isincategory].sum()
+                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                    xstats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isincategory].sum()
+                xstats['nexps_direct' + obs][i] = 0
+                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                    xstats['nexps_direct' + obs][i] = xstats['nexps_direct' + obs][i] +  xstats['nexps' + stage + obs][i]
 
-        fitsio.write(stats_file, pstats, clobber=False, extname='CATEGORY')
+
+        fitsio.write(stats_file, xstats, clobber=False, extname='CATEGORY')
 
         # fiberType stats
 
@@ -238,7 +291,7 @@ if __name__ == '__main__':
                 for quant in ['ncatalogid']:
                     stats_dtype.append((quant + isscience + obs, datatype))
                 quant = 'nexps'
-                for stage in ['_total', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['_direct', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
                     stats_dtype.append((quant + stage + isscience + obs, datatype))
 
         fiberTypes = ['BOSS', 'APOGEE']
@@ -255,63 +308,25 @@ if __name__ == '__main__':
                     ic = np.where(istype & (targets['nexps' + obs] > 0))[0]
                     ncatalogid = len(np.unique(targets['catalogid'][ic]))
                     fstats['ncatalogid' + isscience + obs][i] = ncatalogid
-                    fstats['nexps_total' + isscience + obs][i] = 0
+                    fstats['nexps_direct' + isscience + obs][i] = 0
+                    fstats['nexps_equiv' + isscience + obs][i] = targets['nexps_equiv'][istype].sum()
                     for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
-                        fstats['nexps' + stage + isscience + obs][i] = targets['nexps'][istype].sum()
-                        fstats['nexps_total' + obs][i] = fstats['nexps_total' + isscience + obs][i] + fstats['nexps' + stage + isscience + obs][i]
+                        fstats['nexps' + stage + isscience + obs][i] = targets['nexps' + stage + obs][istype].sum()
+                        fstats['nexps_direct' + isscience + obs][i] = (fstats['nexps_direct' + isscience + obs][i] +
+                                                                       fstats['nexps' + stage + isscience + obs][i])
 
         fitsio.write(stats_file, fstats, clobber=False, extname='FIBERS')
-
-        # March through robots to calculate similar stats for consistency
-        stats_dtype = [('fiberType', np.unicode_, 40),
-                       ('nexps_total', np.int32),
-                       ('nexps_total_apo', np.int32),
-                       ('nexps_total_lco', np.int32),
-                       ('nexps_total_science', np.int32),
-                       ('nexps_total_science_apo', np.int32),
-                       ('nexps_total_science_lco', np.int32)]
-
-        rstats = np.zeros(2, dtype=stats_dtype)
-        rstats['fiberType'][0] = 'BOSS'
-        rstats['fiberType'][1] = 'APOGEE'
-
-        for obs in ['apo', 'lco']:
-            fields = fitsio.read('final/rsAllocationFinal-{p}-{o}.fits'.format(p=plan, o=obs))
-            for fieldid in fields['fieldid']:
-                targets = fitsio.read('final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid), ext='TARGET')
-                robots = fitsio.read('final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid), ext='ROBOTS')
-                iboss = np.where((robots['rsid'] >= 0) &
-                                 (robots['fiberType'] == 'BOSS'))
-                iapogee = np.where((robots['rsid'] >= 0) &
-                                   (robots['fiberType'] == 'APOGEE'))
-                nboss = len(iboss[0])
-                rstats['nexps_total_' + obs][0] = rstats['nexps_total_' + obs][0] + nboss
-                napogee = len(iapogee[0])
-                rstats['nexps_total_' + obs][1] = rstats['nexps_total_' + obs][1] + napogee
-
-                itargets = robots['itarget'][iboss]
-                iboss_science = np.where(targets['category'][itargets] == 'science')[0]
-                nboss_science = len(iboss_science)
-                itargets = robots['itarget'][iapogee]
-                iapogee_science = np.where(targets['category'][itargets] == 'science')[0]
-                napogee_science = len(iapogee_science)
-                rstats['nexps_total_science_' + obs][0] = rstats['nexps_total_science_' + obs][0] + nboss_science
-                napogee = len(iapogee)
-                rstats['nexps_total_science_' + obs][1] = rstats['nexps_total_science_' + obs][1] + napogee_science
-
-        rstats['nexps_total'] = rstats['nexps_total_apo'] + rstats['nexps_total_lco']
-        rstats['nexps_total_science'] = rstats['nexps_total_science_apo'] + rstats['nexps_total_science_lco']
-
-        fitsio.write(stats_file, rstats, clobber=False, extname='ROBOTS')
 
     else:
         cstats = fitsio.read(stats_file, ext='CARTON')
         pstats = fitsio.read(stats_file, ext='PROGRAM')
+        xstats = fitsio.read(stats_file, ext='CATEGORY')
         fstats = fitsio.read(stats_file, ext='FIBERS')
         rstats = fitsio.read(stats_file, ext='ROBOTS')
 
     stats_dict = dict()
     stats_dict['plan'] = plan
+
     stats_dict['cartons'] = dict()
     for s in cstats:
         carton = s['carton']
@@ -323,6 +338,42 @@ if __name__ == '__main__':
         stats_dict['cartons'][carton]['description'] = description
         for n in s.dtype.names:
             stats_dict['cartons'][carton][n] = s[n]
+
+    stats_dict['programs'] = dict()
+    for s in pstats:
+        program = s['program']
+        description = ''
+        stats_dict['programs'][program] = dict()
+        stats_dict['programs'][program]['description'] = description
+        for n in s.dtype.names:
+            stats_dict['programs'][program][n] = s[n]
+
+    stats_dict['categorys'] = dict()
+    for s in xstats:
+        category = s['category']
+        description = ''
+        stats_dict['categorys'][category] = dict()
+        stats_dict['categorys'][category]['description'] = description
+        for n in s.dtype.names:
+            stats_dict['categorys'][category][n] = s[n]
+
+    stats_dict['fiberTypes'] = dict()
+    for s in fstats:
+        fiberType = s['fiberType']
+        description = ''
+        stats_dict['fiberTypes'][fiberType] = dict()
+        stats_dict['fiberTypes'][fiberType]['description'] = description
+        for n in s.dtype.names:
+            stats_dict['fiberTypes'][fiberType][n] = s[n]
+
+    stats_dict['robots'] = dict()
+    for s in rstats:
+        fiberType = s['fiberType']
+        description = ''
+        stats_dict['robots'][fiberType] = dict()
+        stats_dict['robots'][fiberType]['description'] = description
+        for n in s.dtype.names:
+            stats_dict['robots'][fiberType][n] = s[n]
 
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("robostrategy"),
