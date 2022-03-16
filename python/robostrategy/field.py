@@ -3301,7 +3301,7 @@ class Field(object):
 
         # Prefer BOSS-only robots if they are available
         hasApogee = self.robotHasApogee[validRobotIndxs]
-        validRobotIDs = validRobotIDs[hasApogee.argsort()]
+        validRobotIDs = validRobotIDs[hasApogee.argsort(kind='stable')]
 
         if(self.nocalib is False):
             isspare = self.has_spare_calib(rsid=rsid)
@@ -3729,11 +3729,12 @@ class Field(object):
         return(success)
 
     def _unsatisfied(self, indxs):
-        # Return which are unsatisifed, and include ones which are
+        # Return which are unsatisfed, and include ones which are
         # satisfied but only because of a calibration target
         self._set_satisfied(rsids=self.targets['rsid'][indxs], science=True)
         unsatisfied = ((self.assignments['satisfied'][indxs] == 0) |
-                       (self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]))
+                       ((self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]) &
+                        (self.targets['category'][indxs] == 'science')))
         return(unsatisfied)
 
     def assign_cadences(self, rsids=None, check_satisfied=True):
@@ -3885,7 +3886,7 @@ class Field(object):
                         print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
 
             # Assign multi-dark cases (one cycle)
-            for icycle in range(1):
+            for icycle in range(2):
                 imultidark = np.where(multidark[indxs] &
                                       (self._unsatisfied(indxs=indxs)) &
                                       (self.targets['priority'][indxs] == priority))[0]
@@ -3926,7 +3927,7 @@ class Field(object):
             robotindx = np.array([self.robotID2indx[x] for x in robotIDs],
                                  dtype=int)
             hasApogee = self.robotHasApogee[robotindx]
-            robotIDs = robotIDs[np.argsort(hasApogee)]
+            robotIDs = robotIDs[np.argsort(hasApogee, kind='stable')]
 
             succeed = False
             for robotID in robotIDs:
@@ -3978,8 +3979,9 @@ class Field(object):
             robotindx = np.array([self.robotID2indx[x]
                                   for x in robotIDs], dtype=int)
             hasApogee = self.robotHasApogee[robotindx]
-            robotIDs = robotIDs[np.argsort(hasApogee)]
-            robotindx = robotindx[np.argsort(hasApogee)]
+            isort = np.argsort(hasApogee, kind='stable')
+            robotIDs = robotIDs[isort]
+            robotindx = robotindx[isort]
 
             statusDict = dict()
             expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
@@ -4043,13 +4045,15 @@ class Field(object):
         inotsat = np.where(self._unsatisfied(indxs) == True)[0]
         for rsid in rsids[inotsat]:
             indx = self.rsid2indx[rsid]
+            if(self._unsatisfied([indx])[0] == False):
+                continue
             nexp_cadence = clist.cadences[self.targets['cadence'][indx]].nexp_total
             robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
             np.random.shuffle(robotIDs)
             robotindx = np.array([self.robotID2indx[x]
                                   for x in robotIDs], dtype=int)
             hasApogee = self.robotHasApogee[robotindx]
-            robotIDs = robotIDs[np.argsort(hasApogee)]
+            robotIDs = robotIDs[np.argsort(hasApogee, kind='stable')]
 
             statusDict = dict()
             expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
@@ -4097,20 +4101,25 @@ class Field(object):
 
         return
 
-    def _assign_cp_model(self, rsids=None, robotIDs=None, check_collisions=True):
+    def _assign_cp_model(self, force=[], deny=[],
+                         check_collisions=True,
+                         calibrations=True, iexp=0):
         """Assigns using CP-SAT to optimize number of targets
 
         Parameters
         ----------
 
-        rsids : ndarray of np.int64
-            [N] rsids of targets to assign
-
-        robotIDs : ndarray of np.int32
-            robots which are available to assign
+        force : list of np.int64
+            list of rsids to force (default [])
+        
+        iexp : int
+            relevant exposure, used for allowability constraints (default 0)
 
         check_collisions : bool
             if set, check for collisions (default True)
+
+        calibrations : bool
+            if set, guarantee calibration numbers (default True)
 
         Returns
         -------
@@ -4121,10 +4130,12 @@ class Field(object):
         Notes
         -----
 
-        Doesn't yet limit to robotIDs input
+        Will only assign targets "allowed" in the exposure;
+        "force" will not override this.
 
-        Plan to also allow certain rsids to be guaranteed
 """
+        rsids = self.targets['rsid']
+
         rg = self.mastergrid
         for r in rg.robotDict:
             rg.unassignRobot(r)
@@ -4149,7 +4160,17 @@ class Field(object):
                     wwrt[robotID] = dict()
                 wwrt[robotID][rsid] = model.NewBoolVar(name)
                 wwtr[rsid][robotID] = wwrt[robotID][rsid]
+
+        # List of all robot-target pairs
         ww_list = [wwrt[y][x] for y in wwrt for x in wwrt[y]]
+
+        # List of robot-(science-target) pairs
+        ww_science = []
+        for robotID in wwrt:
+            for rsid in wwrt[robotID]:
+                indx = self.rsid2indx[rsid]
+                if(self.targets['category'][indx] == 'science'):
+                    ww_science.append(wwrt[robotID][rsid])
 
         # Constrain to use only one target per robot
         wwsum_robot = dict()
@@ -4163,7 +4184,29 @@ class Field(object):
         for rsid in wwtr:
             tlist = [wwtr[rsid][r] for r in wwtr[rsid]]
             wwsum_target[rsid] = cp_model.LinearExpr.Sum(tlist)
-            model.Add(wwsum_target[rsid] <= 1)
+            allowed = self.assignments['allowed'][self.rsid2indx[rsid], iexp]
+            if(allowed == False):
+                model.Add(wwsum_target[rsid] == 0)
+            elif(rsid in force):
+                model.Add(wwsum_target[rsid] == 1)
+            elif(rsid in deny):
+                model.Add(wwsum_target[rsid] == 0)
+            else:
+                model.Add(wwsum_target[rsid] <= 1)
+
+        if(calibrations):
+            calibsum = dict()
+            for c in self.calibration_order:
+                minimum = self.required_calibrations[c][0]
+                if(minimum > 0):
+                    clist = []
+                    icalib = np.where(self.targets['category'] == c)[0]
+                    for rsid in self.targets['rsid'][icalib]:
+                        if(rsid in wwtr):
+                            for robotID in wwtr[rsid]:
+                                clist.append(wwtr[rsid][robotID])
+                    calibsum[c] = cp_model.LinearExpr.Sum(clist)
+                    model.Add(calibsum[c] >= int(minimum))
 
         # Do not allow collisions
         if(check_collisions):
@@ -4194,10 +4237,11 @@ class Field(object):
                 tmp_collision = cp_model.LinearExpr.Sum([ww1, ww2])
                 model.Add(tmp_collision <= 1)
 
-        # Maximize the total sum
-        wwsum_all = cp_model.LinearExpr.Sum(ww_list)
+        # Maximize the total sum of science targets
+        wwsum_all = cp_model.LinearExpr.Sum(ww_science)
         model.Maximize(wwsum_all)
 
+        # But need to decide about all targets
         model.AddDecisionStrategy(ww_list,
                                   cp_model.CHOOSE_FIRST,
                                   cp_model.SELECT_MAX_VALUE)
@@ -4237,23 +4281,36 @@ class Field(object):
 
         Assigns only the ones matching the field cadence
 """
-        # Weeds out ones not in field cadence
-        keep = np.ones(len(rsids), dtype=np.int32)
-        for i, rsid in enumerate(rsids):
-            if(self.targets['cadence'][self.rsid2indx[rsid]] != self.field_cadence.name):
-                keep[i] = 0
-        ikeep = np.where(keep)[0]
-        rsids = rsids[ikeep]
+        all_rsids = self.targets['rsid']
 
-        robotIDs = self._assign_cp_model(rsids=rsids)
+        # Weeds out science targets not in field cadence or list
+        bad = np.zeros(len(all_rsids), dtype=np.int32)
+        for i, rsid in enumerate(all_rsids):
+            if(self.targets['category'][i] == 'science'):
+                if(self.targets['cadence'][i] != self.field_cadence.name):
+                    bad[i] = 1
+                if(rsid not in rsids):
+                    bad[i] = 1
+        deny = all_rsids[(bad > 0) & (self.assignments['assigned'] == 0)]
 
-        for rsid, robotID in zip(rsids, robotIDs):
-            if(robotID >= 1):
+        # Force any assigned
+        iforce = np.where(self.assignments['assigned'] > 0)[0]
+        force = all_rsids[iforce]
+
+        # This step reassigns everything
+        robotIDs = self._assign_cp_model(force=force, deny=deny)
+
+        # So we have to unassign everything
+        self.unassign(rsids=self.targets['rsid'])
+        
+        # Then reassign
+        for rsid, robotID in zip(all_rsids, robotIDs):
+            if(robotID >= 0):
                 for epoch in range(self.field_cadence.nepochs):
                     nexp = self.field_cadence.nexp[epoch]
                     self.assign_robot_epoch(rsid=rsid, robotID=robotID, epoch=epoch, nexp=nexp)
 
-        success = (robotIDs >= 1)
+        success = (robotIDs >= 0)
         return(success)
 
     def decollide_unassigned(self):
@@ -4421,6 +4478,79 @@ class Field(object):
         self._set_satisfied()
         self._set_satisfied(science=True)
         self._set_count(reset_equiv=False)
+        return
+
+    def assign_science_cp(self, stage='srd'):
+        """Assign all science targets with CP
+        
+        Parameters
+        ----------
+
+        stage : str
+            stage of assignment to use
+
+        Notes
+        -----
+
+        This assigns all targets with 'category' set to 'science'
+        and with 'stage' set to selected value
+
+        It assumes that there is just one cadence.
+"""
+        self.set_stage(stage=stage)
+
+        stage_select = stage
+        if(stage == 'reassign'):
+            stage_select = 'srd'
+
+        if(self.verbose):
+            print("fieldid {fid}: Assigning science with CP".format(fid=self.fieldid), flush=True)
+
+        isscience = ((self.targets['category'] == 'science') &
+                     (self.targets['within']) &
+                     (self.targets['incadence']) &
+                     (self.target_duplicated == 0) &
+                     (self.targets['stage'] == stage_select))
+        iscience = np.where(isscience)[0]
+
+        priorities = np.unique(self.targets['priority'][iscience])
+        
+        for priority in priorities:
+            if(self.verbose):
+                print("fieldid {fid}: Assigning priority {p}".format(p=priority, fid=self.fieldid), flush=True)
+            ipriority = np.where(isscience & (self.assignments['satisfied'] == 0) & (self.targets['priority'] == priority))[0]
+            if(len(ipriority) == 0):
+                print("fieldid {fid}:  - apparently all science targets at this priority level already satisfied".format(fid=self.fieldid), flush=True)
+                continue
+            if(self.verbose):
+                print("fieldid {fid}:  - {n} assigning in CP".format(n=len(ipriority), fid=self.fieldid), flush=True)
+            self.assign_full_cp_model(rsids=self.targets['rsid'][ipriority])
+
+            if(self.verbose):
+                print(self.assess())
+
+            if(priority != priorities[-1]):
+                icalib = np.where(self.targets['category'] != 'science')[0]
+                self.unassign(rsids=self.targets['rsid'][icalib])
+
+            self.decollide_unassigned()
+            self._set_satisfied(rsids=self.targets['rsid'][ipriority])
+            self._set_count(reset_equiv=False)
+
+            igot = np.where(self.assignments['satisfied'][ipriority] != 0)[0]
+            if(self.verbose):
+                print("fieldid {fid}:    (assigned {n})".format(n=len(igot), fid=self.fieldid), flush=True)
+
+        nproblems = self.validate()
+        if(nproblems == 0):
+            print("fieldid {f}: No problems".format(f=self.fieldid))
+        else:
+            print("fieldid {f}: {n} problems!!!".format(f=self.fieldid,
+                                                        n=nproblems))
+        if(self.verbose):
+            print("fieldid {fid}:   (done assigning science with CP)".format(fid=self.fieldid), flush=True)
+
+        self.set_stage(stage=None)
         return
 
     def assign_science_and_calibs(self, stage='srd',
@@ -4977,11 +5107,11 @@ class Field(object):
 
         iboss = np.where((self.targets['fiberType'] == 'BOSS') &
                          (self.assignments['assigned']) &
-                         (self.targets['category'] != 'science'))[0]
+                         (self.targets['category'] == 'science'))[0]
         results['nboss_science'] = len(iboss)
         iapogee = np.where((self.targets['fiberType'] == 'APOGEE') &
                            (self.assignments['assigned']) &
-                           (self.targets['category'] != 'science'))[0]
+                           (self.targets['category'] == 'science'))[0]
         results['napogee_science'] = len(iapogee)
 
         nperexposure = np.zeros(self.field_cadence.nexp_total, dtype=int)
