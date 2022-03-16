@@ -537,7 +537,8 @@ class Field(object):
                  observatory='apo', field_cadence='none', collisionBuffer=None,
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  bright_neighbors=True, verbose=False, veryverbose=False,
-                 trim_cadence_version=False, untrim_cadence_version=None):
+                 trim_cadence_version=False, untrim_cadence_version=None,
+                 noassign=False):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
@@ -577,7 +578,7 @@ class Field(object):
         if(filename is not None):
             if(self.verbose):
                 print("fieldid {fid}: Reading from {f}".format(f=filename, fid=self.fieldid), flush=True)
-            self.fromfits(filename=filename)
+            self.fromfits(filename=filename, noassign=noassign)
         else:
             self.racen = racen
             self.deccen = deccen
@@ -923,7 +924,7 @@ class Field(object):
                           max_airmass=[1.6] * 12)
         return
 
-    def fromfits(self, filename=None):
+    def fromfits(self, filename=None, noassign=False):
         """Read field from FITS file
 
         Parameters
@@ -931,6 +932,9 @@ class Field(object):
 
         filename : str
             name of file to read in
+
+        noassign : bool
+            if True, do not apply assignments in file (default False)
 
         Notes
         -----
@@ -1047,7 +1051,7 @@ class Field(object):
         self.set_field_cadence(field_cadence)
         targets = f['TARGET'].read()
         self.targets_fromarray(target_array=targets)
-        if('assign' in f.hdu_map):
+        if(('assign' in f.hdu_map) & (noassign is False)):
             assignments = f['ASSIGN'].read()
         else:
             assignments = None
