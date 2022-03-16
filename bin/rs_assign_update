@@ -33,6 +33,7 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
+special_calibration = []
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -73,8 +74,12 @@ def assign_update(indx):
         print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
         f.clear_assignments()
 
-        print("fieldid {fid}: Assign standard_apogee".format(fid=fieldid), flush=True)
-        f.assign_standard_apogee(stage='srd')
+        # For special calibration methods running at beginning
+        for sc in special_calibration:
+            if(hasattr(f, sc)):
+                print("fieldid {fid}: Running {sc}".format(fid=fieldid, sc=sc), flush=True)
+                scfunc = getattr(f, sc)
+                scfunc(stage='srd')
 
         print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
         f.assign_science_and_calibs(stage='srd')
@@ -136,6 +141,10 @@ if __name__ == '__main__':
     nomultiprocess = args.nomultiprocess
 
     rsParams = params.RobostrategyParams(plan=plan)
+
+    if('Assignment' in rsParams.cfg):
+        if('special_calibration' in rsParams.cfg['Assignment']):
+            special_calibration = rsParams.cfg['Assignment']['special_calibration'].split()
 
     cadence_version = None
     if('CadenceVersions' in rsParams.cfg):
