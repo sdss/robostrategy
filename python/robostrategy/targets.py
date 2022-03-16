@@ -23,7 +23,7 @@ target_dtype = [('stage', np.unicode_, 6),
                 ('parallax', np.float32),
                 ('catalogid', np.int64),
                 ('target_pk', np.int64),
-                ('magnitude', np.float32, 7), # from magnitude
+                ('magnitude', np.float32, 10), # from magnitude
                 ('carton', np.unicode_, 50), # from carton
                 ('carton_pk', np.int32),
                 ('program', np.unicode_, 15), 
@@ -154,6 +154,9 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
                                      targetdb.Magnitude.gaia_g,
                                      targetdb.Magnitude.rp,
                                      targetdb.Magnitude.h,
+                                     targetdb.Magnitude.z,
+                                     targetdb.Magnitude.j,
+                                     targetdb.Magnitude.k,
                                      targetdb.Carton.carton,
                                      targetdb.Carton.pk.alias('carton_pk'),
                                      targetdb.Carton.program,
@@ -192,10 +195,13 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
                     tmp_targets['magnitude'][indx, 0] = np.float32(t['g'])
                     tmp_targets['magnitude'][indx, 1] = np.float32(t['r'])
                     tmp_targets['magnitude'][indx, 2] = np.float32(t['i'])
-                    tmp_targets['magnitude'][indx, 3] = np.float32(t['bp'])
-                    tmp_targets['magnitude'][indx, 4] = np.float32(t['gaia_g'])
-                    tmp_targets['magnitude'][indx, 5] = np.float32(t['rp'])
-                    tmp_targets['magnitude'][indx, 6] = np.float32(t['h'])
+                    tmp_targets['magnitude'][indx, 3] = np.float32(t['z'])
+                    tmp_targets['magnitude'][indx, 4] = np.float32(t['bp'])
+                    tmp_targets['magnitude'][indx, 5] = np.float32(t['gaia_g'])
+                    tmp_targets['magnitude'][indx, 6] = np.float32(t['rp'])
+                    tmp_targets['magnitude'][indx, 7] = np.float32(t['j'])
+                    tmp_targets['magnitude'][indx, 8] = np.float32(t['h'])
+                    tmp_targets['magnitude'][indx, 9] = np.float32(t['k'])
 
         tmp_targets['rsid'] = tmp_targets['carton_to_target_pk']
 
