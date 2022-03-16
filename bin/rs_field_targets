@@ -40,6 +40,8 @@ def field_target_filename(fieldid):
         field_target_file = field_target_file.replace('Targets', 'TargetsOpen')
     if(filler):
         field_target_file = field_target_file.replace('Targets', 'TargetsFiller')
+    if(final):
+        field_target_file = field_target_file.replace('targets/rsFieldTargets', 'final/rsFieldTargetsFinal')
     return(field_target_file)
 
 
@@ -138,6 +140,10 @@ if __name__ == '__main__':
                         help='set to read filler target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-X', '--final', dest='final',
+                        help='create for final set of targets',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -147,6 +153,7 @@ if __name__ == '__main__':
     noclobber = args.noclobber
     opentargets = args.opentargets
     filler = args.filler
+    final = args.final
     nomultiprocessing = args.nomultiprocessing
 
     rsParams = params.RobostrategyParams(plan=plan)
@@ -178,6 +185,8 @@ if __name__ == '__main__':
         targets_file = targets_file.replace('Targets', 'TargetsOpen')
     if(filler):
         targets_file = targets_file.replace('Targets', 'TargetsFiller')
+    if(final):
+        targets_file = targets_file.replace('rsTargets', 'final/rsTargetsFinal')
     targets_all = fitsio.read(targets_file)
 
     nside = 32
@@ -240,6 +249,8 @@ if __name__ == '__main__':
         targets_covered_base = targets_covered_base.replace('Targets', 'TargetsOpen')
     if(filler):
         targets_covered_base = targets_covered_base.replace('Targets', 'TargetsFiller')
+    if(final):
+        targets_covered_base = targets_covered_base.replace('rsTargets', 'rsTargetsFinal')
 
     targets_covered_base = targets_covered_base.format(plan=plan,
                                                        obs=observatory)
