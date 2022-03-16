@@ -662,7 +662,7 @@ class Field(object):
                 mag_lim = desmode.bright_limit_targets['BOSS'][1][0]
         else:
             # grab h 2mass mag for limit
-            mag_lim = desmode.bright_limit_targets['APOGEE'][6][0]
+            mag_lim = desmode.bright_limit_targets['APOGEE'][8][0]
 
         db_query = mugatu.designmode.build_brigh_neigh_query('designmode',
                                                              fiberType,
@@ -1953,6 +1953,7 @@ class Field(object):
         # Create internal look-up of whether it is a calibration target
         _is_calibration = np.zeros(len(targets), dtype=bool)
         _calibration_index = np.zeros(len(targets), dtype=np.int32)
+        # TODO set zones
         if(self.nocalib is False):
             for icategory, category in enumerate(self.required_calibrations):
                 icat = np.where(targets['category'] == category)[0]
@@ -2215,7 +2216,47 @@ class Field(object):
         for icategory, category in enumerate(self.required_calibrations):
             self._has_spare_calib[icategory + 1, :] = (self.calibrations[category] -
                                                        self.achievable_calibrations[category])
+        # TODO
+        # for calibs with zones, report number of calibrations
+        # of each type in each zone
         return
+
+    def has_spare_calib(self, rsid=None, indx=None, iexps=None):
+        """Reports whether this target can be spared in any exposures
+
+        Parameters
+        ----------
+
+        rsid : np.int64
+            rsid to consider
+
+        indx : np.int32 or ndarray of np.int32
+            target index to consider
+
+        iexps : ndarray of np.int32, or np.int32
+            exposures of field to check (default all field exposures)
+
+        Returns
+        -------
+
+        isspare : ndarray of np.int32, or np.int32
+            is spare in each exposure in iexps
+
+        Notes
+        -----
+
+        If indx is set, overrides rsid.
+
+        Either indx can be an array or iexps can be an array,
+        but not both. rsid cannot be an array.
+"""
+        if(iexps is None):
+            iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
+        if(indx is None):
+            indx = self.rsid2indx[rsid]
+        isspare = self._has_spare_calib[self._calibration_index[indx + 1], iexps] > 0
+        # TODO Check zones
+        return(isspare)
 
     def set_assignment_status(self, status=None, isspare=None, check_spare=True):
         """Set parameters of status object
@@ -2257,7 +2298,8 @@ class Field(object):
                 allowed = True
             status.currindx = self._robot2indx[robotindx, status.iexps]
             free = (status.currindx < 0)
-            has_spare = self._has_spare_calib[self._calibration_index[status.currindx + 1], status.iexps]
+            has_spare =self.has_spare_calib(indx=status.currindx,
+                                            iexps=status.iexps)
             fixed = (((self.assignments['expflag'][status.currindx, status.iexps] &
                        self.expflagdict['FIXED']) != 0) & (status.currindx >= 0))
             status.spare = (has_spare > 0) & (isspare == False) & (free == False) & (fixed == False)
@@ -2401,10 +2443,9 @@ class Field(object):
                                     (status.collided[i] == False))
             return
 
-        # If it collides with another robot but is a spare fiber,
-        # then it can't be assigned
-        indx = self.rsid2indx[status.rsid]
-        isspare = self._has_spare_calib[self._calibration_index[indx + 1], iexp] > 0
+        # If it collides with another robot but would be a spare fiber,
+        # then don't make it assignable
+        isspare = self.has_spare_calib(rsid=status.rsid, iexps=iexp)
         if(isspare):
             status.assignable[i] = (status.assignable[i] and
                                     (status.collided[i] == False))
@@ -2416,7 +2457,7 @@ class Field(object):
         colliderindxs = np.array([self.robotID2indx[x]
                                   for x in colliders], dtype=int)
         itargets = self._robot2indx[colliderindxs, iexp]
-        has_spare = self._has_spare_calib[self._calibration_index[itargets + 1], iexp] > 0
+        has_spare = self.has_spare_calib(indx=itargets, iexps=iexp)
         collidernotfixed = (((self.assignments['expflag'][itargets, iexp] &
                               self.expflagdict['FIXED']) == 0) &
                             (itargets >= 0))
@@ -2660,21 +2701,6 @@ class Field(object):
 
     def _is_spare(self, rsid=None, iexps=None):
         """Is this rsid a spare calibration in these exposures?
-
-        Parameters
-        ----------
-
-        rsid : np.int64
-            rsid to consider
-
-        iexps : ndarray of np.int32
-            exposures of field to check (default all field exposures)
-
-        Returns
-        -------
-
-        isspare : ndarray of bool
-            whether this rsid is a spare calibration fiber in each exposure
 """
         if(iexps is None):
             iexps = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
@@ -2730,7 +2756,7 @@ class Field(object):
             iexpst = self.field_cadence.epoch_indx[epoch]
             iexpnd = self.field_cadence.epoch_indx[epoch + 1]
             iexps = np.arange(iexpst, iexpnd, dtype=np.int32)
-            isspare = self._is_spare(rsid=rsid, iexps=iexps)
+            isspare = self.has_spare_calib(rsid=rsid, iexps=iexps)
             status = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=iexps)
             self.set_assignment_status(status=status, isspare=isspare)
 
@@ -2867,6 +2893,7 @@ class Field(object):
             if(self._is_calibration[itarget]):
                 category = self.targets['category'][itarget]
                 self.calibrations[category][iexp] = self.calibrations[category][iexp] + 1
+                # TODO update calibration zones
 
         if(self.allgrids):
             rg = self.robotgrids[iexp]
@@ -3035,6 +3062,7 @@ class Field(object):
             if(self.nocalib is False):
                 if(self._is_calibration[itarget]):
                     self.calibrations[category][iexp] = self.calibrations[category][iexp] - 1
+                    # TODO update calibration zones
         else:
             return
 
@@ -3276,7 +3304,7 @@ class Field(object):
         validRobotIDs = validRobotIDs[hasApogee.argsort()]
 
         if(self.nocalib is False):
-            isspare = self._is_spare(rsid=rsid)
+            isspare = self.has_spare_calib(rsid=rsid)
         else:
             isspare = np.zeros(self.field_cadence.nexp_total, dtype=bool)
 
@@ -4311,10 +4339,11 @@ class Field(object):
             print("fieldid {fid}: Assigning standard_apogee calibrations".format(fid=self.fieldid), flush=True)
         
         ias = np.where(self.targets['category'] == 'standard_apogee')[0]
-        isort = np.argsort(self.targets['magnitude'][ias, 6])
+        isort = np.argsort(self.targets['magnitude'][ias, 8])
         rsids = self.targets['rsid'][ias[isort]]
-        
+
         for rsid in rsids:
+            # TODO NEED TO CHECK ZONES HERE
             iexps = np.where(self.calibrations['standard_apogee'] < self.required_calibrations['standard_apogee'])[0]
             if(len(iexps) > 0):
                 self.assign_exposures(rsid=rsid, iexps=iexps, check_spare=False,
@@ -4597,6 +4626,7 @@ class Field(object):
         for c in self.calibration_order:
             shortfalls[c] = set()
             for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+                # TODO check zones
                 if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
                     shortfalls[c].add(iexp)
                     if(self.verbose):
@@ -4661,6 +4691,7 @@ class Field(object):
 
             if(report):
                 for iexp in iexps:
+                    # TODO check zones
                     if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
                         print("fieldid {fid}:   still short in {c}, exposure {iexp}; {nc}/{nac}".format(fid=self.fieldid, c=c, iexp=iexp, nc=self.calibrations[c][iexp], nac=self.achievable_calibrations[c][iexp]), flush=True)
 
@@ -4938,6 +4969,7 @@ class Field(object):
             results['calibrations'] = dict()
             results['required_calibrations'] = dict()
             results['achievable_calibrations'] = dict()
+            # TODO REPORT N ZONES
             for c in self.calibration_order:
                 results['calibrations'][c] = list(self.calibrations[c])
                 results['required_calibrations'][c] = list(self.required_calibrations[c])
@@ -5162,6 +5194,7 @@ Carton completion:
                             nproblems = nproblems + 1
 
         # Check that the number of calibrators has been tracked right
+        # TODO check zones tracked right
         if(self.nocalib is False):
             for c in self.calibration_order:
                 for iexp in range(self.field_cadence.nexp_total):
