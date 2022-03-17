@@ -476,7 +476,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         # Find all eligible targets for extra completion: Those with extra assignments
         # from above + previouly satisfied
-        new_got = iextra[np.where(self.assignments['extra'][iextra] > 0)
+        new_got = iextra[np.where(self.assignments['extra'][iextra] > 0)[0]]
 
         iextra1 = np.where((self.targets['program'] == 'bhm_spiders') &
                             (self.assignments['satisfied'] > 0))[0]
