@@ -63,7 +63,7 @@ def count_spares(indx):
     Writes rsFieldSpares file
 
 """
-    fieldid = allocate.field_array['fieldid'][indx]
+    fieldid = fieldids[indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
 
@@ -107,8 +107,9 @@ def count_spares(indx):
     spare = np.zeros(1, dtype=spares_dtype)
 
     spare['fieldid'] = fieldid
-    spare['racen'] = allocate.fields['racen'][indx]
-    spare['deccen'] = allocate.fields['deccen'][indx]
+    ifield = np.where(allocate.fields['fieldid'] == fieldid)[0][0]
+    spare['racen'] = allocate.fields['racen'][ifield]
+    spare['deccen'] = allocate.fields['deccen'][ifield]
 
     nboss_spare, napogee_spare, nboss_unused, napogee_unused = f.count_spares(return_unused=True)
     spare['nboss_spare'] = nboss_spare
@@ -194,13 +195,16 @@ if __name__ == '__main__':
     final = args.final
     noclobber = args.noclobber
 
-    if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
-        print("Only one of -O, -R, -F, -K can be set!")
+    if(int(opentargets) + int(filler) + int(complete) + int(reassign) + int(final) > 1):
+        print("Only one of -O, -R, -F, -K, -X can be set!")
         sys.exit()
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
+    if(final):
+        cadences_file = cadences_file.replace('rsCadences',
+                                              'final/rsCadencesFinal')
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
@@ -210,10 +214,11 @@ if __name__ == '__main__':
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
+    fieldids = np.unique(allocate.field_array['fieldid'])
+
     if(end < 0):
-        end = allocate.field_array['fieldid'].max()
-    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
-                     (allocate.field_array['fieldid'] <= end))[0]
+        end = fieldids.max()
+    ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
 
     spares_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
@@ -247,7 +252,7 @@ if __name__ == '__main__':
 
     ispares_exp = 0
     for indx in ikeep:
-        fieldid = allocate.field_array['fieldid'][indx]
+        fieldid = fieldids[indx]
         spares_file = spares_file_name(fieldid=fieldid)
         cspares = fitsio.read(spares_file)
 
@@ -256,8 +261,6 @@ if __name__ == '__main__':
         except IndexError:
             nexp = 1
 
-        if(nexp != allocate.field_array['nfilled'][indx]):
-            print("fid={fid}, nexp={nexp}, nfilled={nfilled}".format(fid=fieldid, nexp=nexp, nfilled=allocate.field_array['nfilled'][indx]))
         spares_exp['fieldid'][ispares_exp:ispares_exp + nexp] = fieldid
         spares_exp['iexp'][ispares_exp:ispares_exp + nexp] = np.arange(nexp, dtype=np.int32)
         spares_exp['racen'][ispares_exp:ispares_exp + nexp] = cspares['racen'][0]
@@ -290,7 +293,7 @@ if __name__ == '__main__':
     if(reassign):
         base = 'rsSparesReassign'
     if(final):
-        base = 'rsSparesFinal'
+        base = 'final/rsSparesFinal'
     outfile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     hdr = robostrategy.header.rsheader()
     fitsio.write(outfile, spares, header=hdr, clobber=True)
@@ -305,7 +308,7 @@ if __name__ == '__main__':
     if(reassign):
         base = 'rsSparesExpReassign'
     if(final):
-        base = 'rsSparesExpFinal'
+        base = 'final/rsSparesExpFinal'
     outfile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     hdr = robostrategy.header.rsheader()
     fitsio.write(outfile, spares_exp, header=hdr, clobber=True)

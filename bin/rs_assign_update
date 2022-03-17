@@ -1,0 +1,192 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_assign_update
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import datetime
+import numpy as np
+import roboscheduler.cadence as cadence
+import robostrategy.extra_field as extra_field
+import robostrategy.allocate
+import robostrategy.params as params
+import sdss_access.path
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+cadencelist = cadence.CadenceList(skybrightness_only=True)
+
+clobber = False
+special_calibration = []
+
+def assign_update(indx):
+    fieldid = allocate.field_array['fieldid'][indx]
+    print("fieldid {fid}: Update assignment".format(fid=fieldid), flush=True)
+
+    field_target_file = sdss_path.full('rsFieldTargets',
+                                       plan=fromplan, observatory=observatory,
+                                       fieldid=fieldid)
+    field_target_file = field_target_file.replace('targets/rsFieldTargets',
+                                                  'final/rsFieldAssignmentsFinal')
+
+    field_assignments_file = sdss_path.full('rsFieldTargets',
+                                            plan=plan, observatory=observatory,
+                                            fieldid=fieldid)
+    field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
+                                                            'final/rsFieldAssignmentsFinal')
+
+    if((clobber is False) & os.path.isfile(field_assignments_file)):
+        print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_assignments_file), flush=True)
+        return
+
+    print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
+
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
+    f = extra_field.extra_Field(filename=field_target_file, verbose=True,
+                                fieldid=fieldid, bright_neighbors=True,
+                                untrim_cadence_version=cadence_version,
+                                noassign=True)
+    f.fieldid = fieldid
+
+    if(f.field_cadence is None):
+        print("fieldid {fid}: no field cadence to assign! Skipping".format(fid=fieldid), flush=True)
+        return
+
+    rmcadences = ['dark_174x8_v1', 'dark_100x8_v1']
+    if(f.field_cadence.name in rmcadences):
+        print("fieldid {fid}: Not reassigning RM field, just copying".format(fid=fieldid), flush=True)
+    else:
+        print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
+        f.clear_assignments()
+
+        # For special calibration methods running at beginning
+        for sc in special_calibration:
+            if(hasattr(f, sc)):
+                print("fieldid {fid}: Running {sc}".format(fid=fieldid, sc=sc), flush=True)
+                scfunc = getattr(f, sc)
+                scfunc(stage='srd')
+
+        print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
+        f.assign_science_and_calibs(stage='srd')
+
+        print("fieldid {fid}: Reassignments".format(fid=fieldid), flush=True)
+        f.assign_spares(stage='reassign')
+
+        print("fieldid {fid}: Assign open targets".format(fid=fieldid), flush=True)
+        f.assign_science(stage='open')
+
+        print("fieldid {fid}: Assign filler targets".format(fid=fieldid), flush=True)
+        f.assign_science(stage='filler')
+
+        print("fieldid {f}: Running completion".format(f=fieldid), flush=True)
+        f.complete()
+
+    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
+
+    print("Write assignments", flush=True)
+    f.tofits(field_assignments_file)
+
+    print("fieldid {f}: Done".format(f=fieldid), flush=True)
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final assignment based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-f', '--from-plan', dest='fromplan',
+                        type=str, help='name of plan to start from', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-c', '--clobber', dest='clobber',
+                        help='clobber', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
+                        help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    fromplan = args.fromplan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    clobber = args.clobber
+    nomultiprocess = args.nomultiprocess
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    if('Assignment' in rsParams.cfg):
+        if('special_calibration' in rsParams.cfg['Assignment']):
+            special_calibration = rsParams.cfg['Assignment']['special_calibration'].split()
+
+    cadence_version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            cadence_version = rsParams.cfg.get('CadenceVersions', 'version')
+
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadences_file = cadences_file.replace('rsCadences',
+                                          'final/rsCadencesFinal')
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate_file = allocate_file.replace('rsAllocation',
+                                          'final/rsAllocationFinal')
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    if(end < 0):
+        end = allocate.field_array['fieldid'].max()
+    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
+                     (allocate.field_array['fieldid'] <= end))[0]
+
+    isort = np.flip(np.argsort(allocate.field_array['needed'][ikeep]))
+    ikeep = ikeep[isort]
+    if(nomultiprocess):
+        for i in ikeep:
+            assign_update(i)
+    else:
+        with multiprocessing.Pool() as pool:
+            ikeep = list(ikeep)
+            ikeep_distributed = []
+            icurr = 0
+            while(len(ikeep) > 0):
+                ikeep_distributed.append(ikeep[icurr])
+                ikeep.remove(ikeep[icurr])
+                if(len(ikeep) > 0):
+                    icurr = (icurr + int(pool._processes)) % len(ikeep)
+            pool.map(assign_update, ikeep_distributed)
+
+    print('DONE: rs_assign_final')
+    print(time.ctime(time.time()))

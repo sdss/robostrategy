@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Aug 3, 2018
-# @Filename: rs_completeness
+# @Filename: rs_final_completeness
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -22,218 +22,73 @@ import fitsio
 import sdss_access.path
 import robostrategy
 import robostrategy.header
+import roboscheduler
+import kaiju
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
-
-def header_counts(hdr, ntargets, ngot, nallowed, fgot, nexps, nepochs,
-                  ntargets_apo=None, ngot_apo=None, nallowed_apo=None, fgot_apo=None,
-                  nexps_apo=None, nepochs_apo=None,
-                  ntargets_lco=None, ngot_lco=None, nallowed_lco=None, fgot_lco=None,
-                  nexps_lco=None, nepochs_lco=None):
-    
-    hdr.append({'name': 'NTARGETS',
-                'value': ntargets,
-                'comment': 'number of targets'})
-    hdr.append({'name': 'NGOT',
-                'value': ngot,
-                'comment': 'number of satisfied targets'})
-    hdr.append({'name': 'NALLOWED',
-                'value': nallowed,
-                'comment': 'number of allowed targets'})
-    hdr.append({'name': 'FGOT',
-                'value': fgot,
-                'comment': 'fraction of satisfied targets'})
-    hdr.append({'name': 'NEXPS',
-                'value': nexps,
-                'comment': 'number of exposures'})
-    hdr.append({'name': 'NEPOCHS',
-                'value': nepochs,
-                'comment': 'number of epochs'})
-    if(ntargets_apo is not None):
-        hdr.append({'name': 'NTAR_APO',
-                    'value': ntargets_apo,
-                    'comment': 'number of APO targets'})
-        hdr.append({'name': 'NGOT_APO',
-                    'value': ngot_apo,
-                    'comment': 'number of satisfied APO targets'})
-        hdr.append({'name': 'NALL_APO',
-                    'value': nallowed_apo,
-                    'comment': 'fraction of allowed APO targets'})
-        hdr.append({'name': 'FGOT_APO',
-                    'value': fgot_apo,
-                    'comment': 'fraction of satisfied APO targets'})
-        hdr.append({'name': 'NEXPS_APO',
-                    'value': nexps_apo,
-                    'comment': 'number of APO exposures'})
-        hdr.append({'name': 'NEPOCHS_APO',
-                    'value': nepochs_apo,
-                    'comment': 'number of APO epochs'})
-        hdr.append({'name': 'NTAR_LCO',
-                    'value': ntargets_lco,
-                    'comment': 'number of LCO targets'})
-        hdr.append({'name': 'NGOT_LCO',
-                    'value': ngot_lco,
-                    'comment': 'number of satisfied LCO targets'})
-        hdr.append({'name': 'NALL_LCO',
-                    'value': nallowed_lco,
-                    'comment': 'fraction of allowed LCO targets'})
-        hdr.append({'name': 'FGOT_LCO',
-                    'value': fgot_lco,
-                    'comment': 'fraction of satisfied LCO targets'})
-        hdr.append({'name': 'NEXPS_LCO',
-                    'value': nexps_lco,
-                    'comment': 'number of LCO exposures'})
-        hdr.append({'name': 'NEPOCHS_LCO',
-                    'value': nepochs_lco,
-                    'comment': 'number of LCO epochs'})
-
-    return(hdr)
-
-
-def make_map(hpix=None, got=None):
-
-    igot = np.where(got)[0]
-
-    ntargets_map = np.bincount(hpix, minlength=healpy.nside2npix(nside))
-    ngot_map = np.bincount(hpix[igot], minlength=healpy.nside2npix(nside))
-
-    fgot_map = - np.ones(healpy.nside2npix(nside), dtype=np.float32)
-    inz = np.where(ntargets_map > 0)[0]
-    fgot_map[inz] = ngot_map[inz] / ntargets_map[inz]
-
-    return(ntargets_map, ngot_map, fgot_map)
-
-    hdr = robostrategy.header.rsheader()
-    hdr.append({'name':'NSIDE',
-                'value':nside,
-                'comment':'NSIDE of healpix map'})
-    fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
-    fitsio.write(completeness_file, ngot_map, clobber=False)
-    fitsio.write(completeness_file, fgot_map, clobber=False)
+lite_dtype = [('rsid', np.int64), # set equal to carton_to_target_pk
+              ('carton_to_target_pk', np.int64), # from carton_to_target
+              ('priority', np.int32),
+              ('ra', np.float64),  # from target
+              ('dec', np.float64),
+              ('catalogid', np.int64),
+              ('target_pk', np.int64),
+              ('carton', np.unicode_, 50), # from carton
+              ('program', np.unicode_, 15), 
+              ('category', np.unicode_, 15), # from category
+              ('cadence', np.unicode_, 22), # from cadence
+              ('fiberType', np.unicode_, 6),
+              ('satisfied', np.int32),
+              ('assigned', np.int32),
+              ('allowed', np.int32),
+              ('incadence', np.int32),
+              ('covered', np.int32)]
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Evaluate completeness of target assignments')
+        description='Compile completeness of all target assignments')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
-    parser.add_argument('-o', '--observatory', dest='observatory',
-                        type=str, help='apo or lco or both',
-                        choices=['apo', 'lco', 'both'], required=True)
-    parser.add_argument('-O', '--open', dest='opentargets',
-                        help='set to read open target results',
-                        default=False, required=False,
-                        action='store_true')
-    parser.add_argument('-F', '--filler', dest='filler',
-                        help='set to read filler target results',
-                        default=False, required=False,
-                        action='store_true')
-    parser.add_argument('-K', '--complete', dest='complete',
-                        help='set to read complete target results',
-                        default=False, required=False,
-                        action='store_true')
-    parser.add_argument('-R', '--reassign', dest='reassign',
-                        help='set to read reassignment target results',
-                        default=False, required=False,
-                        action='store_true')
-    parser.add_argument('-X', '--final', dest='final',
-                        help='set to read final target results',
-                        default=False, required=False,
-                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
-    observatory = args.observatory
-    if(observatory == 'both'):
-        both = True
-        observatories = ['apo', 'lco']
-    else:
-        both = False
-        observatories = [observatory]
-    opentargets = args.opentargets
-    filler = args.filler
-    complete = args.complete
-    final = args.final
-    reassign = args.reassign
+    observatory = 'both'
 
-    if(int(opentargets) + int(filler) + int(complete) + int(reassign) + int(final) > 1):
-        print("Only one of -O, -R, -F, -K, -X can be set!")
-        sys.exit()
-
-    targets_file = sdss_path.full('rsTargets', plan=plan,
+    completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                   observatory=observatories[0])
-    if(opentargets):
-        targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
-    if(filler):
-        targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
-    if(final):
-        targets_file = targets_file.replace('rsTargets', 'final/rsTargetsFinal')
+    open_completeness_file = completeness_file.replace('rsCompleteness', 'rsCompletenessOpen')
 
-    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'EQUIV']
-    nstages = len(stages)
+    targets = fitsio.read(completeness_file)
+    open_targets = fitsio.read(open_targets_file)
 
-    targets = fitsio.read(targets_file)
+    all_targets = np.append(targets, open_targets)
+
     if(both):
         outtargets_dtype = np.dtype(targets.dtype.descr +
                                     np.dtype([('satisfied_lco', np.int32),
-                                              ('nexps_lco', np.int32),
-                                              ('nexps_srd_lco', np.int32),
-                                              ('nexps_reassign_lco', np.int32),
-                                              ('nexps_open_lco', np.int32),
-                                              ('nexps_filler_lco', np.int32),
-                                              ('nexps_complete_lco', np.int32),
-                                              ('nexps_equiv_lco', np.int32),
-                                              ('nepochs_lco', np.int32),
                                               ('assigned_lco', np.int32),
-                                              ('extra_lco', np.int32),
                                               ('covered_lco', np.int32),
                                               ('allowed_lco', np.int32),
                                               ('incadence_lco', np.int32),
                                               ('satisfied_apo', np.int32),
-                                              ('nexps_apo', np.int32),
-                                              ('nexps_srd_apo', np.int32),
-                                              ('nexps_reassign_apo', np.int32),
-                                              ('nexps_open_apo', np.int32),
-                                              ('nexps_filler_apo', np.int32),
-                                              ('nexps_complete_apo', np.int32),
-                                              ('nexps_equiv_apo', np.int32),
-                                              ('nepochs_apo', np.int32),
                                               ('assigned_apo', np.int32),
-                                              ('extra_apo', np.int32),
                                               ('covered_apo', np.int32),
                                               ('allowed_apo', np.int32),
                                               ('incadence_apo', np.int32),
                                               ('satisfied', np.int32),
-                                              ('nexps', np.int32),
-                                              ('nexps_srd', np.int32),
-                                              ('nexps_reassign', np.int32),
-                                              ('nexps_open', np.int32),
-                                              ('nexps_filler', np.int32),
-                                              ('nexps_complete', np.int32),
-                                              ('nexps_equiv', np.int32),
-                                              ('nepochs', np.int32),
                                               ('assigned', np.int32),
-                                              ('extra', np.int32),
                                               ('allowed', np.int32),
                                               ('incadence', np.int32),
                                               ('covered', np.int32)]).descr)
     else:
         outtargets_dtype = np.dtype(targets.dtype.descr +
                                     np.dtype([('satisfied', np.int32),
-                                              ('nexps', np.int32),
-                                              ('nexps_srd', np.int32),
-                                              ('nexps_reassign', np.int32),
-                                              ('nexps_open', np.int32),
-                                              ('nexps_filler', np.int32),
-                                              ('nexps_complete', np.int32),
-                                              ('nexps_equiv', np.int32),
-                                              ('nepochs', np.int32),
                                               ('assigned', np.int32),
-                                              ('extra', np.int32),
                                               ('allowed', np.int32),
                                               ('incadence', np.int32),
                                               ('covered', np.int32)]).descr)
@@ -249,10 +104,6 @@ if __name__ == '__main__':
                                             targets_covered_base)
         if(opentargets):
             targets_covered_file = targets_covered_file.replace('rsTargets', 'rsTargetsOpen')
-        if(filler):
-            targets_covered_file = targets_covered_file.replace('rsTargets', 'rsTargetsFiller')
-        if(final):
-            targets_covered_file = targets_covered_file.replace('rsTargets', 'rsTargetsFinal')
         targets_covered = fitsio.read(targets_covered_file)
         icovered = np.where(targets_covered['within_hex'] > 0)[0]
         outtargets['covered'][icovered] = outtargets['covered'][icovered] + 1
@@ -277,33 +128,12 @@ if __name__ == '__main__':
         if(opentargets):
             satisfied_file = satisfied_file.replace('rsSatisfied',
                                                     'rsSatisfiedOpen')
-        if(filler):
-            satisfied_file = satisfied_file.replace('rsSatisfied',
-                                                    'rsSatisfiedFiller')
-        if(final):
-            satisfied_file = satisfied_file.replace('rsSatisfied',
-                                                    'final/rsSatisfiedFinal')
-        if(complete):
-            satisfied_file = satisfied_file.replace('rsSatisfied',
-                                                    'rsSatisfiedComplete')
-        if(reassign):
-            satisfied_file = satisfied_file.replace('rsSatisfied',
-                                                    'rsSatisfiedReassign')
         satisfied = fitsio.read(satisfied_file)
 
         outtargets['satisfied'] = (outtargets['satisfied'] +
                                    satisfied['satisfied'])
-        outtargets['nexps'] = (outtargets['nexps'] +
-                               satisfied['nexps'])
-        for stage in stages:
-            outtargets['nexps_' + stage.lower()] = (outtargets['nexps_' + stage.lower()] +
-                                                    satisfied['nexps_' + stage.lower()])
-        outtargets['nepochs'] = (outtargets['nepochs'] +
-                                 satisfied['nepochs'])
         outtargets['assigned'] = (outtargets['assigned'] +
                                   satisfied['assigned'])
-        outtargets['extra'] = (outtargets['extra'] +
-                               satisfied['extra'])
         outtargets['allowed'] = (outtargets['allowed'] +
                                  satisfied['allowed'])
         outtargets['incadence'] = (outtargets['incadence'] +
@@ -311,30 +141,17 @@ if __name__ == '__main__':
 
         if(both):
             sname = 'satisfied_{obs}'.format(obs=obs)
-            xname = 'nexps_{obs}'.format(obs=obs)
-            ename = 'nepochs_{obs}'.format(obs=obs)
             aname = 'assigned_{obs}'.format(obs=obs)
-            xxname = 'extra_{obs}'.format(obs=obs)
             lname = 'allowed_{obs}'.format(obs=obs)
             iname = 'incadence_{obs}'.format(obs=obs)
             outtargets[sname] = (outtargets[sname] +
                                  satisfied['satisfied'])
-            outtargets[xname] = (outtargets[xname] +
-                                 satisfied['nexps'])
-            outtargets[ename] = (outtargets[ename] +
-                                 satisfied['nepochs'])
             outtargets[aname] = (outtargets[aname] +
                                  satisfied['assigned'])
-            outtargets[xxname] = (outtargets[xxname] +
-                                  satisfied['extra'])
             outtargets[lname] = (outtargets[lname] +
                                  satisfied['allowed'])
             outtargets[iname] = (outtargets[iname] +
                                  satisfied['incadence'])
-            for stage in stages:
-                xname = 'nexps_{s}_{obs}'.format(s=stage.lower(), obs=obs)
-                outtargets[xname] = (outtargets[xname] +
-                                     satisfied['nexps_' + stage.lower()])
 
     iboss = np.where((outtargets['fiberType'] == 'BOSS') &
                      (outtargets['category'] == 'science') &
@@ -368,26 +185,9 @@ if __name__ == '__main__':
 
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
-
-    stage = ''
     if(opentargets):
-        stage = 'Open'
-    if(filler):
-        stage = 'Filler'
-    if(reassign):
-        stage = 'Reassign'
-    if(complete):
-        stage = 'Complete'
-    if(final):
-        stage = 'Final'
-
-    if(stage == 'Final'):
         completeness_file = completeness_file.replace('rsCompleteness',
-                                                      'final/rsCompleteness{stage}')
-    else:
-        completeness_file = completeness_file.replace('rsCompleteness',
-                                                      'rsCompleteness{stage}')
-    completeness_file = completeness_file.format(stage=stage)
+                                                      'rsCompletenessOpen')
 
     icadence = np.where((cadences != "none") & (outtargets['category'] == 'science'))[0]
     ntargets_map, ngot_map, fgot_map = make_map(hpix=hpix[icadence],
@@ -397,8 +197,6 @@ if __name__ == '__main__':
     ntargets = len(icovered)
     nallowed = np.int32((outtargets['allowed'][icadence[icovered]] > 0).sum())
     ngot = np.int32((outtargets['satisfied'][icadence[icovered]] > 0).sum())
-    nexps = np.int32(outtargets['nexps'][icadence[icovered]].sum())
-    nepochs = np.int32(outtargets['nepochs'][icadence[icovered]].sum())
     if(ntargets > 0):
         fgot = np.float32(ngot) / np.float32(ntargets)
     else:
@@ -409,8 +207,6 @@ if __name__ == '__main__':
         ntargets_apo = len(icovered)
         nallowed_apo = np.int32((outtargets['allowed_apo'][icadence[icovered]] > 0).sum())
         ngot_apo = np.int32((outtargets['satisfied_apo'][icadence[icovered]] > 0).sum())
-        nexps_apo = np.int32(outtargets['nexps_apo'][icadence[icovered]].sum())
-        nepochs_apo = np.int32(outtargets['nepochs_apo'][icadence[icovered]].sum())
         if(ntargets_apo > 0):
             fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
         else:
@@ -419,8 +215,6 @@ if __name__ == '__main__':
         ntargets_lco = len(icovered)
         nallowed_lco = np.int32((outtargets['allowed_lco'][icadence[icovered]] > 0).sum())
         ngot_lco = np.int32((outtargets['satisfied_lco'][icadence[icovered]] > 0).sum())
-        nexps_lco = np.int32(outtargets['nexps_lco'][icadence[icovered]].sum())
-        nepochs_lco = np.int32(outtargets['nepochs_lco'][icadence[icovered]].sum())
         if(ntargets_lco > 0):
             fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
         else:
@@ -430,14 +224,10 @@ if __name__ == '__main__':
         ngot_apo = None
         nallowed_apo = None
         fgot_apo = None
-        nexps_apo = None
-        nepochs_apo = None
         ntargets_lco = None
         ngot_lco = None
         nallowed_lco = None
         fgot_lco = None
-        nexps_lco = None
-        nepochs_lco = None
 
     hdr = robostrategy.header.rsheader()
     hdr.append({'name':'NSIDE',
@@ -449,13 +239,11 @@ if __name__ == '__main__':
     hdr.append({'name':'NCARTON',
                 'value':len(unique_cartons),
                 'comment':'number of cartons'})
-    hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot, nexps, nepochs,
+    hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot,
                         ntargets_apo=ntargets_apo, ngot_apo=ngot_apo,
                         nallowed_apo=nallowed_apo, fgot_apo=fgot_apo,
-                        nexps_apo=nexps_apo, nepochs_apo=nepochs_apo,
                         ntargets_lco=ntargets_lco, ngot_lco=ngot_lco,
-                        nallowed_lco=nallowed_lco, fgot_lco=fgot_lco,
-                        nexps_lco=nexps_lco, nepochs_lco=nepochs_lco)
+                        nallowed_lco=nallowed_lco, fgot_lco=fgot_lco)
     hdr.append({'name':'NTBOSS',
                 'value':nboss,
                 'comment':'# covered unique BOSS science catalogids'})
@@ -480,18 +268,6 @@ if __name__ == '__main__':
     if(opentargets):
         subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                             'rsCompletenessOpen')
-    if(filler):
-        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                            'rsCompletenessFiller')
-    if(complete):
-        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                            'rsCompletenessComplete')
-    if(reassign):
-        subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                            'rsCompletenessReassign')
-    if(final):
-        subcompleteness_file = subcompleteness_file.replace('bycarton/rsCompleteness',
-                                                            'final/bycarton/rsCompletenessFinal')
     fitsio.write(subcompleteness_file, outtargets[icadence], header=hdr,
                  clobber=True)
     fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)
@@ -509,8 +285,6 @@ if __name__ == '__main__':
         icovered = np.where(outtargets['covered'][icadence])[0]
         ntargets = len(icovered)
         ngot = np.int32((outtargets['satisfied'][icadence[icovered]] > 0).sum())
-        nexps = np.int32(outtargets['nexps'][icadence[icovered]].sum())
-        nepochs = np.int32(outtargets['nepochs'][icadence[icovered]].sum())
         nallowed = np.int32((outtargets['allowed'][icadence[icovered]] > 0).sum())
         if(ntargets > 0):
             fgot = np.float32(ngot) / np.float32(ntargets)
@@ -522,8 +296,6 @@ if __name__ == '__main__':
             ntargets_apo = len(icovered)
             nallowed_apo = np.int32((outtargets['allowed_apo'][icadence[icovered]] > 0).sum())
             ngot_apo = np.int32((outtargets['satisfied_apo'][icadence[icovered]] > 0).sum())
-            nexps_apo = np.int32(outtargets['nexps_apo'][icadence[icovered]].sum())
-            nepochs_apo = np.int32(outtargets['nepochs_apo'][icadence[icovered]].sum())
             if(ntargets_apo > 0):
                 fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
             else:
@@ -532,8 +304,6 @@ if __name__ == '__main__':
             ntargets_lco = len(icovered)
             nallowed_lco = np.int32((outtargets['allowed_lco'][icadence[icovered]] > 0).sum())
             ngot_lco = np.int32((outtargets['satisfied_lco'][icadence[icovered]] > 0).sum())
-            nexps_lco = np.int32(outtargets['nexps_lco'][icadence[icovered]].sum())
-            nepochs_lco = np.int32(outtargets['nepochs_lco'][icadence[icovered]].sum())
             if(ntargets_lco > 0):
                 fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
             else:
@@ -543,13 +313,11 @@ if __name__ == '__main__':
         hdr.append({'name': 'CADENCE',
                     'value': unique_base_cadence,
                     'comment': 'cadence group in this HDU'})
-        hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot, nexps, nepochs,
+        hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot,
                             ntargets_apo=ntargets_apo, ngot_apo=ngot_apo,
                             nallowed_apo=nallowed_apo, fgot_apo=fgot_apo,
-                            nexps_apo=nexps_apo, nepochs_apo=nepochs_apo,
                             ntargets_lco=ntargets_lco, ngot_lco=ngot_lco,
-                            nallowed_lco=nallowed_lco, fgot_lco=fgot_lco,
-                            nexps_lco=nexps_lco, nepochs_lco=nepochs_lco)
+                            nallowed_lco=nallowed_lco, fgot_lco=fgot_lco)
 
         fitsio.write(completeness_file, ntargets_map, header=hdr,
                      clobber=False)
@@ -568,8 +336,6 @@ if __name__ == '__main__':
         ntargets = len(icovered)
         nallowed = np.int32((outtargets['allowed'][icarton[icovered]] > 0).sum())
         ngot = np.int32((outtargets['satisfied'][icarton[icovered]] > 0).sum())
-        nexps = np.int32(outtargets['nexps'][icarton[icovered]].sum())
-        nepochs = np.int32(outtargets['nepochs'][icarton[icovered]].sum())
         if(ntargets > 0):
             fgot = np.float32(ngot) / np.float32(ntargets)
         else:
@@ -580,8 +346,6 @@ if __name__ == '__main__':
             ntargets_apo = len(icovered)
             ngot_apo = np.int32((outtargets['satisfied_apo'][icarton[icovered]] > 0).sum())
             nallowed_apo = np.int32((outtargets['allowed_apo'][icarton[icovered]] > 0).sum())
-            nexps_apo = np.int32(outtargets['nexps_apo'][icarton[icovered]].sum())
-            nepochs_apo = np.int32(outtargets['nepochs_apo'][icarton[icovered]].sum())
             if(ntargets_apo > 0):
                 fgot_apo = np.float32(ngot_apo) / np.float32(ntargets_apo)
             else:
@@ -590,8 +354,6 @@ if __name__ == '__main__':
             ntargets_lco = len(icovered)
             ngot_lco = np.int32((outtargets['satisfied_lco'][icarton[icovered]] > 0).sum())
             nallowed_lco = np.int32((outtargets['allowed_lco'][icarton[icovered]] > 0).sum())
-            nexps_lco = np.int32(outtargets['nexps_lco'][icarton[icovered]].sum())
-            nepochs_lco = np.int32(outtargets['nepochs_lco'][icarton[icovered]].sum())
             if(ntargets_lco > 0):
                 fgot_lco = np.float32(ngot_lco) / np.float32(ntargets_lco)
             else:
@@ -601,13 +363,11 @@ if __name__ == '__main__':
         hdr.append({'name': 'CARTON',
                     'value': unique_carton,
                     'comment': 'carton in this HDU'})
-        hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot, nexps, nepochs,
+        hdr = header_counts(hdr, ntargets, ngot, nallowed, fgot,
                             ntargets_apo=ntargets_apo, ngot_apo=ngot_apo,
                             nallowed_apo=nallowed_apo, fgot_apo=fgot_apo,
-                            nexps_apo=nexps_apo, nepochs_apo=nepochs_apo,
                             ntargets_lco=ntargets_lco, ngot_lco=ngot_lco,
-                            nallowed_lco=nallowed_lco, fgot_lco=fgot_lco,
-                            nexps_lco=nexps_lco, nepochs_lco=nepochs_lco)
+                            nallowed_lco=nallowed_lco, fgot_lco=fgot_lco)
 
         fitsio.write(completeness_file, ntargets_map, header=hdr,
                      clobber=False)
@@ -621,18 +381,6 @@ if __name__ == '__main__':
         if(opentargets):
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessOpen')
-        if(filler):
-            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                                'rsCompletenessFiller')
-        if(final):
-            subcompleteness_file = subcompleteness_file.replace('bycarton/rsCompleteness',
-                                                                'final/bycarton/rsCompletenessFinal')
-        if(complete):
-            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                                'rsCompletenessComplete')
-        if(reassign):
-            subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
-                                                                'rsCompletenessReassign')
         fitsio.write(subcompleteness_file, outtargets[icarton], header=hdr,
                      clobber=True)
         fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)

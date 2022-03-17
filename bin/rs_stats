@@ -43,12 +43,17 @@ if __name__ == '__main__':
                         help='set to read reassignment target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-K', '--complete', dest='complete',
+                        help='set to read complete target results',
+                        default=False, required=False,
+                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     opentargets = args.opentargets
     filler = args.filler
     reassign = args.reassign
+    complete = args.complete
 
     description_file = os.path.join(os.getenv('RSCONFIG_DIR'), 'etc',
                                     'carton_description.cfg')
@@ -74,6 +79,12 @@ if __name__ == '__main__':
     elif(filler):
         html_file = os.path.join(html_path, 'rs-filler-stats.html')
         stats_file = os.path.join(html_path, 'rsStatsFiller-{p}.fits'.format(p=plan))
+    elif(reassign):
+        html_file = os.path.join(html_path, 'rs-reassign-stats.html')
+        stats_file = os.path.join(html_path, 'rsStatsReassign-{p}.fits'.format(p=plan))
+    elif(complete):
+        html_file = os.path.join(html_path, 'rs-complete-stats.html')
+        stats_file = os.path.join(html_path, 'rsStatsComplete-{p}.fits'.format(p=plan))
     else:
         html_file = os.path.join(html_path, 'rs-stats.html')
         stats_file = os.path.join(html_path, 'rsStats-{p}.fits'.format(p=plan))
@@ -102,6 +113,9 @@ if __name__ == '__main__':
     if(reassign):
         completeness_file = completeness_file.replace('rsCompleteness',
                                                       'rsCompletenessReassign')
+    if(complete):
+        completeness_file = completeness_file.replace('rsCompleteness',
+                                                      'rsCompletenessComplete')
 
     completeness_hdr = fitsio.read_header(completeness_file, ext=1)
 

@@ -83,7 +83,7 @@ if __name__ == '__main__':
     if(reassign):
         base = 'rsSparesReassign'
     if(final):
-        base = 'rsSparesFinal'
+        base = 'final/rsSparesFinal'
     infile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     spares = fitsio.read(infile)
 

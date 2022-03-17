@@ -36,14 +36,13 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 coordinated_dict = None
 noclobber = False
+special_calibration = []
 
 def assign_field(indx):
     fieldid = allocate.field_array['fieldid'][indx]
     if((fieldid % 1) == 0):
         print(fieldid, flush=True)
 
-    field_cadence = allocate.field_array['cadence'][indx].strip()
-    
     print("Reading target file", flush=True)
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
@@ -66,8 +65,17 @@ def assign_field(indx):
                     bright_neighbors=True)
 
     if(f.field_cadence is not None):
+
+        # For special calibration methods running at beginning
+        for sc in special_calibration:
+            if(hasattr(f, sc)):
+                print("fieldid {fid}: Running {sc}".format(fid=fieldid, sc=sc), flush=True)
+                scfunc = getattr(f, sc)
+                scfunc(stage='srd')
+
         print("Assign targets", flush=True)
-        f.assign_science_and_calibs(coordinated_targets=coordinated_dict)
+        f.assign_science_and_calibs(coordinated_targets=coordinated_dict,
+                                    stage='srd')
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
@@ -176,6 +184,10 @@ if __name__ == '__main__':
     nomultiprocess = args.nomultiprocess
 
     rsParams = params.RobostrategyParams(plan=plan)
+
+    if('Assignment' in rsParams.cfg):
+        if('special_calibration' in rsParams.cfg['Assignment']):
+            special_calibration = rsParams.cfg['Assignment']['special_calibration'].split()
 
     collisionBuffer = 2.
     if('Assignment' in rsParams.cfg):

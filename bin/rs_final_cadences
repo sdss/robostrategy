@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_final_cadences
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import pickle
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.params as params
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final allocation file, splitting mixed cadences')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+
+    observatories = ['apo', 'lco']
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    version = None
+    if('CadenceVersions' in rsParams.cfg):
+        if('version' in rsParams.cfg['CadenceVersions']):
+            version = rsParams.cfg.get('CadenceVersions', 'version')
+
+    for observatory in observatories:
+        cadencelist = cadence.CadenceList(skybrightness_only=True)
+        cadencelist.reset()
+        cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                       observatory=observatory)
+        cadencelist.fromfits(filename=cadences_file, unpickle=True)
+
+        keylist = [c for c in cadencelist.cadences.keys()]
+        for c in keylist:
+            cadencelist.cadences[c + '_' + version] = cadencelist.cadences.pop(c)
+
+        keylist = [c for c in cadencelist._cadence_consistency.keys()]
+        for k in keylist:
+            knew = (k[0] + '_' + version, k[1] + '_' + version,
+                    k[2], k[3], k[4], k[5])
+            cadencelist._cadence_consistency[knew] = cadencelist._cadence_consistency.pop(k)
+
+        cadences_array = cadencelist.toarray()
+
+        cadences_final_file = cadences_file.replace('rsCadences',
+                                                    'final/rsCadencesFinal')
+        fitsio.write(cadences_final_file, cadences_array, clobber=True)
+
+
+        pkl_file = cadences_final_file + ".pkl"
+        fp = open(pkl_file, 'wb')
+        pickle.dump(cadencelist._cadence_consistency, fp)
+        fp.close()

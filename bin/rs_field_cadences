@@ -109,7 +109,8 @@ if __name__ == '__main__':
                                            fieldid=fieldid)
         f = fitsio.read(field_target_file)
 
-        target_cadences = np.unique(f['cadence'])
+        iwithin = np.where(f['within'])[0]
+        target_cadences = np.unique(f['cadence'][iwithin])
 
         cadences = np.array(rsParams.cfg['Fields'][fieldtype].split())
         if('FromTargets' in cadences):
@@ -125,7 +126,7 @@ if __name__ == '__main__':
             field_cadences = ['mixed2_single_n2x1']
 
         if(forceTessOB):
-            if('mwm_tess_ob' in f['carton']):
+            if('manual_mwm_tess_ob' in f['carton'][iwithin]):
                 if('bright_8x4' in field_cadences):
                     field_cadences = ['bright_8x4']
                 if('bright_8x2' in field_cadences):

@@ -3,7 +3,7 @@
 #
 # @Author: Michael R. Blanton
 # @Date: Sept 26, 2018
-# @Filename: rs_assess
+# @Filename: rs_check_satisfied
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -16,12 +16,46 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import multiprocessing
+import numpy as np
+import fitsio
 import roboscheduler.cadence as cadence
 import robostrategy.field as field
-import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def checkem(fieldid):
+    field_target_file = sdss_path.full('rsFieldAssignments',
+                                       plan=plan, observatory=observatory,
+                                       fieldid=fieldid)
+    if(opentargets):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsOpen')
+    if(filler):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsFiller')
+    if(reassign):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldReassignments')
+    if(complete):
+        field_target_file = field_target_file.replace('rsFieldAssignments',
+                                                      'rsFieldAssignmentsComplete')
+    if(final):
+        field_target_file = field_target_file.replace('targets/rsFieldAssignments',
+                                                      'final/rsFieldAssignmentsFinal')
+    f = field.Field(filename=field_target_file)
+    targets = fitsio.read(field_target_file, ext='TARGET')
+    assignments = fitsio.read(field_target_file, ext='ASSIGN')
+
+    nprob = f.validate()
+    print("fieldid {fid}: Number of validation problems: {nprob}".format(fid=fieldid, nprob=nprob), flush=True)
+
+    ibad = np.where((assignments['satisfied'] != f.assignments['satisfied']) &
+                    (targets['category'] == 'science'))[0]
+    print("fieldid {fid}: Number of disagreements in satisfied: {n}".format(fid=fieldid, n=len(ibad)), flush=True)
+    return
 
 
 if __name__ == '__main__':
@@ -37,7 +71,13 @@ if __name__ == '__main__':
                         choices=['apo', 'lco'], required=True)
     parser.add_argument('-f', '--fieldid', dest='fieldid',
                         type=int, help='fieldid number',
-                        required=True)
+                        required=False, default=None)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=int, help='starting fieldid number',
+                        required=False, default=None)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=int, help='end fieldid number',
+                        required=False, default=None)
     parser.add_argument('-O', '--open', dest='opentargets',
                         help='set to read open target results',
                         default=False, required=False,
@@ -58,10 +98,6 @@ if __name__ == '__main__':
                         help='set to read final results',
                         default=False, required=False,
                         action='store_true')
-    parser.add_argument('-G', '--no-grids', dest='nogrids',
-                        help='read the field without creating grids',
-                        default=False, required=False,
-                        action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -72,47 +108,23 @@ if __name__ == '__main__':
     final = args.final
     reassign = args.reassign
     complete = args.complete
-    nogrids = args.nogrids
-
-    rsParams = params.RobostrategyParams(plan=plan)
-
-    cadence_version = None
-    if('CadenceVersions' in rsParams.cfg):
-        if('version' in rsParams.cfg['CadenceVersions']):
-            cadence_version = rsParams.cfg.get('CadenceVersions', 'version')
+    start = args.start
+    end = args.end
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    if(final):
-        cadences_file = cadences_file.replace('rsCadences',
-                                              'final/rsCadencesFinal')
     cadencelist.fromfits(filename=cadences_file, unpickle=False)
 
-    field_target_file = sdss_path.full('rsFieldAssignments',
-                                       plan=plan, observatory=observatory,
-                                       fieldid=fieldid)
-    if(opentargets):
-        field_target_file = field_target_file.replace('rsFieldAssignments',
-                                                      'rsFieldAssignmentsOpen')
-    if(filler):
-        field_target_file = field_target_file.replace('rsFieldAssignments',
-                                                      'rsFieldAssignmentsFiller')
-    if(reassign):
-        field_target_file = field_target_file.replace('rsFieldAssignments',
-                                                      'rsFieldReassignments')
-    if(complete):
-        field_target_file = field_target_file.replace('rsFieldAssignments',
-                                                      'rsFieldAssignmentsComplete')
-    if(final):
-        field_target_file = field_target_file.replace('targets/rsFieldAssignments',
-                                                      'final/rsFieldAssignmentsFinal')
+    if(fieldid is not None):
+        start = fieldid
+        end = fieldid
 
-    if(final):
-        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version, allgrids=nogrids is False)
-    else:
-        f = field.Field(filename=field_target_file, allgrids=nogrids is False)
+    if(start is None):
+        start = 1
+    if(end is None):
+        end = 1
 
-    print(f.assess())
-    nprob = f.validate()
-    print("Number of validation problems: {nprob}".format(nprob=nprob))
+    fieldids = range(start, end + 1)
+    with multiprocessing.Pool() as pool:
+        pool.map(checkem, fieldids)
