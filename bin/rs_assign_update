@@ -69,7 +69,8 @@ def assign_update(indx):
         return
 
     rmcadences = ['dark_174x8_v1', 'dark_100x8_v1']
-    if(f.field_cadence.name in rmcadences):
+    field_cadence_name = f.field_cadence.name
+    if(field_cadence_name in rmcadences):
         print("fieldid {fid}: Not reassigning RM field, just copying".format(fid=fieldid), flush=True)
     else:
         print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
