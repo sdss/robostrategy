@@ -121,7 +121,7 @@ def read_cadences(plan=None, observatory=None, unpickle=False,
 
 def read_field(plan=None, observatory=None, fieldid=None,
                stage='', targets=False, speedy=False,
-               verbose=False, unpickle=False):
+               verbose=False, unpickle=False, oldmag=False):
     """Convenience function to read a field object
 
     Parameters
@@ -135,6 +135,9 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     fieldid : int
         field id
+
+    oldmag : bool
+        if True, read in file with [N, 7] magnitude array
 
     stage : str
         stage of assignments ('', 'Open', 'Filler', 'Reassign', 'Complete', 'Final')
@@ -196,10 +199,10 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     if(speedy):
         f = FieldSpeedy(filename=field_file, fieldid=fieldid,
-                        verbose=verbose)
+                        verbose=verbose, oldmag=oldmag)
     else:
         f = Field(filename=field_file, fieldid=fieldid, verbose=verbose,
-                  untrim_cadence_version=untrim_cadence_version)
+                  untrim_cadence_version=untrim_cadence_version, oldmag=oldmag)
 
     return(f)
 
@@ -538,12 +541,13 @@ class Field(object):
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
-                 noassign=False):
+                 noassign=False, oldmag=False):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
         self.stage = None
         self.verbose = verbose
+        self.oldmag = oldmag
         self.veryverbose = veryverbose
         self._trim_cadence_version = trim_cadence_version  # trims field cadence
         self._untrim_cadence_version = untrim_cadence_version  # adds version to target cadence
@@ -1906,6 +1910,11 @@ class Field(object):
         targets = np.zeros(len(target_array), dtype=targets_dtype)
         for n in targets.dtype.names:
             if(n in target_array.dtype.names):
+                if(self.oldmag & (n == 'magnitude')):
+                    magmap = [0, 1, 2, 4, 5, 6, 8]
+                    for imag, imagmap in enumerate(magmap):
+                        targets[n][:, imagmap] = target_array[n][:, imag]
+                    continue
                 targets[n] = target_array[n]
 
         if(self._untrim_cadence_version is not None):
