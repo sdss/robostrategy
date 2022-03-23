@@ -958,6 +958,9 @@ def test_assign_cp_model():
 
     f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
                     field_cadence='single_1x1')
+    for c in f.required_calibrations:
+        f.required_calibrations[c][:] = 0
+        f.achievable_calibrations[c][:] = 0
     ntot = 400
     targets(f, nt=ntot, seed=101)
 
