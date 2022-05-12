@@ -34,6 +34,8 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
 special_calibration = []
+standard_apogee_nperzone_min = -1
+
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -63,6 +65,9 @@ def assign_update(indx):
                                 untrim_cadence_version=cadence_version,
                                 noassign=True)
     f.fieldid = fieldid
+
+    icsa = list(f.calibration_order).index('standard_apogee')
+    f.required_calibrations_per_zone[icsa + 1] = standard_apogee_nperzone_min
 
     if(f.field_cadence is None):
         print("fieldid {fid}: no field cadence to assign! Skipping".format(fid=fieldid), flush=True)
@@ -152,6 +157,15 @@ if __name__ == '__main__':
     if('CadenceVersions' in rsParams.cfg):
         if('version' in rsParams.cfg['CadenceVersions']):
             cadence_version = rsParams.cfg.get('CadenceVersions', 'version')
+
+    if('Assignment' in rsParams.cfg):
+        if('standard_apogee_nperzone_min' in rsParams.cfg['Assignment']):
+            standard_apogee_nperzone_min = np.int32(rsParams.cfg.get('Assignment',
+                                                                     'standard_apogee_nperzone_min'))
+            print("APOGEE standards set to {n} per zone minimum".format(n=standard_apogee_nperzone_min), flush=True)
+        else:
+            print("No zone requirements for APOGEE standards", flush=True)
+            standard_apogee_nperzone_min = -1
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
