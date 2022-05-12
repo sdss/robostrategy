@@ -35,7 +35,7 @@ def apogee_standard_goodness(magnitude=None):
     j = magnitude[..., 7]
     h = magnitude[..., 8]
     k = magnitude[..., 9]
-    goodness = - 40 * ((j - k) - 0.1) - 3. * (h - 11.)
+    goodness = - 13.33 * ((j - k) - 0.25) - (h - 9.)
     bad = ((j <= 0) | (j > 20.) |
            (h <= 0) | (h > 20.) |
            (k <= 0) | (k > 20.))
