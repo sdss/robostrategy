@@ -4417,7 +4417,8 @@ class Field(object):
         return
 
     def _select_calibs(self, mask):
-        return(self.irancalib[np.where(mask[self.irancalib])[0]])
+        return(self.irancalib[np.where((mask[self.irancalib] == True) &
+                                       (self._is_good_calibration[self.irancalib] == True))[0]])
 
     def assign_calibrations(self, stage='srd'):
         """Assign all calibration targets
@@ -4464,61 +4465,164 @@ class Field(object):
         self.set_stage(stage=None)
         return
 
-    def set_standard_apogee_goodness(self, absolute_good=-999.,
-                                     ngoodest=5):
-        """Set whether standard_apogee targets are good
+    def set_standard_apogee_goodness(self, nperzone_min=3):
+        """Set standard_apogee goodness to ensure reasonable flexibility
 
         Parameters
         ----------
 
-        absolute_good : np.float32
-            if not -999., use it as an absolute threshold for goodness
+        nperzone : int
+            minimum achievable number of standard apogee targets per zone (default 3)
+
+        Return:
+        ------
+
+        badzones : ndarray of bool
+            for each zones, set True if ok, set False if not enough targets to guarantee nperzone_min
 
         Notes
         -----
 
-        Either just flags whether the goodness is greater than the absolute_good
-        (if not -999) or takes the "ngoodest" in each zone.
+        There are 8 zones, and it had better be that the number of zones times the
+        minimum number of per zone is greater than the required number. 
 
-        In either case, this sets up the per-zone conditions to only count "good"
-        targets.
 """
+        zones = np.arange(robostrategy.standards.nzone, dtype=int)
+
+        if(self.nocalib):
+            return
+
+        if(self.verbose):
+            print("fieldid {fid}: Determining goodness thresholds for standard_apogee".format(fid=self.fieldid), flush=True)
+
+        # Find the APOGEE standards, set all to good
+        icalib = np.where(self.targets['category'] == 'standard_apogee')[0]
+
+        if(self.verbose):
+            print("fieldid {fid}: {a} standard_apogee targets total".format(fid=self.fieldid, a=len(icalib)))
+
+        # First just check if we shouldn't have any threholds, because
+        # all zones are sparse. If so, give up and return
+        self._is_good_calibration[icalib] = True
+        achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
+        badzones = np.zeros(len(zones), dtype=bool)
+        for zone in zones:
+            if(achievable_zones['standard_apogee'][zone] < nperzone_min):
+                if(self.verbose):
+                    print("fieldid {fid}: zone {z} has only {a} standard_apogee achievable".format(fid=self.fieldid, z=zone, a=achievable_zones['standard_apogee'][zone]))
+                badzones[zone] = True
+        if(badzones.min() == True):
+            return(badzones)
+
+        # Now set default goodness threshold per zone; we will lower thresholds 
+        # in each zone until we can reach target. At the end of this process,
+        # _is_good_calibration will be set according to a zone-dependent criterion.
+        goodness_threshold = np.zeros(robostrategy.standards.nzone, dtype=np.float32)
+        goodness = robostrategy.standards.apogee_standard_goodness(self.targets['magnitude'][icalib, :])
+        finished = False
+        while(finished is False):
+            print(goodness_threshold)
+
+            self._is_good_calibration[icalib] = goodness > goodness_threshold[self.targets['zone'][icalib]]
+            achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
+
+            print(achievable['standard_apogee'])
+            print(achievable_zones['standard_apogee'])
+
+            # Did this work? If so we are done
+            finished = True
+            for zone in zones:
+                if(achievable_zones['standard_apogee'][zone] < nperzone_min):
+                    finished = False
+            if(finished):
+                break
+
+            # Or else let us lower thresholds of goodness in under performing zones
+            # If we have run out of targets in all zones ... we are finished.
+            finished = True
+            for zone in zones:
+                izone = np.where(self.targets['zone'][icalib] == zone)[0]
+                if(len(izone) == 0):
+                    continue
+                izone = izone[np.flip(np.argsort(goodness[izone]))]
+                cgoodness = goodness[izone]
+                ilow = np.where(cgoodness > goodness_threshold[zone])[0]
+                print(len(ilow))
+                if(achievable_zones['standard_apogee'][zone] < nperzone_min):
+                    dlow = nperzone_min - achievable_zones['standard_apogee'][zone]
+                    ilow = np.where(cgoodness > goodness_threshold[zone])[0]
+                    if(len(ilow) == 0):
+                        ilow = 0
+                    else:
+                        ilow = ilow.max()
+                    iupdate = ilow + np.int32(np.floor(dlow * 1.5))
+                    if(iupdate > len(izone) - 1):
+                        iupdate = len(izone) - 1
+                    else:
+                        finished = False
+                    goodness_threshold[zone] = cgoodness[iupdate] - 1e-6
+
+            print(goodness_threshold)
+            print(finished)
+
+        return(badzones)
+
+    def force_standard_apogee(self, badzones=None, stage='srd'):
+        """Force standard apogee targets in bad zones
+
+        Parameters
+        ----------
+
+        badzones : ndarray of bool
+            zones to force
+
+        stage : str
+            assignment stage (default 'srd')
+"""
+
         if(self.nocalib):
             return
 
         self.set_stage(stage=stage)
 
+        ibadzones = np.where(badzones)[0]
+
+        if(len(ibadzones) == 0):
+            if(self.verbose):
+                print("fieldid {fid}: No bad zones to force standard_apogee in".format(fid=self.fieldid), flush=True)
+            return
+            
         if(self.verbose):
-            print("fieldid {fid}: Assigning standard_apogee calibrations".format(fid=self.fieldid), flush=True)
-        
-        ias = np.where(self.targets['category'] == 'standard_apogee')[0]
-        goodness = robostrategy.standards.apogee_standard_goodness(self.targets['magnitude'][ias, :])
+            print("fieldid {fid}: Forcing standard_apogee in {n} bad zones".format(fid=self.fieldid, n=len(ibadzones)), flush=True)
 
-        if(absolute_good > -999.):
-            # If absolute_good is set, indicate only good calibration targets 
-            # are above the absolute thresholds
-            igood = np.where(goodness > absolute_good)[0]
-            self._is_good_calibration[ias] = False
-            self._is_good_calibration[ias[igood]] = True
-        else:
-            # Otherwise pick the ngoodest best in each zone
-            self._is_good_calibrations[ias] = False
-            for zone in np.arange(robostrategy.standards.nzone, dtype=int):
-                iz = np.where(self.targets['zone'][ias] == zone)[0]
-                if((len(iz) > 0) & (len(iz) <= ngoodest)):
-                   isort = np.flip(np.argsort(goodness[iz]))
-                   igoodest = iz[isort]
-                elif(len(iz) > ngoodest):
-                   isort = np.flip(np.argsort(goodness[iz]))
-                   igoodest = iz[isort[0:ngoodest]]
-                else:
-                   igoodest = np.zeros(0, dtype=int)
-                self._is_good_calibrations[ias[igoodest]] = True
-        
-        rsids = self.targets['rsid'][ias[isort]]
-        goodness = goodness[isort]
-        itarget = ias[isort]
+        ic = list(self.calibration_order).index('standard_apogee')
 
+        for zone in ibadzones:
+
+            # Find the APOGEE standards, sort by decreasing goodness, and 
+            # assign as FIXED until there are enough
+            icalib = np.where((self.targets['category'] == 'standard_apogee') &
+                              (self.targets['zone'] == zone))[0]
+            self._is_good_calibration[icalib] = True
+            goodness = robostrategy.standards.apogee_standard_goodness(self.targets['magnitude'][icalib, :])
+            isort = icalib[np.flip(np.argsort(goodness))]
+            rsids = self.targets['rsid'][isort]
+            for rsid in rsids:
+                iexps = np.where(self.calibrations_per_zone[ic + 1, :, zone] <
+                                 self.required_calibrations_per_zone[ic + 1])[0]
+                if(len(iexps) > 0):
+                    self.assign_exposures(rsid=rsid, iexps=iexps, check_spare=False,
+                                          reset_satisfied=False, reset_has_spare=False,
+                                          set_fixed=True)
+
+            self._set_satisfied(rsids=rsids)
+            self._set_count(reset_equiv=False)
+            self._set_has_spare_calib()
+
+        if(self.verbose):
+            print("fieldid {fid}:   (done forcing standard_apogee)".format(fid=self.fieldid), flush=True)
+
+        self.set_stage(stage=None)
         return
 
     def assign_science(self, stage='srd'):
@@ -4657,7 +4761,7 @@ class Field(object):
         self.set_stage(stage=None)
         return
 
-    def determine_achievable(self, iexp=None, ok=None):
+    def determine_achievable(self, iexp=None, ok=None, limit=True):
         """Determine achievable number of calibrations for an exposure
 
         Parameters
@@ -4669,11 +4773,17 @@ class Field(object):
         ok : ndarray of bool
             for each target, is it ok to include?
 
+        limit : bool
+            if set, limit to required number (default True)
+
         Returns
         -------
 
         achievable : dict with ints
             for each calibration category, number achievable
+
+        achievable_zones : dict with ndarrys of ints
+            for each calibration category, number achievable in each zone
         
         Notes
         -----
@@ -4683,28 +4793,27 @@ class Field(object):
         if(ok is None):
             ok = True
 
-        assigned_rsids = self._assign_temporary_calibs(ok=ok,
-                                                       iexps=np.array([iexp],
-                                                                      dtype=int))
+        self._assign_temporary_calibs(ok=ok, iexps=np.array([iexp], dtype=int))
 
         achievable = dict()
         achievable_zones = dict()
         for ic, c in enumerate(self.calibration_order):
-            if(self.calibrations[c][iexp] <
-               self.required_calibrations[c][iexp]):
+            if((self.calibrations[c][iexp] <
+                self.required_calibrations[c][iexp]) |
+               (limit == False)):
                 achievable[c] = self.calibrations[c][iexp]
             else:
                 achievable[c] = self.required_calibrations[c][iexp]
             achievable_zones[c] = np.zeros(robostrategy.standards.nzone, dtype=int)
             for zone in np.arange(robostrategy.standards.nzone, dtype=int):
-                if(self.calibrations_per_zone[ic + 1, iexp, zone] < 
-                   self.required_calibrations_per_zone[ic + 1]):
+                if((self.calibrations_per_zone[ic + 1, iexp, zone] < 
+                    self.required_calibrations_per_zone[ic + 1]) |
+                   (limit == False)):
                     achievable_zones[c][zone] = self.calibrations_per_zone[ic + 1, iexp, zone]
                 else:
                     achievable_zones[c][zone] = self.required_calibrations_per_zone[ic + 1]
 
-        for rsid in assigned_rsids:
-            self.unassign_exposure(rsid=rsid, iexp=iexp, respect_fixed=True)
+        self._unassign_temporary_calibs()
 
         return(achievable, achievable_zones)
 
@@ -4749,6 +4858,12 @@ class Field(object):
                         self.set_flag(rsid=rsid,
                                       flagname='ALREADY_ASSIGNED')
 
+        # Set goodness threhold of standard_apogee targets
+        ic_standard_apogee = list(self.calibration_order).index('standard_apogee')
+        if(self.required_calibrations_per_zone[ic_standard_apogee + 1] > 0):
+            nper = self.required_calibrations_per_zone[ic_standard_apogee + 1]
+            badzones = self.set_standard_apogee_goodness(nperzone_min=nper * 2)
+
         # Assign calibration to one exposure to determine achievable
         # requirements and then unassign
         if(self.verbose):
@@ -4768,7 +4883,10 @@ class Field(object):
             for ic, c in enumerate(self.calibration_order):
                 for iexp in iexpall:
                     self.achievable_calibrations_per_zone[ic + 1, iexp, :] = achievable_zones[c]
-            
+
+        # Fix standard_apogee targets where necessary
+        if(self.required_calibrations_per_zone[ic_standard_apogee + 1] > 0):
+            self.force_standard_apogee(badzones)
 
         if(self.verbose):
             print("fieldid {fid}: Unassigning calibrations (except fixed ones)".format(fid=self.fieldid),
@@ -4989,6 +5107,13 @@ class Field(object):
         """Unassign temporary calibrations unless their assignment is fixed for a category and exposure"""
         if(self.verbose):
             print("fieldid {fid}: Unassigning temporary calibs".format(fid=self.fieldid), flush=True)
+
+        if(assigned_exposure_calib == None):
+            assigned_exposure_calib = collections.OrderedDict()
+            for c in self.calibration_order:
+                assigned_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
+                                                      dtype=bool)
+
         for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
             for c in self.calibration_order:
                 if(assigned_exposure_calib[c][iexp] == False):
@@ -5126,7 +5251,8 @@ class Field(object):
     def complete_assigned(self):
         """Complete any available exposures of any assigned science targets"""
 
-        print("fieldid {fid}: Complete any assigned targets across all exposures".format(fid=self.fieldid), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}: Complete any assigned targets across all exposures".format(fid=self.fieldid), flush=True)
 
         # For all science targets observed in that epoch, go through 
         # them in priority order and see if you can assign them
@@ -5152,17 +5278,19 @@ class Field(object):
                     ntargets_added = ntargets_added + 1
                     nexposures_added = nexposures_added + ndone
 
-        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
-        
+        if(self.verbose):
+            print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
+            print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+            print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+            
         self.decollide_unassigned()
         return
 
     def complete_unassigned(self):
         """Complete any available exposures of any unassigned science targets"""
 
-        print("fieldid {fid}: Complete any unassigned targets".format(fid=self.fieldid), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}: Complete any unassigned targets".format(fid=self.fieldid), flush=True)
 
         # Try any unassigned targets, and assign them whatever can be 
         # assigned
@@ -5188,8 +5316,9 @@ class Field(object):
                 ntargets_added = ntargets_added + 1
                 nexposures_added = nexposures_added + ndone
 
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+            print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
         self.decollide_unassigned()
         return
 
