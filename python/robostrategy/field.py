@@ -2968,8 +2968,11 @@ class Field(object):
             self._robotnexp_max[robotindx, epoch] = self._robotnexp_max[robotindx, epoch] - 1
         self.assignments['assigned'][itarget] = 1
 
-        if((self.stage is not None) & (set_expflag)):
-            self.set_expflag(rsid=rsid, iexp=iexp, flagname=self.stage.upper())
+        if(set_expflag):
+            if(self.stage is None):
+                self.set_expflag(rsid=rsid, iexp=iexp, flagname='OTHER')
+            else:
+                self.set_expflag(rsid=rsid, iexp=iexp, flagname=self.stage.upper())
 
         if(set_fixed):
             self.set_expflag(rsid=rsid, iexp=iexp, flagname='FIXED')
@@ -3004,7 +3007,7 @@ class Field(object):
 
     def assign_exposures(self, rsid=None, iexps=None, check_spare=True,
                          reset_satisfied=True, reset_has_spare=True,
-                         set_fixed=False):
+                         set_fixed=False, set_expflag=True):
         """Assign an rsid to particular exposures
 
         Parameters
@@ -3029,6 +3032,9 @@ class Field(object):
 
         check_spare : bool
             if True, checks whether spare calibrations can be bumped (default True)
+
+        set_expflag : bool
+            if True, set expflag (default True)
 
         Returns
         -------
@@ -3060,7 +3066,8 @@ class Field(object):
                                            reset_count=False,
                                            reset_satisfied=False,
                                            reset_has_spare=False,
-                                           set_fixed=set_fixed)
+                                           set_fixed=set_fixed,
+                                           set_expflag=set_expflag)
                 iorig = np.where(iexps == iexp)[0]
                 done[iorig] = True
 
@@ -4567,7 +4574,7 @@ class Field(object):
 
         return(badzones)
 
-    def force_standard_apogee(self, badzones=None, stage='srd'):
+    def force_standard_apogee(self, badzones=None):
         """Force standard apogee targets in bad zones
 
         Parameters
@@ -4582,8 +4589,6 @@ class Field(object):
 
         if(self.nocalib):
             return
-
-        self.set_stage(stage=stage)
 
         ibadzones = np.where(badzones)[0]
 
@@ -4622,7 +4627,6 @@ class Field(object):
         if(self.verbose):
             print("fieldid {fid}:   (done forcing standard_apogee)".format(fid=self.fieldid), flush=True)
 
-        self.set_stage(stage=None)
         return
 
     def assign_science(self, stage='srd'):
