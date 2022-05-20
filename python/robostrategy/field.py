@@ -1035,18 +1035,19 @@ class Field(object):
                                           'default_designmodes.fits')
             self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
 
-        nbs = 0
-        while('bs{n}'.format(n=nbs) in f.hdu_map):
-            nbs = nbs + 1
-        for ibs in range(nbs):
-            key = 'BS{ibs}'.format(ibs=ibs)
-            bshdr = f[key].read_header()
-            bs = f[key].read()
-            design_mode = bshdr['DESMODE']
-            fiberType = bshdr['FIBERTY']
-            self.set_bright_stars(design_mode=design_mode,
-                                  fiberType=fiberType,
-                                  bright_stars=bs)
+        if(self.bright_neighbors):
+            nbs = 0
+            while('bs{n}'.format(n=nbs) in f.hdu_map):
+                nbs = nbs + 1
+                for ibs in range(nbs):
+                    key = 'BS{ibs}'.format(ibs=ibs)
+                    bshdr = f[key].read_header()
+                    bs = f[key].read()
+                    design_mode = bshdr['DESMODE']
+                    fiberType = bshdr['FIBERTY']
+                    self.set_bright_stars(design_mode=design_mode,
+                                          fiberType=fiberType,
+                                          bright_stars=bs)
 
         self.set_field_cadence(field_cadence)
         targets = f['TARGET'].read()
