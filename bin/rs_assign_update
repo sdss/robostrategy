@@ -25,6 +25,7 @@ import roboscheduler.cadence as cadence
 import robostrategy.extra_field as extra_field
 import robostrategy.allocate
 import robostrategy.params as params
+import mugatu.designmode
 import sdss_access.path
 import time
 
@@ -34,6 +35,7 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
 special_calibration = []
+dmodes = None
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -61,7 +63,7 @@ def assign_update(indx):
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
-                                noassign=True)
+                                noassign=True, input_design_mode=dmodes)
     f.fieldid = fieldid
 
     if(f.field_cadence is None):
@@ -166,6 +168,8 @@ if __name__ == '__main__':
                                           'final/rsAllocationFinal')
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
+
+    dmodes = mugatu.designmode.allDesignModes() 
 
     if(end < 0):
         end = allocate.field_array['fieldid'].max()
