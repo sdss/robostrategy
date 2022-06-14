@@ -109,9 +109,9 @@ if __name__ == '__main__':
                                                       'final/rsFieldAssignmentsFinal')
 
     if(final):
-        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version, allgrids=nogrids is False)
+        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version, allgrids=nogrids is False, reload_design_mode=True)
     else:
-        f = field.Field(filename=field_target_file, allgrids=nogrids is False)
+        f = field.Field(filename=field_target_file, allgrids=nogrids is False, reload_design_mode=True)
 
     print(f.assess())
     nprob = f.validate()
