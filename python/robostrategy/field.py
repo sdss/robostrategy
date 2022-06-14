@@ -330,6 +330,12 @@ class Field(object):
         if True, keep track of all robotgrids (default True); if False
         automatically sets nocollide to True
 
+    reload_design_mode : bool
+        if True, will reload design mode dictionary from targetdb (default False)
+
+    input_design_mode : designModeDict
+        used this as design mode dict
+
     nocollide : bool
         if True,  do not check collisions (default False)
     
@@ -441,6 +447,12 @@ class Field(object):
         distance from racen, deccen to search for for targets (deg);
         set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
 
+    reload_design_mode : bool
+        if True, will reload design mode dictionary from targetdb
+
+    input_design_mode : designModeDict
+        used this as design mode dict
+
     required_calibrations : OrderedDict
         dictionary with numbers of required calibration sources specified
         for each exposure, for 'sky_boss', 'standard_boss', 'sky_apogee',
@@ -541,7 +553,8 @@ class Field(object):
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
-                 noassign=False, oldmag=False):
+                 noassign=False, oldmag=False, reload_design_mode=False,
+                 input_design_mode=None):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
@@ -555,6 +568,8 @@ class Field(object):
         self.nocalib = nocalib
         self.nocollide = nocollide
         self.allgrids = allgrids
+        self.reload_design_mode = reload_design_mode
+        self.input_design_mode = input_design_mode
         self.bright_neighbors = bright_neighbors
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
@@ -1030,14 +1045,29 @@ class Field(object):
             for n in self.calibration_order:
                 self.achievable_calibrations[n] = self.required_calibrations[n].copy()
 
-        try:
-            self.designModeDict = mugatu.designmode.allDesignModes(filename,
-                                                                   ext='DESMODE')
-        except:
-            default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
-                                          'data',
-                                          'default_designmodes.fits')
-            self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
+        if(self.input_design_mode is not None):
+            if(self.verbose):
+                print("fieldid {fid}: Design mode from input".format(fid=self.fieldid), flush=True)
+            self.designModeDict = self.input_design_mode
+        elif(self.reload_design_mode):
+            if(self.verbose):
+                print("fieldid {fid}: Design mode from targetdb".format(fid=self.fieldid), flush=True)
+            self.designModeDict = mugatu.designmode.allDesignModes() 
+        else:
+            try:
+                if(self.verbose):
+                    print("fieldid {fid}: Design mode from field file", flush=True)
+                self.designModeDict = mugatu.designmode.allDesignModes(filename,
+                                                                       ext='DESMODE')
+
+            except:
+                if(self.verbose):
+                    print("fieldid {fid}: Design mode from defaults file", flush=True)
+                default_dm_file= os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
+                                              'data',
+                                              'default_designmodes.fits')
+                self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
+
 
         nbs = 0
         while('bs{n}'.format(n=nbs) in f.hdu_map):
