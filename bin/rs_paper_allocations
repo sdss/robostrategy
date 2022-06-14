@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import matplotlib.pyplot as plt
+import numpy as np
+import fitsio
+import robostrategy.plots as rp
+import robostrategy.allocate as ra
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+plt.rcParams.update({'font.size': 14})
+plt.rcParams.update({'figure.figsize': (15, 10)})
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pretty plot of allocation examples')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    allocation_file = sdss_path.full('rsAllocation', plan=plan,
+                                       observatory='apo')
+
+    allocate = ra.AllocateLSTCostE(filename=allocation_file)
+
+    fig, axs = plt.subplots(3, 3, sharex=True, gridspec_kw={'hspace':0.05})
+
+    fieldids = [94, 1174, 10, 539, 3626, 1785, 4631, 4637, 4668]
+
+    i = 0
+    for ax, fieldid in zip(axs.flatten(), fieldids):
+        if(i >= 6):
+            xlabel = True
+        else:
+            xlabel = False
+        if((i % 3) == 0):
+            ylabel = True
+        else:
+            ylabel = False
+        if(i == 0):
+            legend = 'full'
+        else:
+            legend = 'small'
+        rp.plot_field_allocation(allocate=allocate, fieldid=fieldid, ax=ax,
+                                 xlabel=xlabel, legend=legend, ylabel=ylabel)
+        i = i + 1
+
+    plt.savefig('rsAllocationExamples-' + plan + '.png')

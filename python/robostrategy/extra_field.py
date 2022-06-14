@@ -472,6 +472,10 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     print(extra_rsids)
                     print(nsuccess)
 
+
+        # Default max_extra
+        max_extra = 99
+
         # Find all eligible targets for extra completion: Those with extra assignments
         # from above + previouly satisfied
         new_got = iextra[np.where(self.assignments['extra'][iextra] > 0)]
