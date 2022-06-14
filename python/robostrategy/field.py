@@ -2229,9 +2229,6 @@ class Field(object):
         for icategory, category in enumerate(self.required_calibrations):
             self._has_spare_calib[icategory + 1, :] = (self.calibrations[category] -
                                                        self.achievable_calibrations[category])
-        # TODO
-        # for calibs with zones, report number of calibrations
-        # of each type in each zone
         return
 
     def has_spare_calib(self, rsid=None, indx=None, iexps=None):
@@ -2268,7 +2265,6 @@ class Field(object):
         if(indx is None):
             indx = self.rsid2indx[rsid]
         isspare = self._has_spare_calib[self._calibration_index[indx + 1], iexps] > 0
-        # TODO Check zones
         return(isspare)
 
     def set_assignment_status(self, status=None, isspare=None, check_spare=True):
