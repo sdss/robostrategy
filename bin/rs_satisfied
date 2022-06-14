@@ -193,7 +193,7 @@ if __name__ == '__main__':
             satisfied['extra'][isat] = (satisfied['extra'][isat] +
                                         assignments['extra'][iin])
             satisfied['incadence'][isat] = (satisfied['incadence'][isat] +
-                                            targets['incadence'][iin])
+                                            assignments['incadence'][iin])
             if(len(assignments['allowed'].shape) > 1):
                 satisfied['allowed'][isat] = (satisfied['allowed'][isat] +
                                               assignments['allowed'][iin, :].sum(axis=1))
