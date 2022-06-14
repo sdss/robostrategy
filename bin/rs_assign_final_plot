@@ -100,7 +100,6 @@ if __name__ == '__main__':
         else:
             iused = []
 
-        # May need to specify BOSS or APOGEE for covered?
         icovered = np.where(f.targets['within'])[0]
 
         if(f._robot2indx is not None):
