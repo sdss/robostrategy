@@ -17,6 +17,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
                         ('category', np.unicode_, 30),
                         ('cadence', np.unicode_, 30),
                         ('catalogid', np.int64),
+                        ('magnitude', np.int32, 10),
                         ('fiberType', 'U8'),
                         ('rsid', np.int64)])
     t = np.zeros(nt, dtype=t_dtype)
@@ -29,6 +30,7 @@ def targets(f=None, nt=100, seed=100, rsid_start=0, ra=None, dec=None,
         t['dec'] = 0. - 1.5 + 3.0 * np.random.random(nt)
     else:
         t['dec'] = dec
+    t['magnitude'] = 17.
     t['epoch'] = 2000.
     t['delta_ra'] = delta_ra
     t['delta_dec'] = delta_dec
