@@ -823,6 +823,9 @@ class Field(object):
                 ibright, itargets, d2d, d3d = astropy.coordinates.search_around_sky(bright_coords, target_coords[itype], rmax * astropy.units.arcsec)
                 itooclose = np.where(d2d < bright['r_exclude'][ibright] *
                                      astropy.units.arcsec)[0]
+                #print(bright[ibright[itooclose]])
+                #print(d2d[itooclose])
+                #print(bright['r_exclude'][ibright])
                 bright_allowed[itype[itargets[itooclose]]] = 0
         return(bright_allowed)
 
@@ -1891,6 +1894,7 @@ class Field(object):
           field_skybrightness
           mags_allowed (is it allowed by magnitude limits)
           bright_allowed (is it allowed by bright neighbor limits)
+          offset_allowed (is it allowed because of its offset)
           allowed
           incadence
 """
