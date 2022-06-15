@@ -332,6 +332,9 @@ class Field(object):
     reload_design_mode : bool
         if True, will reload design mode dictionary from targetdb (default False)
 
+    input_design_mode : designModeDict
+        used this as design mode dict
+
     nocollide : bool
         if True,  do not check collisions (default False)
     
@@ -446,6 +449,9 @@ class Field(object):
     reload_design_mode : bool
         if True, will reload design mode dictionary from targetdb
 
+    input_design_mode : designModeDict
+        used this as design mode dict
+
     required_calibrations : OrderedDict
         dictionary with numbers of required calibration sources specified
         for each exposure, for 'sky_boss', 'standard_boss', 'sky_apogee',
@@ -546,7 +552,8 @@ class Field(object):
                  fieldid=1, allgrids=True, nocalib=False, nocollide=False,
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
-                 noassign=False, oldmag=False, reload_design_mode=False):
+                 noassign=False, oldmag=False, reload_design_mode=False,
+                 input_design_mode=None):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
@@ -561,6 +568,7 @@ class Field(object):
         self.nocollide = nocollide
         self.allgrids = allgrids
         self.reload_design_mode = reload_design_mode
+        self.input_design_mode = input_design_mode
         self.bright_neighbors = bright_neighbors
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
@@ -1034,7 +1042,11 @@ class Field(object):
             for n in self.calibration_order:
                 self.achievable_calibrations[n] = self.required_calibrations[n].copy()
 
-        if(self.reload_design_mode):
+        if(self.input_design_mode is not None):
+            if(self.verbose):
+                print("fieldid {fid}: Design mode from input".format(fid=self.fieldid), flush=True)
+            self.designModeDict = self.input_design_mode
+        elif(self.reload_design_mode):
             if(self.verbose):
                 print("fieldid {fid}: Design mode from targetdb".format(fid=self.fieldid), flush=True)
             self.designModeDict = mugatu.designmode.allDesignModes() 
@@ -2364,9 +2376,6 @@ class Field(object):
         for icategory, category in enumerate(self.required_calibrations):
             self._has_spare_calib[icategory + 1, :] = (self.calibrations[category] -
                                                        self.achievable_calibrations[category])
-        # TODO
-        # for calibs with zones, report number of calibrations
-        # of each type in each zone
         return
 
     def has_spare_calib(self, rsid=None, indx=None, iexps=None):
@@ -2403,7 +2412,6 @@ class Field(object):
         if(indx is None):
             indx = self.rsid2indx[rsid]
         isspare = self._has_spare_calib[self._calibration_index[indx + 1], iexps] > 0
-        # TODO Check zones
         return(isspare)
 
     def set_assignment_status(self, status=None, isspare=None, check_spare=True):
