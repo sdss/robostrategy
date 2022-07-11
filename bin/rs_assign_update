@@ -35,7 +35,8 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 clobber = False
 special_calibration = []
 standard_apogee_nperzone_min = -1
-
+mags_allowed_brighttime = []
+mags_allowed_darktime = []
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -71,7 +72,7 @@ def assign_update(indx):
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
-                                fieldid=fieldid, bright_neighbors=True,
+                                fieldid=fieldid, bright_neighbors=False,
                                 untrim_cadence_version=cadence_version,
                                 noassign=True)
     f.fieldid = fieldid
@@ -90,6 +91,26 @@ def assign_update(indx):
     else:
         print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
         f.clear_assignments()
+
+        # For some cartons, allow them even if mags are not allowed
+        for carton in mags_allowed_brighttime:
+            ic = np.where((f.targets['carton'] == carton) &
+                          (f.targets['fiberType'] == 'BOSS'))[0]
+            for epoch in np.arange(f.field_cadence.nepochs, dtype=int):
+                if(f.field_cadence.skybrightness[epoch] > 0.5):
+                    f.assignments['mags_allowed'][ic, epoch] = True
+                    f.assignments['bright_allowed'][ic, epoch] = True
+                    f.assignments['allowed'][ic, epoch] = True
+
+        # For some cartons, allow them even if mags are not allowed
+        for carton in mags_allowed_darktime:
+            ic = np.where((f.targets['carton'] == carton) &
+                          (f.targets['fiberType'] == 'BOSS'))[0]
+            for epoch in np.arange(f.field_cadence.nepochs, dtype=int):
+                if(f.field_cadence.skybrightness[epoch] < 0.5):
+                    f.assignments['mags_allowed'][ic, epoch] = True
+                    f.assignments['bright_allowed'][ic, epoch] = True
+                    f.assignments['allowed'][ic, epoch] = True
 
         # For special calibration methods running at beginning
         for sc in special_calibration:
@@ -162,6 +183,10 @@ if __name__ == '__main__':
     if('Assignment' in rsParams.cfg):
         if('special_calibration' in rsParams.cfg['Assignment']):
             special_calibration = rsParams.cfg['Assignment']['special_calibration'].split()
+        if('mags_allowed_brighttime' in rsParams.cfg['Assignment']):
+            mags_allowed_brighttime = rsParams.cfg['Assignment']['mags_allowed_brighttime'].split()
+        if('mags_allowed_darktime' in rsParams.cfg['Assignment']):
+            mags_allowed_darktime = rsParams.cfg['Assignment']['mags_allowed_darktime'].split()
 
     cadence_version = None
     if('CadenceVersions' in rsParams.cfg):
