@@ -63,7 +63,8 @@ def assign_update(indx):
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
-                                noassign=True, input_design_mode=dmodes)
+                                noassign=True, input_design_mode=dmodes,
+                                reset_bright=reset_bright)
     f.fieldid = fieldid
 
     if(f.field_cadence is None):
@@ -131,6 +132,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-b', '--bright-reset', dest='reset_bright',
+                        help='Reset bright stars', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
@@ -143,6 +147,7 @@ if __name__ == '__main__':
     end = args.end
     clobber = args.clobber
     nomultiprocess = args.nomultiprocess
+    reset_bright = args.reset_bright
 
     rsParams = params.RobostrategyParams(plan=plan)
 

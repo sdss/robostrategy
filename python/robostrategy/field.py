@@ -37,6 +37,8 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 # Default collision buffer
 defaultCollisionBuffer = 2.
 
+# Default epoch to assume the catalog table has
+default_catalog_epoch = 2015.5
 
 # intersection of lists
 def interlist(list1, list2):
@@ -120,7 +122,8 @@ def read_cadences(plan=None, observatory=None, unpickle=False,
 
 def read_field(plan=None, observatory=None, fieldid=None,
                stage='', targets=False, speedy=False,
-               verbose=False, unpickle=False, oldmag=False):
+               verbose=False, unpickle=False, oldmag=False,
+               reset_bright=False):
     """Convenience function to read a field object
 
     Parameters
@@ -136,7 +139,10 @@ def read_field(plan=None, observatory=None, fieldid=None,
         field id
 
     oldmag : bool
-        if True, read in file with [N, 7] magnitude array
+        if True, read in file with [N, 7] magnitude array (default False)
+
+    reset_bright : bool
+        if True, ignore bright star list in file, reload from db (default False)
 
     stage : str
         stage of assignments ('', 'Open', 'Filler', 'Reassign', 'Complete', 'Final')
@@ -198,10 +204,11 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     if(speedy):
         f = FieldSpeedy(filename=field_file, fieldid=fieldid,
-                        verbose=verbose, oldmag=oldmag)
+                        verbose=verbose, oldmag=oldmag, reset_bright=reset_bright)
     else:
         f = Field(filename=field_file, fieldid=fieldid, verbose=verbose,
-                  untrim_cadence_version=untrim_cadence_version, oldmag=oldmag)
+                  untrim_cadence_version=untrim_cadence_version, oldmag=oldmag,
+                  reset_bright=reset_bright)
 
     return(f)
 
@@ -341,6 +348,9 @@ class Field(object):
     bright_neighbors : bool
         if True, check bright neighbor conditions (default False)
 
+    reset_bright : bool
+        if True, doesn't read bright stars with fromfits() (default False)
+
     verbose : bool
         if True, issue a lot of output statements (default False)
 
@@ -445,6 +455,9 @@ class Field(object):
     radius : np.float32
         distance from racen, deccen to search for for targets (deg);
         set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
+
+    reset_bright : bool
+        if True, will not load bright stars in fromfits()
 
     reload_design_mode : bool
         if True, will reload design mode dictionary from targetdb
@@ -553,7 +566,7 @@ class Field(object):
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
                  noassign=False, oldmag=False, reload_design_mode=False,
-                 input_design_mode=None):
+                 input_design_mode=None, reset_bright=False):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
@@ -569,6 +582,7 @@ class Field(object):
         self.allgrids = allgrids
         self.reload_design_mode = reload_design_mode
         self.input_design_mode = input_design_mode
+        self.reset_bright = reset_bright
         self.bright_neighbors = bright_neighbors
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
@@ -679,17 +693,21 @@ class Field(object):
                                                              self.racen,
                                                              self.deccen)
 
-        bright_stars_dtype = np.dtype([('ra', np.float64),
+        bright_stars_dtype = np.dtype([('catalog_ra', np.float64),
+                                       ('catalog_dec', np.float64),
+                                       ('ra', np.float64),
                                        ('dec', np.float64),
                                        ('mag', np.float32),
+                                       ('pmra', np.float32),
+                                       ('pmdec', np.float32),
                                        ('catalogid', np.int64),
                                        ('r_exclude', np.float32)])
 
         if len(db_query) > 0:
             if isinstance(db_query, tuple):
-                ras, decs, mags, catalogids = db_query
+                ras, decs, mags, catalogids, pmra, pmdec = db_query
             else:
-                ras, decs, mags, catalogids = map(list, zip(*list(db_query.tuples())))
+                ras, decs, mags, catalogids, pmra, pmdec = map(list, zip(*list(db_query.tuples())))
 
             if(bright):
                 r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
@@ -702,11 +720,29 @@ class Field(object):
 
             bright_stars = np.zeros(len(ras), dtype=bright_stars_dtype)
 
-            bright_stars['ra'] = ras
-            bright_stars['dec'] = decs
+            bright_stars['catalog_ra'] = ras
+            bright_stars['catalog_dec'] = decs
             bright_stars['mag'] = mags
+            bright_stars['pmra'] = pmra
+            bright_stars['pmdec'] = pmdec
+            badpm = ((bright_stars['pmra'] != bright_stars['pmra']) |
+                     (bright_stars['pmdec'] != bright_stars['pmdec']))  # check for NaNs
+            bright_stars['pmra'][badpm] = 0.
+            bright_stars['pmdec'][badpm] = 0.
             bright_stars['catalogid'] = catalogids
             bright_stars['r_exclude'] = r_exclude
+
+            epoch = (np.zeros(len(bright_stars), dtype=np.float32) +
+                     default_catalog_epoch)
+            x, y, z = self.radec2xyz(ra=bright_stars['catalog_ra'],
+                                     dec=bright_stars['catalog_dec'],
+                                     epoch=epoch,
+                                     pmra=bright_stars['pmra'],
+                                     pmdec=bright_stars['pmdec'],
+                                     fiberType=fiberType)
+            (bright_stars['ra'], 
+             bright_stars['dec']) = self.xy2radec(x=x, y=y, fiberType=fiberType)
+
         else:
             bright_stars = np.zeros(0, dtype=bright_stars_dtype)
 
@@ -831,9 +867,22 @@ class Field(object):
                 ibright, itargets, d2d, d3d = astropy.coordinates.search_around_sky(bright_coords, target_coords[itype], rmax * astropy.units.arcsec)
                 itooclose = np.where(d2d < bright['r_exclude'][ibright] *
                                      astropy.units.arcsec)[0]
-                #print(bright[ibright[itooclose]])
-                #print(d2d[itooclose])
-                #print(bright['r_exclude'][ibright])
+
+                if(self.field_cadence.nexp_total == 1):
+                    isame = np.where((bright['catalogid'][ibright[itooclose]] ==
+                                      targets['catalogid'][itype[itargets[itooclose]]]) &
+                                     (assignments['offset_allowed'][itype[itargets[itooclose]]] > 0))[0]
+                else:
+                    iexp = np.where(self.design_mode == design_mode)[0][0]
+                    isame = np.where((bright['catalogid'][ibright[itooclose]] ==
+                                      targets['catalogid'][itype[itargets[itooclose]]]) &
+                                     (assignments['offset_allowed'][itype[itargets[itooclose]], iexp] > 0))[0]
+                #if(len(isame) > 0):
+                #    print("YUH YOH!!!")
+                #    print(d2d[itooclose[isame]])
+                #    print(bright['r_exclude'][ibright[itooclose[isame]]])
+                #    import sys
+                #    sys.exit()
                 bright_allowed[itype[itargets[itooclose]]] = 0
         return(bright_allowed)
 
@@ -1065,18 +1114,19 @@ class Field(object):
                                               'default_designmodes.fits')
                 self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
 
-        nbs = 0
-        while('bs{n}'.format(n=nbs) in f.hdu_map):
-            nbs = nbs + 1
-        for ibs in range(nbs):
-            key = 'BS{ibs}'.format(ibs=ibs)
-            bshdr = f[key].read_header()
-            bs = f[key].read()
-            design_mode = bshdr['DESMODE']
-            fiberType = bshdr['FIBERTY']
-            self.set_bright_stars(design_mode=design_mode,
-                                  fiberType=fiberType,
-                                  bright_stars=bs)
+        if(self.reset_bright is False):
+            nbs = 0
+            while('bs{n}'.format(n=nbs) in f.hdu_map):
+                nbs = nbs + 1
+            for ibs in range(nbs):
+                key = 'BS{ibs}'.format(ibs=ibs)
+                bshdr = f[key].read_header()
+                bs = f[key].read()
+                design_mode = bshdr['DESMODE']
+                fiberType = bshdr['FIBERTY']
+                self.set_bright_stars(design_mode=design_mode,
+                                      fiberType=fiberType,
+                                      bright_stars=bs)
 
         self.set_field_cadence(field_cadence)
         targets = f['TARGET'].read()
@@ -1657,7 +1707,7 @@ class Field(object):
                                                                       lunation)
             delta_ra[iapogee] = tmp_delta_ra
             delta_dec[iapogee] = tmp_delta_dec
-            
+
         return(delta_ra, delta_dec)
 
     def radec2xyz(self, ra=None, dec=None, epoch=None, pmra=None,
@@ -1962,6 +2012,10 @@ class Field(object):
         assignments['delta_ra'] = delta_ra
         assignments['delta_dec'] = delta_dec
 
+        # Set offset allowed so we can double check in _bright_allowed_direct
+        for epoch, mode in enumerate(self.design_mode):
+            assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
+
         (assignments['x'],
          assignments['y'],
          assignments['z']) = self.radec2xyz(ra=targets['ra'],
@@ -1993,10 +2047,11 @@ class Field(object):
             else:
                 bright_allowed[mode] = np.ones(len(targets), dtype=bool)
 
+        # Set allowed in assignments; note offset_allowed was already
+        # set above.
         for epoch, mode in enumerate(self.design_mode):
             assignments['mags_allowed'][:, epoch] = mags_allowed[mode]
             assignments['bright_allowed'][:, epoch] = bright_allowed[mode]
-            assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
             assignments['allowed'][:, epoch] = ((mags_allowed[mode] |
                                                  offset_allowed[mode]) &
                                                 bright_allowed[mode])
