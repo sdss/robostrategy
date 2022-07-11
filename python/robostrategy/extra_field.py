@@ -6,6 +6,7 @@ import numpy as np
 from robostrategy.field import Field
 import roboscheduler.cadence
 
+
 # Establish access to the CadenceList singleton
 clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
@@ -24,14 +25,13 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         extra_rv = self.assign_rv_extra()
         extra_partial = self.assign_partial()
         extra_bright = self.assign_bright_extra()
-        extra_bhm = self.assign_bhm()
 
         self._set_satisfied()
         self._set_satisfied(science=True)
         self._set_count(reset_equiv=False)
         self.set_stage(stage=None)
 
-        any_success = extra_dark or extra_rv or extra_partial or extra_bright or extra_bhm
+        any_success = extra_dark or extra_rv or extra_partial or extra_bright
         return any_success
 
     def assign_extra(self, rsids=None, max_extra=1, nexps=1, skip_assigned_epochs=True):
@@ -54,12 +54,14 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             if the target is already assigned to any exposure in an epoch
             do not assign to another open exposure (default True)
 
+
         Returns:
         -------
         nsuccess: ndarray of type np.int
             number of extra epochs successfully assigned for each input rsid
-        '''
 
+
+        '''
         nsuccess = np.zeros(len(rsids), dtype=np.int)  # count how many extra epochs assigned
 
         first = True  # Only need the first available robot at each epoch?
@@ -73,9 +75,6 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
             iassigned = self.assignments['equivRobotID'][self.rsid2indx[rsid]] >= 0
 
-            #Create separate array for tracking epochs Only
-            epoch_assigned = np.full(self.field_cadence.nepochs,False)
-
             # If skip_assigned_epochs, then if any exposure in an epoch is assinged,
             # mark them all as previously assigned. Otherwise, you are assigning
             # extra exposures, not epochs
@@ -86,84 +85,32 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
             if skip_assigned_epochs and u_nexp[0] > 1:
                 for iep in np.arange(0,self.field_cadence.nepochs):
+                    inexp = self.field_cadence.nexp[iep]
                     if np.any(iassigned[iep*u_nexp[0]: iep*u_nexp[0] + u_nexp[0]]):
-                        epoch_assigned[iep] = True
-            else:
-                epoch_assigned = iassigned  # if u_nexp = 1, epoch _assigned as same shape as iassinged
+                        iassigned[iep*u_nexp[0] : iep*u_nexp[0] + u_nexp[0]] = True
 
             for iepoch, per_epoch_available in enumerate(free['availableRobotIDs']):
-                if epoch_assigned[iepoch]:
-                    continue # target already assigned in this epochs
+                if iassigned[iepoch]:
+                    continue # target already assigned
 
                 if len(per_epoch_available) > 0:
                     first_free_robot = per_epoch_available[0]
                     is_assign = self.assign_robot_epoch(rsid=rsid, robotID=first_free_robot, epoch=iepoch,
                                                         status=free['statuses'][iepoch][0], nexp=nexps)
                     if is_assign:
-                       n_assign = n_assign + 1
+                       n_assign += 1
                 if n_assign >= max_extra: #stop when you have hit maximum extra
                     break
 
 
             nsuccess[idx] = n_assign
 
-            self.assignments['extra'][self.rsid2indx[rsid]] = self.assignments['extra'][self.rsid2indx[rsid]] + n_assign
+            self.assignments['extra'][self.rsid2indx[rsid]] += n_assign
 
         self.decollide_unassigned()
 
         return(nsuccess)
 
-
-    def assign_extra_exps(self, rsids=None, max_extra=1):
-        '''
-        This is a generic code for assigning exposures outside of the nominal target cadence.
-        This is modeled a bit after assign_cadences().
-
-        Parameters:
-        ----------
-        rsids : ndarray of np.int64
-            rsids of targets to assign
-
-        max_extra: np.int
-            maximum number of extra exposures to assign (default 1)
-
-        Returns:
-        -------
-        nsuccess: ndarray of type np.int
-            number of exposures successfully assigned for each input rsid
-        '''
-        nsuccess = np.zeros(len(rsids), dtype=np.int) #count how many extra exposures assigned
-
-        first = True # Only return first available robot at each epoch
-                     # Simplest to code but may be limiting for cases when max_extra > 1
-                     # Other available robots could have more exposures available
-        iexps = np.arange(len(self.assignments['robotID'][0]))
-        for idx,rsid in enumerate(rsids):
-            free = self.available_epochs(rsid=rsid, first=first) # By default requests 1 exposures
-
-            n_assign = 0
-            not_assigned = iexps[(self.assignments['equivRobotID'][self.rsid2indx[rsid]] < 0)]
-
-            n_avail = len(not_assigned)
-            if n_avail <= max_extra:
-                done = self.assign_exposures(rsid=rsid, iexps=not_assigned)
-                n_assign = n_assign + done.sum()
-            else:
-                done = 0
-                for one_exp in not_assigned:
-                    one_done = self.assign_exposures(rsid=rsid, iexps=np.array([one_exp]))
-                    done = done + one_done
-                    if done >= max_extra:
-                        break
-                n_assign = n_assign + done
-
-            nsuccess[idx] = n_assign
-
-            self.assignments['extra'][self.rsid2indx[rsid]] = self.assignments['extra'][self.rsid2indx[rsid]] + n_assign
-
-        self.decollide_unassigned()
-
-        return(nsuccess)
 
     def assign_dark_extra(self,make_report=False):
         '''
@@ -178,7 +125,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             if True print out a report of what happened
         '''
 
-        max_extra = 99
+        max_extra = 99 #get as many as you can, but for testing start with 1
         any_extra = False # initialize
 
         #Check whether field contains any dark exposures
@@ -307,14 +254,14 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 # may change back to Nx1. For assign_spares, want requested exposures
                 # = 1 and requsted epochs = N
                 nexps_need = 1
-
+               
                 if nexps > 1:
                     if nepochs > 1:
                         raise ValueError("Did not expect mwm_tess_planet cadence to have both nexp and nepoch > 1")
                     nepochs_need = nexps
                 else:
                     nepochs_need = nepochs
-
+         
 
                 extra_rsids = self.targets['rsid'][iextra[subset]]
                 nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=nepochs_need,
@@ -411,108 +358,5 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number attempted: {}'.format(len(iextra)))
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
-
-        return any_extra
-
-    def assign_bhm(self,make_report=False):
-        '''
-        Code for assigning partial and extra exposures to BHM targets. For partial
-        completion, original cadence details are ignored and just to get the total
-        requested nxm request.
-
-        Parameters:
-        ----------
-        make_report: bool
-            if True print out a report of what happened
-        '''
-
-        any_extra = False # initialize
-
-        # Find all eligible targets for partial cadence completion
-        iextra1 = np.where((self.targets['program'] == 'bhm_spiders') &
-                            (self.assignments['satisfied'] == 0))[0]
-        iextra2 = np.where((self.targets['program'] == 'bhm_csc') &
-                            (self.assignments['satisfied'] == 0))[0]
-        iextra3 = np.where((self.targets['carton'] == 'bhm_gua_dark') &
-                            (self.assignments['satisfied'] == 0))[0]
-        iextra4 = np.where((self.targets['carton'] == 'bhm_gua_bright') &
-                            (self.assignments['satisfied'] == 0))[0]
-
-        iextra = np.append(iextra1, np.append(iextra2, np.append(iextra3, iextra4)))
-
-        # Is this a dark field?
-        is_dark_field = clist.cadence_consistency('_field_dark_single_1x1', self.field_cadence.name,
-                                                   return_solutions=False)
-        if len(iextra > 0):
-            ucad = np.unique(self.targets['cadence'][iextra])
-
-            for icad in ucad:
-                if 'dark' in icad and not is_dark_field: #skip dark targets if not in dark field
-                    continue
-
-                subset = np.where(self.targets['cadence'][iextra] == icad)[0]
-                max_extra = clist.cadences[icad].nexp[0] * clist.cadences[icad].nepochs
-                if len(subset) > 1:
-                    isort = np.argsort(self.targets['priority'][iextra[subset]])
-                    extra_rsids = self.targets['rsid'][iextra[subset[isort]]]
-                else:
-                    extra_rsids = self.targets['rsid'][iextra[subset]]
-                nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra)
-                if len(nsuccess[nsuccess > 0]) > 0:
-                    any_extra=True
-
-                if make_report:
-                    print(f'\nPartial Exposures for BHM:{icad}')
-                    print('--------------------------------')
-                    print("Number attempted: {}".format(len(subset)))
-                    print('Number successful: ')
-                    uextra,ctextra = np.unique(nsuccess, return_counts=True)
-                    for iex,ict in zip(uextra,ctextra):
-                        print(f'    {ict} stars - {iex} extra exposures')
-                    print(extra_rsids)
-                    print(nsuccess)
-
-        # Find all eligible targets for extra completion: Those with extra assignments
-        # from above + previouly satisfied
-        new_got = iextra[np.where(self.assignments['extra'][iextra] > 0)]
-
-        iextra1 = np.where((self.targets['program'] == 'bhm_spiders') &
-                            (self.assignments['satisfied'] > 0))[0]
-        iextra2 = np.where((self.targets['program'] == 'bhm_csc') &
-                            (self.assignments['satisfied'] > 0))[0]
-        iextra3 = np.where((self.targets['carton'] == 'bhm_gua_dark') &
-                            (self.assignments['satisfied'] > 0))[0]
-        iextra4 = np.where((self.targets['carton'] == 'bhm_gua_bright') &
-                            (self.assignments['satisfied'] > 0))[0]
-
-        #some "new_got" may now also show up as 'satisfied'
-        iextra = np.unique(np.append(iextra1, np.append(iextra2, np.append(iextra3, np.append(iextra4,new_got)))))
-
-        # In this situation, only use the cadence groupings to remove dark cadence targets
-        # in bright fields
-        if len(iextra > 0):
-            ucad = np.unique(self.targets['cadence'][iextra])
-            kp = np.full(len(iextra), True)
-            for icad in ucad:
-                if 'dark' in icad and not is_dark_field: #skip dark targets if not in dark field
-                    subset = np.where(self.targets['cadence'][iextra] == icad)[0]
-                    kp[subset] = False
-            iextra = iextra[kp]
-            isort = np.argsort(self.targets['priority'][iextra])
-            extra_rsids = self.targets['rsid'][iextra[isort]]
-            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra)
-            if len(nsuccess[nsuccess > 0]) > 0:
-                any_extra=True
-
-            if make_report:
-                print(f'\nExtra Exposures for BHM:')
-                print('--------------------------------')
-                print("Number attempted: {}".format(len(iextra)))
-                print('Number successful: ')
-                uextra,ctextra = np.unique(nsuccess, return_counts=True)
-                for iex,ict in zip(uextra,ctextra):
-                    print(f'    {ict} stars - {iex} extra exposures')
-                print(extra_rsids)
-                print(nsuccess)
 
         return any_extra

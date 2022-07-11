@@ -39,13 +39,22 @@ standard_apogee_nperzone_min = -1
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
+    rs_fieldid = allocate.field_array['rs_fieldid'][indx]
+    
     print("fieldid {fid}: Update assignment".format(fid=fieldid), flush=True)
 
-    field_target_file = sdss_path.full('rsFieldTargets',
-                                       plan=fromplan, observatory=observatory,
-                                       fieldid=fieldid)
-    field_target_file = field_target_file.replace('targets/rsFieldTargets',
-                                                  'final/rsFieldAssignmentsFinal')
+    if(fromplan != plan):
+        field_target_file = sdss_path.full('rsFieldTargets',
+                                           plan=fromplan, observatory=observatory,
+                                           fieldid=fieldid)
+        field_target_file = field_target_file.replace('targets/rsFieldTargets',
+                                                      'final/rsFieldAssignmentsFinal')
+    else:
+        field_target_file = sdss_path.full('rsFieldTargets',
+                                           plan=fromplan, observatory=observatory,
+                                           fieldid=rs_fieldid)
+        field_target_file = field_target_file.replace('targets/rsFieldTargets',
+                                                      'targets/rsFieldPrep')
 
     field_assignments_file = sdss_path.full('rsFieldTargets',
                                             plan=plan, observatory=observatory,
@@ -60,6 +69,7 @@ def assign_update(indx):
     print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
+
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,

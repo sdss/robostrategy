@@ -1024,6 +1024,9 @@ class Field(object):
         self._ot = obstime.ObsTime(observatory=self.observatory)
         self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
         field_cadence = hdr['FCADENCE']
+        if(self._untrim_cadence_version is not None):
+            if(field_cadence.split('_')[-1] != self._untrim_cadence_version):
+                field_cadence = field_cadence + '_' + self._untrim_cadence_version
         if(self._trim_cadence_version):
             w = field_cadence.split('_')
             if(w[-1][0] == 'v'):
