@@ -111,6 +111,7 @@ if __name__ == '__main__':
         istage = np.where((cartons['stage'] == stage) &
                           (cartons['active'] == 'y'))[0]
     else:
+        stage = ''
         istage = np.where(cartons['active'] == 'y')[0]
     cartons = cartons[istage]
 
@@ -177,14 +178,34 @@ if __name__ == '__main__':
     if(manual_validation_priority_fix is not None):
         ii = np.where(targets['carton'] == 'manual_validation_apogee')[0]
         targets['priority'][ii] = manual_validation_priority_fix
+        targets['category'][ii] = 'science'
+        ii = np.where((targets['carton'] == 'manual_validation_apogee') & (targets['cadence'] == ''))[0]
+        targets['cadence'][ii] = 'bright_3x1'
         ii = np.where(targets['carton'] == 'manual_validation_boss')[0]
         targets['priority'][ii] = manual_validation_priority_fix
+        targets['category'][ii] = 'science'
 
     # Fudge open_fiber into science
     iopen = np.where(targets['category'] == 'open_fiber')[0]
     if(len(iopen) > 0):
         print("Recategorizing {n} targets from open_fiber to science".format(n=len(iopen)))
         targets['category'][iopen] = 'science'
+
+    # Perform some validation checks
+    ibad = np.where((targets['category'] == 'science') &
+                    (targets['cadence'] == ''))[0]
+    if(len(ibad) > 0):
+        print("SOME TARGETS EXIST WITHOUT CADENCE! WILL NOT WRITE THIS FILE!")
+        sys.exit(1)
+
+    ibad = np.where((targets['category'] != 'science') &
+                    (targets['category'] != 'standard_apogee') &
+                    (targets['category'] != 'sky_apogee') &
+                    (targets['category'] != 'standard_boss') &
+                    (targets['category'] != 'sky_boss'))[0]
+    if(len(ibad) > 0):
+        print("SOME TARGETS EXIST WITH BAD CATEGORY! WILL NOT WRITE THIS FILE!")
+        sys.exit(1)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)

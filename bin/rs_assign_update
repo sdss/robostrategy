@@ -72,7 +72,7 @@ def assign_update(indx):
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
-                                fieldid=fieldid, bright_neighbors=False,
+                                fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
                                 noassign=True)
     f.fieldid = fieldid
