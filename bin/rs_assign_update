@@ -25,6 +25,7 @@ import roboscheduler.cadence as cadence
 import robostrategy.extra_field as extra_field
 import robostrategy.allocate
 import robostrategy.params as params
+import mugatu.designmode
 import sdss_access.path
 import time
 
@@ -37,6 +38,7 @@ special_calibration = []
 standard_apogee_nperzone_min = -1
 mags_allowed_brighttime = []
 mags_allowed_darktime = []
+dmodes = None
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -74,7 +76,7 @@ def assign_update(indx):
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
-                                noassign=True)
+                                noassign=True, input_design_mode=dmodes)
     f.fieldid = fieldid
 
     icsa = list(f.calibration_order).index('standard_apogee')
@@ -215,6 +217,8 @@ if __name__ == '__main__':
                                           'final/rsAllocationFinal')
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
+
+    dmodes = mugatu.designmode.allDesignModes() 
 
     if(end < 0):
         end = allocate.field_array['fieldid'].max()

@@ -1,0 +1,52 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import matplotlib.pyplot as plt
+import numpy as np
+import fitsio
+import robostrategy.plots as rp
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pretty plot of the fields')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    fields_north_file = sdss_path.full('rsFieldsRotated', plan=plan,
+                                       observatory='apo')
+    fields_south_file = sdss_path.full('rsFieldsRotated', plan=plan,
+                                       observatory='lco')
+
+    fn = fitsio.read(fields_north_file)
+    fs = fitsio.read(fields_south_file)
+    
+    racen = np.append(fn['racen'], fs['racen'])
+    deccen = np.append(fn['deccen'], fs['deccen'])
+    pa = np.append(fn['pa2'], fs['pa2'])
+    types = np.append(fn['type'], fs['type'])
+    obs = np.append(np.array(['apo'] * len(fn)),
+                    np.array(['lco'] * len(fs)))
+
+    #ikeep = np.where((racen > 89.) & (racen < 91.))[0]
+    #racen = racen[ikeep]
+    #deccen = deccen[ikeep]
+    #pa = pa[ikeep]
+    #obs = obs[ikeep]
+
+    rp.plot_field_shapes(racen=racen, deccen=deccen, pa=pa, observatory=obs,
+                         types=types)
+
+    plt.savefig('rsFieldsPretty-{p}.png'.format(p=plan))
+
