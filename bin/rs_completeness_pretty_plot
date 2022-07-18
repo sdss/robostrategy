@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_completeness_plot
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+import healpy
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def clean_minmax(n):
+    vmin = np.floor(10. * n.min()) / 10.
+    vmax = np.ceil(10. * n.max()) / 10.
+    return(vmin, vmax)
+
+
+def make_map(hdr, tmap, perarea=True, log=True):
+    nside = np.int32(hdr['NSIDE'])
+    area = healpy.pixelfunc.nside2pixarea(nside, degrees=True)
+
+    if(perarea):
+        tmap = tmap / area
+    if(log):
+        tmap = np.log10(tmap)
+
+    return(tmap)
+
+
+def plot_map(hdr, tmap, name=None, title=None, vmin=None, vmax=None,
+             perarea=True, log=True):
+
+    tmap = make_map(hdr, tmap, perarea=perarea, log=log)
+
+    healpy.mollview(
+        tmap,
+        title=title,
+        cmap='Greys',
+        rot=(270., 0., 0.),
+        max=vmax, min=vmin)
+
+    healpy.visufunc.graticule()
+
+    outfile = sdss_path.full(
+        'rsAssignmentsPng', name=name,
+        plan=plan, observatory=observatory)
+    outfile = outfile.replace('rsAssignments', 'final/rsCompleteness')
+
+    plt.savefig(outfile)
+    plt.clf()
+
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Evaluate completeness of target assignments')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco or both',
+                        choices=['apo', 'lco', 'both'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    completeness_file = sdss_path.full('rsCompleteness', plan=plan,
+                                       observatory=observatory)
+    completeness_file = completeness_file.replace('rsCompleteness',
+                                                  'final/rsCompletenessFinal')
+
+    ntargets, hdr = fitsio.read(completeness_file, header=True, ext=2)
+    ngot, hdr = fitsio.read(completeness_file, header=True, ext=3)
+    fgot, hdr = fitsio.read(completeness_file, header=True, ext=4)
+
+    nmap = make_map(hdr, ntargets)
+    tmp_vmin, vmax = clean_minmax(nmap)
+
+    nmap = make_map(hdr, ngot)
+    vmin, tmp_vmax = clean_minmax(nmap)
+
+    plot_map(hdr, ntargets, name='ntargets',
+             title='$\log_{10}$ Target Density (deg$^{-2}$)',
+             vmin=vmin, vmax=vmax)
+
+    plot_map(hdr, ngot, name='ngot',
+             title='$\log_{10}$ Assigned Target Density (deg$^{-2}$)',
+             vmin=vmin, vmax=vmax)
+
+    plot_map(hdr, fgot, name='fgot',
+             title='Assigned Target Fraction',
+             vmin=0., vmax=1., log=False, perarea=False)
+
+    
