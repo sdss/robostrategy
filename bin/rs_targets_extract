@@ -39,6 +39,10 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-A', '--all-stages', dest='all_stages',
+                        help='set to read all target stages',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-O', '--open', dest='opentargets',
                         help='set to read open target',
                         default=False, required=False,
@@ -53,6 +57,7 @@ if __name__ == '__main__':
     observatory = args.observatory
     opentargets = args.opentargets
     filler = args.filler
+    all_stages = args.all_stages
 
     cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -75,6 +80,11 @@ if __name__ == '__main__':
     else:
         mwm_tess_ob_priority_fix = None
 
+    if('manual_validation_priority_fix' in rsParams.cfg['Cartons']):
+        manual_validation_priority_fix = np.float32(rsParams.cfg['Cartons']['manual_validation_priority_fix'])
+    else:
+        manual_validation_priority_fix = None
+
     if('mwm_tess_planet_cadence_fix' in rsParams.cfg['Cartons']):
         mwm_tess_planet_cadence_fix = True
     else:
@@ -92,21 +102,24 @@ if __name__ == '__main__':
 
     cartons_version = rsParams.cfg['Cartons']['version']
     cartons = robostrategy.targets.read_cartons(version=cartons_version)
-    stage = 'srd'
-    if(opentargets):
-        stage = 'open'
-    if(filler):
-        stage = 'filler'
-    istage = np.where((cartons['stage'] == stage) &
-                      (cartons['active'] == 'y'))[0]
+    if(all_stages is False):
+        stage = 'srd'
+        if(opentargets):
+            stage = 'open'
+        if(filler):
+            stage = 'filler'
+        istage = np.where((cartons['stage'] == stage) &
+                          (cartons['active'] == 'y'))[0]
+    else:
+        stage = ''
+        istage = np.where(cartons['active'] == 'y')[0]
     cartons = cartons[istage]
 
     adjust = dict()
-    if(stage == 'open'):
-        if('CartonsOpenPriorityAdjust' in rsParams.cfg):
-            for carton in rsParams.cfg['CartonsOpenPriorityAdjust']:
-                adjust[carton] = np.float32(rsParams.cfg.get('CartonsOpenPriorityAdjust',
-                                                             carton))
+    if('CartonsOpenPriorityAdjust' in rsParams.cfg):
+        for carton in rsParams.cfg['CartonsOpenPriorityAdjust']:
+            adjust[carton] = np.float32(rsParams.cfg.get('CartonsOpenPriorityAdjust',
+                                                         carton))
     
     nt = 0
     for carton in cartons:
@@ -126,15 +139,13 @@ if __name__ == '__main__':
             if(name in adjust):
                 tmp_targets['priority'] = (tmp_targets['priority'] +
                                            adjust[name])
+            tmp_targets['stage'] = carton['stage']
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
     if(nt != len(targets)):
         print("Lost some targets ... hope that is expected!")
         targets.resize(nt)
-
-    # Set the stage
-    targets['stage'] = stage
 
     # FUDGE filler galaxies
     if(bhm_colr_galaxies_lsdr8_cadence_fix):
@@ -163,11 +174,38 @@ if __name__ == '__main__':
         ii = np.where(targets['carton'] == 'mwm_tess_ob')[0]
         targets['priority'][ii] = mwm_tess_ob_priority_fix
 
+    # FUDGE manual validation priority
+    if(manual_validation_priority_fix is not None):
+        ii = np.where(targets['carton'] == 'manual_validation_apogee')[0]
+        targets['priority'][ii] = manual_validation_priority_fix
+        targets['category'][ii] = 'science'
+        ii = np.where((targets['carton'] == 'manual_validation_apogee') & (targets['cadence'] == ''))[0]
+        targets['cadence'][ii] = 'bright_3x1'
+        ii = np.where(targets['carton'] == 'manual_validation_boss')[0]
+        targets['priority'][ii] = manual_validation_priority_fix
+        targets['category'][ii] = 'science'
+
     # Fudge open_fiber into science
     iopen = np.where(targets['category'] == 'open_fiber')[0]
     if(len(iopen) > 0):
         print("Recategorizing {n} targets from open_fiber to science".format(n=len(iopen)))
         targets['category'][iopen] = 'science'
+
+    # Perform some validation checks
+    ibad = np.where((targets['category'] == 'science') &
+                    (targets['cadence'] == ''))[0]
+    if(len(ibad) > 0):
+        print("SOME TARGETS EXIST WITHOUT CADENCE! WILL NOT WRITE THIS FILE!")
+        sys.exit(1)
+
+    ibad = np.where((targets['category'] != 'science') &
+                    (targets['category'] != 'standard_apogee') &
+                    (targets['category'] != 'sky_apogee') &
+                    (targets['category'] != 'standard_boss') &
+                    (targets['category'] != 'sky_boss'))[0]
+    if(len(ibad) > 0):
+        print("SOME TARGETS EXIST WITH BAD CATEGORY! WILL NOT WRITE THIS FILE!")
+        sys.exit(1)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)

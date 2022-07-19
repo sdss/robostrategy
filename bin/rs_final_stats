@@ -108,7 +108,6 @@ if __name__ == '__main__':
                 iapogee_science = np.where(targets['category'][itargets] == 'science')[0]
                 napogee_science = len(iapogee_science)
                 rstats['nexps_direct_science_' + obs][0] = rstats['nexps_direct_science_' + obs][0] + nboss_science
-                napogee = len(iapogee)
                 rstats['nexps_direct_science_' + obs][1] = rstats['nexps_direct_science_' + obs][1] + napogee_science
 
         rstats['nexps_direct'] = rstats['nexps_direct_apo'] + rstats['nexps_direct_lco']

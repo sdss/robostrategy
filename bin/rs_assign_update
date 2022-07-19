@@ -35,17 +35,29 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
 special_calibration = []
+standard_apogee_nperzone_min = -1
+mags_allowed_brighttime = []
+mags_allowed_darktime = []
 dmodes = None
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
+    rs_fieldid = allocate.field_array['rs_fieldid'][indx]
+    
     print("fieldid {fid}: Update assignment".format(fid=fieldid), flush=True)
 
-    field_target_file = sdss_path.full('rsFieldTargets',
-                                       plan=fromplan, observatory=observatory,
-                                       fieldid=fieldid)
-    field_target_file = field_target_file.replace('targets/rsFieldTargets',
-                                                  'final/rsFieldAssignmentsFinal')
+    if(fromplan != plan):
+        field_target_file = sdss_path.full('rsFieldTargets',
+                                           plan=fromplan, observatory=observatory,
+                                           fieldid=fieldid)
+        field_target_file = field_target_file.replace('targets/rsFieldTargets',
+                                                      'final/rsFieldAssignmentsFinal')
+    else:
+        field_target_file = sdss_path.full('rsFieldTargets',
+                                           plan=fromplan, observatory=observatory,
+                                           fieldid=rs_fieldid)
+        field_target_file = field_target_file.replace('targets/rsFieldTargets',
+                                                      'targets/rsFieldPrep')
 
     field_assignments_file = sdss_path.full('rsFieldTargets',
                                             plan=plan, observatory=observatory,
@@ -60,12 +72,16 @@ def assign_update(indx):
     print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
+
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
                                 noassign=True, input_design_mode=dmodes,
                                 reset_bright=reset_bright)
     f.fieldid = fieldid
+
+    icsa = list(f.calibration_order).index('standard_apogee')
+    f.required_calibrations_per_zone[icsa + 1] = standard_apogee_nperzone_min
 
     if(f.field_cadence is None):
         print("fieldid {fid}: no field cadence to assign! Skipping".format(fid=fieldid), flush=True)
@@ -78,6 +94,26 @@ def assign_update(indx):
     else:
         print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
         f.clear_assignments()
+
+        # For some cartons, allow them even if mags are not allowed
+        for carton in mags_allowed_brighttime:
+            ic = np.where((f.targets['carton'] == carton) &
+                          (f.targets['fiberType'] == 'BOSS'))[0]
+            for epoch in np.arange(f.field_cadence.nepochs, dtype=int):
+                if(f.field_cadence.skybrightness[epoch] > 0.5):
+                    f.assignments['mags_allowed'][ic, epoch] = True
+                    f.assignments['bright_allowed'][ic, epoch] = True
+                    f.assignments['allowed'][ic, epoch] = True
+
+        # For some cartons, allow them even if mags are not allowed
+        for carton in mags_allowed_darktime:
+            ic = np.where((f.targets['carton'] == carton) &
+                          (f.targets['fiberType'] == 'BOSS'))[0]
+            for epoch in np.arange(f.field_cadence.nepochs, dtype=int):
+                if(f.field_cadence.skybrightness[epoch] < 0.5):
+                    f.assignments['mags_allowed'][ic, epoch] = True
+                    f.assignments['bright_allowed'][ic, epoch] = True
+                    f.assignments['allowed'][ic, epoch] = True
 
         # For special calibration methods running at beginning
         for sc in special_calibration:
@@ -154,11 +190,24 @@ if __name__ == '__main__':
     if('Assignment' in rsParams.cfg):
         if('special_calibration' in rsParams.cfg['Assignment']):
             special_calibration = rsParams.cfg['Assignment']['special_calibration'].split()
+        if('mags_allowed_brighttime' in rsParams.cfg['Assignment']):
+            mags_allowed_brighttime = rsParams.cfg['Assignment']['mags_allowed_brighttime'].split()
+        if('mags_allowed_darktime' in rsParams.cfg['Assignment']):
+            mags_allowed_darktime = rsParams.cfg['Assignment']['mags_allowed_darktime'].split()
 
     cadence_version = None
     if('CadenceVersions' in rsParams.cfg):
         if('version' in rsParams.cfg['CadenceVersions']):
             cadence_version = rsParams.cfg.get('CadenceVersions', 'version')
+
+    if('Assignment' in rsParams.cfg):
+        if('standard_apogee_nperzone_min' in rsParams.cfg['Assignment']):
+            standard_apogee_nperzone_min = np.int32(rsParams.cfg.get('Assignment',
+                                                                     'standard_apogee_nperzone_min'))
+            print("APOGEE standards set to {n} per zone minimum".format(n=standard_apogee_nperzone_min), flush=True)
+        else:
+            print("No zone requirements for APOGEE standards", flush=True)
+            standard_apogee_nperzone_min = -1
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,

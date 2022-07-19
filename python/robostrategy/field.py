@@ -27,6 +27,7 @@ import robostrategy.targets
 import robostrategy.header
 import robostrategy.obstime as obstime
 import robostrategy.params as params
+import robostrategy.standards
 import coordio.time
 import coordio.utils
 import sdss_access.path
@@ -50,6 +51,7 @@ targets_dtype = robostrategy.targets.target_dtype
 targets_dtype = targets_dtype + [('x', np.float64),
                                  ('y', np.float64),
                                  ('z', np.float64),
+                                 ('zone', np.int32),
                                  ('fiber_ra', np.float64),
                                  ('fiber_dec', np.float64),
                                  ('within', np.int32)]
@@ -470,6 +472,10 @@ class Field(object):
         for each exposure, for 'sky_boss', 'standard_boss', 'sky_apogee',
         'standard_apogee'
 
+    required_calibrations_per_zone : OrderedDict
+        dictionary with numbers of required calibrations per zone
+        'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee'
+
     robotIDs : ndarray of np.int32
         robotID values in order given by RobotGrid object's robotDict dictionary
 
@@ -605,6 +611,7 @@ class Field(object):
         self.targets = np.zeros(0, dtype=targets_dtype)
         self.target_duplicated = np.zeros(0, dtype=np.int32)
         self._is_calibration = np.zeros(0, dtype=bool)
+        self._is_good_calibration = np.zeros(0, dtype=bool)
         self._calibration_index = np.zeros(1, dtype=bool)
         self._unique_catalogids = None
         if(filename is not None):
@@ -637,6 +644,15 @@ class Field(object):
                 self.required_calibrations = collections.OrderedDict()
                 for n in self.calibration_order:
                     self.required_calibrations[n] = np.zeros(0, dtype=np.int32)
+                self.required_calibrations_per_zone = np.zeros(len(self.calibration_order) + 1, dtype=int) - 1
+                for i, n in enumerate(self.calibration_order):
+                    self.required_calibrations_per_zone[i + 1] = -1
+                self.calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                       0, robostrategy.standards.nzone),
+                                                      dtype=np.int32)
+                self.achievable_calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                                  0, robostrategy.standards.nzone),
+                                                                 dtype=np.int32)
                 self.calibrations = collections.OrderedDict()
                 for n in self.calibration_order:
                     self.calibrations[n] = np.zeros(0, dtype=np.int32)
@@ -1069,6 +1085,9 @@ class Field(object):
         self._ot = obstime.ObsTime(observatory=self.observatory)
         self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
         field_cadence = hdr['FCADENCE']
+        if(self._untrim_cadence_version is not None):
+            if(field_cadence.split('_')[-1] != self._untrim_cadence_version):
+                field_cadence = field_cadence + '_' + self._untrim_cadence_version
         if(self._trim_cadence_version):
             w = field_cadence.split('_')
             if(w[-1][0] == 'v'):
@@ -1084,6 +1103,23 @@ class Field(object):
                             self.required_calibrations[hdr[name]] = np.array([np.int32(np.float32(x)) for x in hdr[num].split()], dtype=np.int32)
                         else:
                             self.required_calibrations[hdr[name]] = np.zeros(0, dtype=np.int32)
+            self.required_calibrations_per_zone = np.zeros(len(self.calibration_order) + 1, dtype=int) - 1
+            for name in hdr:
+                m = re.match('^CPZNAME([0-9]*)$', name)
+                if(m is not None):
+                    num = 'CPZNUM{d}'.format(d=m.group(1))
+                    if(num in hdr):
+                        ireq = list(self.calibration_order).index(hdr[name]) + 1
+                        if(hdr[num].strip() != ''):
+                            self.required_calibrations_per_zone[ireq] = np.int32(hdr[num])
+                        else:
+                            self.required_calibrations_per_zone[ireq] = -1
+            self.calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                   0, robostrategy.standards.nzone),
+                                                  dtype=np.int32)
+            self.achievable_calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                              0, robostrategy.standards.nzone),
+                                                             dtype=np.int32)
             self.calibrations = collections.OrderedDict()
             for n in self.calibration_order:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
@@ -1114,7 +1150,7 @@ class Field(object):
                                               'default_designmodes.fits')
                 self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
 
-        if(self.reset_bright is False):
+        if((self.reset_bright is False) & (self.bright_neighbors is True)):
             nbs = 0
             while('bs{n}'.format(n=nbs) in f.hdu_map):
                 nbs = nbs + 1
@@ -1234,6 +1270,12 @@ class Field(object):
         self.assignments = None
         self.design_mode = None
         if(self.nocalib is False):
+            self.calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                   0,
+                                                   robostrategy.standards.nzone), dtype=np.int32)
+            self.achievable_calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                              0,
+                                                              robostrategy.standards.nzone), dtype=np.int32)
             for n in self.calibration_order:
                 self.calibrations[n] = np.zeros(0, dtype=np.int32)
                 self.required_calibrations[n] = np.zeros(0, dtype=np.int32)
@@ -1420,6 +1462,14 @@ class Field(object):
                         self.required_calibrations[c] = np.array([self.designModeDict[d].n_skies_min['BOSS'] for d in dms], dtype=np.int32)
                     elif(c == 'sky_apogee'):
                         self.required_calibrations[c] = np.array([self.designModeDict[d].n_skies_min['APOGEE'] for d in dms], dtype=np.int32)
+                self.calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                       self.field_cadence.nexp_total,
+                                                       robostrategy.standards.nzone),
+                                                      dtype=np.int32)
+                self.achievable_calibrations_per_zone = np.zeros((len(self.calibration_order) + 1,
+                                                                  self.field_cadence.nexp_total,
+                                                                  robostrategy.standards.nzone),
+                                                                 dtype=np.int32)
                 for c in self.calibration_order:
                     self.calibrations[c] = np.zeros(self.field_cadence.nexp_total,
                                                     dtype=np.int32)
@@ -2152,6 +2202,10 @@ class Field(object):
                                                                   y=targets['y'],
                                                                   fiberType=targets['fiberType'])
 
+        # Set zone
+        targets['zone'] = robostrategy.standards.standard_zone(x=targets['x'],
+                                                               y=targets['y'])
+
         # Add targets to robotGrids
         if(self.verbose):
             print("fieldid {f}: Assign targets to robot grid".format(f=self.fieldid), flush=True)
@@ -2168,16 +2222,19 @@ class Field(object):
 
         # Create internal look-up of whether it is a calibration target
         _is_calibration = np.zeros(len(targets), dtype=bool)
+        _is_good_calibration = np.zeros(len(targets), dtype=bool)
         _calibration_index = np.zeros(len(targets), dtype=np.int32)
-        # TODO set zones
+
         if(self.nocalib is False):
             for icategory, category in enumerate(self.required_calibrations):
                 icat = np.where(targets['category'] == category)[0]
                 _is_calibration[icat] = True
+                _is_good_calibration[icat] = True
                 _calibration_index[icat] = icategory + 1
         else:
             inotsci = np.where(targets['category'] != 'science')[0]
             _is_calibration[inotsci] = True
+            _is_good_calibration[inotsci] = True
             _calibration_index[inotsci] = 1
 
         # Connect rsid with index of list
@@ -2204,6 +2261,8 @@ class Field(object):
                                            target_duplicated)
         self._is_calibration = np.append(self._is_calibration,
                                          _is_calibration)
+        self._is_good_calibration = np.append(self._is_good_calibration,
+                                              _is_good_calibration)
         self._calibration_index = np.append(self._calibration_index,
                                             _calibration_index)
 
@@ -2346,6 +2405,16 @@ class Field(object):
                 hdr.append({'name':num,
                             'value':ns,
                             'comment':'number achievable per exposure'})
+            for indx, zc in enumerate(self.calibration_order):
+                name = 'CPZNAME{indx}'.format(indx=indx)
+                num = 'CPZNUM{indx}'.format(indx=indx)
+                hdr.append({'name':name,
+                            'value':zc,
+                            'comment':'calibration category'})
+                ns = str(self.required_calibrations_per_zone[indx + 1])
+                hdr.append({'name':num,
+                            'value':ns,
+                            'comment':'number required per zone'})
 
         fitsio.write(filename, None, header=hdr, clobber=True)
         fitsio.write(filename, self.targets, extname='TARGET')
@@ -2467,6 +2536,16 @@ class Field(object):
         if(indx is None):
             indx = self.rsid2indx[rsid]
         isspare = self._has_spare_calib[self._calibration_index[indx + 1], iexps] > 0
+        if(np.any(isspare) == False):
+            return(isspare)
+        
+        zone = self.targets['zone'][indx]
+        ical = self._calibration_index[indx + 1]
+        ninzone = self.calibrations_per_zone[ical, iexps, zone].flatten()
+        isspare_zone = ((ninzone > self.required_calibrations_per_zone[ical]) &
+                        (self._is_good_calibration[indx]))
+        isspare = isspare & (isspare_zone |
+                             (self._is_good_calibration[indx] == False))
         return(isspare)
 
     def set_assignment_status(self, status=None, isspare=None, check_spare=True):
@@ -3096,8 +3175,11 @@ class Field(object):
             self._robotnexp_max[robotindx, epoch] = self._robotnexp_max[robotindx, epoch] - 1
         self.assignments['assigned'][itarget] = 1
 
-        if((self.stage is not None) & (set_expflag)):
-            self.set_expflag(rsid=rsid, iexp=iexp, flagname=self.stage.upper())
+        if(set_expflag):
+            if(self.stage is None):
+                self.set_expflag(rsid=rsid, iexp=iexp, flagname='OTHER')
+            else:
+                self.set_expflag(rsid=rsid, iexp=iexp, flagname=self.stage.upper())
 
         if(set_fixed):
             self.set_expflag(rsid=rsid, iexp=iexp, flagname='FIXED')
@@ -3107,7 +3189,10 @@ class Field(object):
             if(self._is_calibration[itarget]):
                 category = self.targets['category'][itarget]
                 self.calibrations[category][iexp] = self.calibrations[category][iexp] + 1
-                # TODO update calibration zones
+                if(self._is_good_calibration[itarget]):
+                    ical = self._calibration_index[itarget]
+                    zone = self.targets['zone'][itarget]
+                    self.calibrations_per_zone[ical, iexp, zone] = self.calibrations_per_zone[ical, iexp, zone] + 1
 
         if(self.allgrids):
             rg = self.robotgrids[iexp]
@@ -3129,7 +3214,7 @@ class Field(object):
 
     def assign_exposures(self, rsid=None, iexps=None, check_spare=True,
                          reset_satisfied=True, reset_has_spare=True,
-                         set_fixed=False):
+                         set_fixed=False, set_expflag=True):
         """Assign an rsid to particular exposures
 
         Parameters
@@ -3154,6 +3239,9 @@ class Field(object):
 
         check_spare : bool
             if True, checks whether spare calibrations can be bumped (default True)
+
+        set_expflag : bool
+            if True, set expflag (default True)
 
         Returns
         -------
@@ -3185,7 +3273,8 @@ class Field(object):
                                            reset_count=False,
                                            reset_satisfied=False,
                                            reset_has_spare=False,
-                                           set_fixed=set_fixed)
+                                           set_fixed=set_fixed,
+                                           set_expflag=set_expflag)
                 iorig = np.where(iexps == iexp)[0]
                 done[iorig] = True
 
@@ -3254,6 +3343,7 @@ class Field(object):
         itarget = self.rsid2indx[rsid]
         robotID = self.assignments['robotID'][itarget, iexp]
         category = self.targets['category'][itarget]
+        zone = self.targets['zone'][itarget]
 
         if(self.assignments['expflag'][itarget, iexp] & self.expflagdict['FIXED']):
             if(respect_fixed is False):
@@ -3276,7 +3366,9 @@ class Field(object):
             if(self.nocalib is False):
                 if(self._is_calibration[itarget]):
                     self.calibrations[category][iexp] = self.calibrations[category][iexp] - 1
-                    # TODO update calibration zones
+                if(self._is_good_calibration[itarget]):
+                    ical = self._calibration_index[itarget]
+                    self.calibrations_per_zone[ical, iexp, zone] = self.calibrations_per_zone[ical, iexp, zone] - 1
         else:
             return
 
@@ -4540,7 +4632,8 @@ class Field(object):
         return
 
     def _select_calibs(self, mask):
-        return(self.irancalib[np.where(mask[self.irancalib])[0]])
+        return(self.irancalib[np.where((mask[self.irancalib] == True) &
+                                       (self._is_good_calibration[self.irancalib] == True))[0]])
 
     def assign_calibrations(self, stage='srd'):
         """Assign all calibration targets
@@ -4587,49 +4680,161 @@ class Field(object):
         self.set_stage(stage=None)
         return
 
-    def assign_standard_apogee(self, stage='srd'):
-        """Assign APOGEE standards
+    def set_standard_apogee_goodness(self, nperzone_min=3):
+        """Set standard_apogee goodness to ensure reasonable flexibility
 
         Parameters
         ----------
 
-        stage : str
-            stage of targets to use (default 'srd')
+        nperzone : int
+            minimum achievable number of standard apogee targets per zone (default 3)
+
+        Return:
+        ------
+
+        badzones : ndarray of bool
+            for each zones, set True if ok, set False if not enough targets to guarantee nperzone_min
 
         Notes
         -----
 
-        Sorts standard_apogee targets by brightness, and assigns them 
-        in a "fixed" manner in that order, up to the requirement.
+        There are 8 zones, and it had better be that the number of zones times the
+        minimum number of per zone is greater than the required number. 
+
 """
+        zones = np.arange(robostrategy.standards.nzone, dtype=int)
+
         if(self.nocalib):
             return
 
-        self.set_stage(stage=stage)
+        if(self.verbose):
+            print("fieldid {fid}: Determining goodness thresholds for standard_apogee".format(fid=self.fieldid), flush=True)
+
+        # Find the APOGEE standards, set all to good
+        icalib = np.where(self.targets['category'] == 'standard_apogee')[0]
 
         if(self.verbose):
-            print("fieldid {fid}: Assigning standard_apogee calibrations".format(fid=self.fieldid), flush=True)
-        
-        ias = np.where(self.targets['category'] == 'standard_apogee')[0]
-        isort = np.argsort(self.targets['magnitude'][ias, 8])
-        rsids = self.targets['rsid'][ias[isort]]
+            print("fieldid {fid}: {a} standard_apogee targets total".format(fid=self.fieldid, a=len(icalib)))
 
-        for rsid in rsids:
-            # TODO NEED TO CHECK ZONES HERE
-            iexps = np.where(self.calibrations['standard_apogee'] < self.required_calibrations['standard_apogee'])[0]
-            if(len(iexps) > 0):
-                self.assign_exposures(rsid=rsid, iexps=iexps, check_spare=False,
-                                      reset_satisfied=False, reset_has_spare=False,
-                                      set_fixed=True)
+        # First just check if we shouldn't have any threholds, because
+        # all zones are sparse. If so, give up and return
+        self._is_good_calibration[icalib] = True
+        achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
+        badzones = np.zeros(len(zones), dtype=bool)
+        for zone in zones:
+            if(achievable_zones['standard_apogee'][zone] < nperzone_min):
+                if(self.verbose):
+                    print("fieldid {fid}: zone {z} has only {a} standard_apogee achievable".format(fid=self.fieldid, z=zone, a=achievable_zones['standard_apogee'][zone]))
+                badzones[zone] = True
+        if(badzones.min() == True):
+            return(badzones)
 
-        self._set_satisfied(rsids=rsids)
-        self._set_count(reset_equiv=False)
-        self._set_has_spare_calib()
+        # Now set default goodness threshold per zone; we will lower thresholds 
+        # in each zone until we can reach target. At the end of this process,
+        # _is_good_calibration will be set according to a zone-dependent criterion.
+        goodness_threshold = np.zeros(robostrategy.standards.nzone, dtype=np.float32)
+        goodness = robostrategy.standards.apogee_standard_goodness(self.targets['magnitude'][icalib, :])
+        finished = False
+        while(finished is False):
+            print(goodness_threshold)
+
+            self._is_good_calibration[icalib] = goodness > goodness_threshold[self.targets['zone'][icalib]]
+            achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
+
+            print(achievable['standard_apogee'])
+            print(achievable_zones['standard_apogee'])
+
+            # Did this work? If so we are done
+            finished = True
+            for zone in zones:
+                if(achievable_zones['standard_apogee'][zone] < nperzone_min):
+                    finished = False
+            if(finished):
+                break
+
+            # Or else let us lower thresholds of goodness in under performing zones
+            # If we have run out of targets in all zones ... we are finished.
+            finished = True
+            for zone in zones:
+                izone = np.where(self.targets['zone'][icalib] == zone)[0]
+                if(len(izone) == 0):
+                    continue
+                izone = izone[np.flip(np.argsort(goodness[izone]))]
+                cgoodness = goodness[izone]
+                ilow = np.where(cgoodness > goodness_threshold[zone])[0]
+                print(len(ilow))
+                if(achievable_zones['standard_apogee'][zone] < nperzone_min):
+                    dlow = nperzone_min - achievable_zones['standard_apogee'][zone]
+                    ilow = np.where(cgoodness > goodness_threshold[zone])[0]
+                    if(len(ilow) == 0):
+                        ilow = 0
+                    else:
+                        ilow = ilow.max()
+                    iupdate = ilow + np.int32(np.floor(dlow * 1.5))
+                    if(iupdate > len(izone) - 1):
+                        iupdate = len(izone) - 1
+                    else:
+                        finished = False
+                    goodness_threshold[zone] = cgoodness[iupdate] - 1e-6
+
+            print(goodness_threshold)
+            print(finished)
+
+        return(badzones)
+
+    def force_standard_apogee(self, badzones=None):
+        """Force standard apogee targets in bad zones
+
+        Parameters
+        ----------
+
+        badzones : ndarray of bool
+            zones to force
+
+        stage : str
+            assignment stage (default 'srd')
+"""
+
+        if(self.nocalib):
+            return
+
+        ibadzones = np.where(badzones)[0]
+
+        if(len(ibadzones) == 0):
+            if(self.verbose):
+                print("fieldid {fid}: No bad zones to force standard_apogee in".format(fid=self.fieldid), flush=True)
+            return
+            
+        if(self.verbose):
+            print("fieldid {fid}: Forcing standard_apogee in {n} bad zones".format(fid=self.fieldid, n=len(ibadzones)), flush=True)
+
+        ic = list(self.calibration_order).index('standard_apogee')
+
+        for zone in ibadzones:
+
+            # Find the APOGEE standards, sort by decreasing goodness, and 
+            # assign as FIXED until there are enough
+            icalib = np.where((self.targets['category'] == 'standard_apogee') &
+                              (self.targets['zone'] == zone))[0]
+            self._is_good_calibration[icalib] = True
+            goodness = robostrategy.standards.apogee_standard_goodness(self.targets['magnitude'][icalib, :])
+            isort = icalib[np.flip(np.argsort(goodness))]
+            rsids = self.targets['rsid'][isort]
+            for rsid in rsids:
+                iexps = np.where(self.calibrations_per_zone[ic + 1, :, zone] <
+                                 self.required_calibrations_per_zone[ic + 1])[0]
+                if(len(iexps) > 0):
+                    self.assign_exposures(rsid=rsid, iexps=iexps, check_spare=False,
+                                          reset_satisfied=False, reset_has_spare=False,
+                                          set_fixed=True)
+
+            self._set_satisfied(rsids=rsids)
+            self._set_count(reset_equiv=False)
+            self._set_has_spare_calib()
 
         if(self.verbose):
-            print("fieldid {fid}:   (done assigning standard_apogee)".format(fid=self.fieldid), flush=True)
+            print("fieldid {fid}:   (done forcing standard_apogee)".format(fid=self.fieldid), flush=True)
 
-        self.set_stage(stage=None)
         return
 
     def assign_science(self, stage='srd'):
@@ -4768,6 +4973,62 @@ class Field(object):
         self.set_stage(stage=None)
         return
 
+    def determine_achievable(self, iexp=None, ok=None, limit=True):
+        """Determine achievable number of calibrations for an exposure
+
+        Parameters
+        ----------
+
+        iexp : int or np.int32
+            exposure number
+
+        ok : ndarray of bool
+            for each target, is it ok to include?
+
+        limit : bool
+            if set, limit to required number (default True)
+
+        Returns
+        -------
+
+        achievable : dict with ints
+            for each calibration category, number achievable
+
+        achievable_zones : dict with ndarrys of ints
+            for each calibration category, number achievable in each zone
+        
+        Notes
+        -----
+        
+        Assumes nothing else is assigned
+"""
+        if(ok is None):
+            ok = True
+
+        self._assign_temporary_calibs(ok=ok, iexps=np.array([iexp], dtype=int))
+
+        achievable = dict()
+        achievable_zones = dict()
+        for ic, c in enumerate(self.calibration_order):
+            if((self.calibrations[c][iexp] <
+                self.required_calibrations[c][iexp]) |
+               (limit == False)):
+                achievable[c] = self.calibrations[c][iexp]
+            else:
+                achievable[c] = self.required_calibrations[c][iexp]
+            achievable_zones[c] = np.zeros(robostrategy.standards.nzone, dtype=int)
+            for zone in np.arange(robostrategy.standards.nzone, dtype=int):
+                if((self.calibrations_per_zone[ic + 1, iexp, zone] < 
+                    self.required_calibrations_per_zone[ic + 1]) |
+                   (limit == False)):
+                    achievable_zones[c][zone] = self.calibrations_per_zone[ic + 1, iexp, zone]
+                else:
+                    achievable_zones[c][zone] = self.required_calibrations_per_zone[ic + 1]
+
+        self._unassign_temporary_calibs()
+
+        return(achievable, achievable_zones)
+
     def assign_science_and_calibs(self, stage='srd',
                                   coordinated_targets=None):
         """Assign all science targets and calibrations
@@ -4809,36 +5070,39 @@ class Field(object):
                         self.set_flag(rsid=rsid,
                                       flagname='ALREADY_ASSIGNED')
 
+        # Set goodness threhold of standard_apogee targets
+        ic_standard_apogee = list(self.calibration_order).index('standard_apogee')
+        if(self.required_calibrations_per_zone[ic_standard_apogee + 1] > 0):
+            nper = self.required_calibrations_per_zone[ic_standard_apogee + 1]
+            badzones = self.set_standard_apogee_goodness(nperzone_min=nper * 2)
+
         # Assign calibration to one exposure to determine achievable
         # requirements and then unassign
         if(self.verbose):
             print("fieldid {fieldid}: Assigning calibrations to determine achievable".format(fieldid=self.fieldid), flush=True)
-        # Uniquify design modes here
+
+        # Uniquify design modes here; only need to check one exposure
+        # per design mode
         udesign_mode = np.unique(self.design_mode)
         epochs = self.field_cadence.epochs
+        self.achievable_calibrations_per_zone = self.calibrations_per_zone * 0
         for design_mode in udesign_mode:
             iexpall = np.where(self.design_mode[epochs] == design_mode)[0]
             iexp = iexpall[0]
+            achievable, achievable_zones = self.determine_achievable(iexp=iexp)
             for c in self.calibration_order:
-                icalib = self._select_calibs(self.targets['category'] == c)
-                isort = np.argsort(self.targets['priority'][icalib],
-                                   kind='stable')
-                icalib = icalib[isort]
-                for i in icalib:
-                    if(self.assignments['robotID'][i, iexp] == -1):
-                        self.assign_exposures(rsid=self.targets['rsid'][i],
-                                              iexps=np.array([iexp],
-                                                             dtype=np.int32),
-                                              reset_satisfied=False)
-            for c in self.calibration_order:
-                if(self.calibrations[c][iexp] <
-                   self.required_calibrations[c][iexp]):
-                    self.achievable_calibrations[c][iexpall] = self.calibrations[c][iexp]
-                else:
-                    self.achievable_calibrations[c][iexpall] = self.required_calibrations[c][iexp]
+                self.achievable_calibrations[c][iexpall] = achievable[c]
+            for ic, c in enumerate(self.calibration_order):
+                for iexp in iexpall:
+                    self.achievable_calibrations_per_zone[ic + 1, iexp, :] = achievable_zones[c]
 
-        print("fieldid {fid}: Unassigning calibrations (except fixed ones)".format(fid=self.fieldid),
-              flush=True)
+        # Fix standard_apogee targets where necessary
+        if(self.required_calibrations_per_zone[ic_standard_apogee + 1] > 0):
+            self.force_standard_apogee(badzones)
+
+        if(self.verbose):
+            print("fieldid {fid}: Unassigning calibrations (except fixed ones)".format(fid=self.fieldid),
+                  flush=True)
         iassigned = np.where(self.assignments['assigned'])[0]
         self.unassign(rsids=self.targets['rsid'][iassigned],
                       respect_fixed=True)
@@ -4968,15 +5232,23 @@ class Field(object):
             print("fieldid {fid}: Checking for shortfalls".format(fid=self.fieldid), flush=True)
         shortfalls = collections.OrderedDict()
         anyshortfall = False
-        for c in self.calibration_order:
+        for ic, c in enumerate(self.calibration_order):
             shortfalls[c] = set()
             for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
-                # TODO check zones
                 if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
                     shortfalls[c].add(iexp)
                     if(self.verbose):
                         print("fieldid {fid}:  - shortfall in {c}, exposure {iexp}".format(fid=self.fieldid, c=c, iexp=iexp), flush=True)
                     anyshortfall = True
+                if(self.required_calibrations_per_zone[ic + 1] > 0):
+                    ninzone = self.calibrations_per_zone[ic + 1, iexp, :]
+                    achinzone = self.achievable_calibrations_per_zone[ic + 1, iexp, :]
+                    bad = np.any(ninzone < achinzone)
+                    if(bad):
+                        if(self.verbose):
+                            print("fieldid {fid}:  - shortfall in {c}, exposure {iexp}, zones {z}".format(fid=self.fieldid, c=c, iexp=iexp, z=np.where(ninzone < achinzone)[0]), flush=True)
+                        shortfalls[c].add(iexp)
+                        anyshortfall = True
         return(anyshortfall, shortfalls)
 
     def _assign_permanent_calibs(self, shortfalls=None,
@@ -4990,6 +5262,7 @@ class Field(object):
         # Go through assignment again; notice that we have 
         # left the original assignments in place.
         for c in shortfalls:
+            ic = list(self.calibration_order).index(c)
             iexps = np.array(list(shortfalls[c]), dtype=int)
 
             if(len(iexps) == 0):
@@ -5046,6 +5319,13 @@ class Field(object):
         """Unassign temporary calibrations unless their assignment is fixed for a category and exposure"""
         if(self.verbose):
             print("fieldid {fid}: Unassigning temporary calibs".format(fid=self.fieldid), flush=True)
+
+        if(assigned_exposure_calib == None):
+            assigned_exposure_calib = collections.OrderedDict()
+            for c in self.calibration_order:
+                assigned_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
+                                                      dtype=bool)
+
         for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
             for c in self.calibration_order:
                 if(assigned_exposure_calib[c][iexp] == False):
@@ -5064,29 +5344,45 @@ class Field(object):
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
         return
 
-    def _assign_temporary_calibs(self, assigned_exposure_calib=None):
+    def _assign_temporary_calibs(self, ok=None, iexps=None, assigned_exposure_calib=None):
         """Assign temporary calibrations unless their assignment is fixed for a category and exposure"""
         if(self.verbose):
             print("fieldid {fid}: Assigning calibrations for each exposure".format(fid=self.fieldid), flush=True)
-        for c in self.calibration_order:
+
+        if(ok is None):
+            ok = True
+
+        if(assigned_exposure_calib == None):
+            assigned_exposure_calib = collections.OrderedDict()
+            for c in self.calibration_order:
+                assigned_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
+                                                      dtype=bool)
+
+        assigned_rsids = []
+        for ic, c in enumerate(self.calibration_order):
             if(self.verbose):
                 print("fieldid {fid}:   ... {c}".format(fid=self.fieldid, c=c), flush=True)
-            iexps = np.where(assigned_exposure_calib[c] == False)[0]
-            if(len(iexps) == 0):
-                continue
+
+            if(iexps is None):
+                iexps_assign = np.where(assigned_exposure_calib[c] == False)[0]
+                if(len(iexps_assign) == 0):
+                    continue
+            else:
+                iexps_assign = iexps
             icalib = self._select_calibs(self.targets['category'] == c)
+
             isort = np.argsort(self.targets['priority'][icalib],
                                kind='stable')
             icalib = icalib[isort]
             for i in icalib:
-                inotdone = np.where(self.assignments['robotID'][i, iexps] == -1)[0]
+                inotdone = np.where(self.assignments['robotID'][i, iexps_assign] == -1)[0]
                 if(len(inotdone) > 0):
-                    self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps[inotdone],
+                    self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps_assign[inotdone],
                                           reset_satisfied=False)
 
         icalib = self._select_calibs(self.targets['category'] != 'science')
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
-        return
+        return(assigned_rsids)
 
     def assign(self, coordinated_targets=None):
         """Assign all targets
@@ -5128,7 +5424,8 @@ class Field(object):
     def complete_epochs_assigned(self):
         """Complete the epochs of any assigned science targets"""
 
-        print("fieldid {fid}: Complete any assigned targets within their epochs".format(fid=self.fieldid), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}: Complete any assigned targets within their epochs".format(fid=self.fieldid), flush=True)
 
         # Go through each epoch. For all science targets
         # observed in that epoch, go through them in priority order
@@ -5155,17 +5452,19 @@ class Field(object):
                         ntargets_added = ntargets_added + 1
                         nexposures_added = nexposures_added + ndone
 
-        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
-        
+        if(self.verbose):
+            print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
+            print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+            print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+
         self.decollide_unassigned()
         return
 
     def complete_assigned(self):
         """Complete any available exposures of any assigned science targets"""
 
-        print("fieldid {fid}: Complete any assigned targets across all exposures".format(fid=self.fieldid), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}: Complete any assigned targets across all exposures".format(fid=self.fieldid), flush=True)
 
         # For all science targets observed in that epoch, go through 
         # them in priority order and see if you can assign them
@@ -5191,17 +5490,19 @@ class Field(object):
                     ntargets_added = ntargets_added + 1
                     nexposures_added = nexposures_added + ndone
 
-        print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
-        
+        if(self.verbose):
+            print("fieldid {fid}:   {n} assigned targets checked".format(fid=self.fieldid, n=ntargets), flush=True)
+            print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+            print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+            
         self.decollide_unassigned()
         return
 
     def complete_unassigned(self):
         """Complete any available exposures of any unassigned science targets"""
 
-        print("fieldid {fid}: Complete any unassigned targets".format(fid=self.fieldid), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}: Complete any unassigned targets".format(fid=self.fieldid), flush=True)
 
         # Try any unassigned targets, and assign them whatever can be 
         # assigned
@@ -5227,21 +5528,24 @@ class Field(object):
                 ntargets_added = ntargets_added + 1
                 nexposures_added = nexposures_added + ndone
 
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+            print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
         self.decollide_unassigned()
         return
 
     def complete_calibrations(self, category=''):
         """Add any available exposures for any calibration targets"""
 
-        print("fieldid {fid}: Add any calibration targets".format(fid=self.fieldid), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}: Add any calibration targets".format(fid=self.fieldid), flush=True)
 
         # Assign any calibrations that can be additionally
         # assigned WITHOUT allowing spare calibrations to be
         # bumped.
         icalib = self._select_calibs(self.targets['category'] == category)
-        print("fieldid {fid}:    {n} {cc} targets to check".format(fid=self.fieldid, n=len(icalib), cc=category), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}:    {n} {cc} targets to check".format(fid=self.fieldid, n=len(icalib), cc=category), flush=True)
         if(len(icalib) == 0):
             return
 
@@ -5260,8 +5564,9 @@ class Field(object):
                 ntargets_added = ntargets_added + 1
                 nexposures_added = nexposures_added + ndone
 
-        print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
-        print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
+        if(self.verbose):
+            print("fieldid {fid}:   {n} targets added".format(fid=self.fieldid, n=ntargets_added), flush=True)
+            print("fieldid {fid}:   {n} exposures added".format(fid=self.fieldid, n=nexposures_added), flush=True)
 
         self.decollide_unassigned()
         return

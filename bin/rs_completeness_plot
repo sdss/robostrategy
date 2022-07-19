@@ -96,15 +96,15 @@ if __name__ == '__main__':
     for icadence in np.arange(ncadence + 1):
 
         ntargets_map, hdr = fitsio.read(completeness_file, header=True,
-                                        ext=icadence * 3 + 2)
+                                        ext=icadence * 3 + 5)
         if('CADENCE' in hdr):
             cadence = hdr['CADENCE'].strip()
         else:
             cadence = 'all'
         ngot_map = fitsio.read(completeness_file,
-                               ext=icadence * 3 + 3)
+                               ext=icadence * 3 + 6)
         fgot_map = fitsio.read(completeness_file,
-                               ext=icadence * 3 + 4)
+                               ext=icadence * 3 + 7)
 
         fig = plt.figure(figsize=(8, 4))
         healpy.mollview(
@@ -188,12 +188,12 @@ if __name__ == '__main__':
     for icarton in np.arange(ncarton):
 
         ntargets_map, hdr = fitsio.read(completeness_file, header=True,
-                                        ext=(ncadence + 1 + icarton) * 3 + 2)
+                                        ext=(ncadence + 1 + icarton) * 3 + 5)
         carton = hdr['CARTON'].strip()
         ngot_map = fitsio.read(completeness_file,
-                               ext=(ncadence + 1 + icarton) * 3 + 3)
+                               ext=(ncadence + 1 + icarton) * 3 + 6)
         fgot_map = fitsio.read(completeness_file,
-                               ext=(ncadence + 1 + icarton) * 3 + 4)
+                               ext=(ncadence + 1 + icarton) * 3 + 7)
 
         fig = plt.figure(figsize=(8, 4))
         healpy.mollview(

@@ -104,14 +104,6 @@ def make_map(hpix=None, got=None):
 
     return(ntargets_map, ngot_map, fgot_map)
 
-    hdr = robostrategy.header.rsheader()
-    hdr.append({'name':'NSIDE',
-                'value':nside,
-                'comment':'NSIDE of healpix map'})
-    fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=True)
-    fitsio.write(completeness_file, ngot_map, clobber=False)
-    fitsio.write(completeness_file, fgot_map, clobber=False)
-
 
 if __name__ == '__main__':
 
@@ -261,8 +253,7 @@ if __name__ == '__main__':
 
     cadences = targets['cadence']
     base_cadences = np.array([c.split('-')[0] for c in cadences])
-    base_cadences = np.array(["_".join(c.split('_')[0:-1])
-                              for c in base_cadences])
+    base_cadences = np.array([c.split('_')[0] for c in base_cadences])
     unique_base_cadences = np.unique(base_cadences)
     ikeep = np.where(unique_base_cadences != "")[0]
     unique_base_cadences = unique_base_cadences[ikeep]
@@ -468,10 +459,14 @@ if __name__ == '__main__':
     hdr.append({'name':'NGAPOGEE',
                 'value':ngotapogee,
                 'comment':'# gotten unique APOGEE science catalogid'})
-    fitsio.write(completeness_file, outtargets, header=hdr, clobber=True)
-    fitsio.write(completeness_file, ntargets_map, header=hdr, clobber=False)
-    fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
-    fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
+    fitsio.write(completeness_file, outtargets, header=hdr, extname='TARGETS',
+                 clobber=True)
+    fitsio.write(completeness_file, ntargets_map, header=hdr, extname='ALL_T',
+                 clobber=False)
+    fitsio.write(completeness_file, ngot_map, header=hdr, extname='ALL_G',
+                 clobber=False)
+    fitsio.write(completeness_file, fgot_map, header=hdr, extname='ALL_F',
+                 clobber=False)
 
     subcompleteness_file = sdss_path.full('rsCompleteness', plan=plan,
                                           observatory=observatory)
@@ -493,10 +488,20 @@ if __name__ == '__main__':
         subcompleteness_file = subcompleteness_file.replace('bycarton/rsCompleteness',
                                                             'final/bycarton/rsCompletenessFinal')
     fitsio.write(subcompleteness_file, outtargets[icadence], header=hdr,
-                 clobber=True)
-    fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)
-    fitsio.write(subcompleteness_file, ngot_map, header=hdr, clobber=False)
-    fitsio.write(subcompleteness_file, fgot_map, header=hdr, clobber=False)
+                 extname='TARGETS', clobber=True)
+    fitsio.write(subcompleteness_file, ntargets_map, header=hdr,
+                 extname='SCI_T', clobber=False)
+    fitsio.write(subcompleteness_file, ngot_map, header=hdr,
+                 extname='SCI_G', clobber=False)
+    fitsio.write(subcompleteness_file, fgot_map, header=hdr,
+                 extname='SCI_F',  clobber=False)
+
+    fitsio.write(completeness_file, ntargets_map, header=hdr,
+                 extname='SCI_T', clobber=False)
+    fitsio.write(completeness_file, ngot_map, header=hdr,
+                 extname='SCI_G', clobber=False)
+    fitsio.write(completeness_file, fgot_map, header=hdr,
+                 extname='SCI_F',  clobber=False)
 
     for indx in np.arange(len(unique_base_cadences)):
         unique_base_cadence = unique_base_cadences[indx]
@@ -552,9 +557,11 @@ if __name__ == '__main__':
                             nexps_lco=nexps_lco, nepochs_lco=nepochs_lco)
 
         fitsio.write(completeness_file, ntargets_map, header=hdr,
-                     clobber=False)
-        fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
-        fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
+                     extname=unique_base_cadence.upper() + '_T', clobber=False)
+        fitsio.write(completeness_file, ngot_map, header=hdr,
+                     extname=unique_base_cadence.upper() + '_G', clobber=False)
+        fitsio.write(completeness_file, fgot_map, header=hdr,
+                     extname=unique_base_cadence.upper() + '_F', clobber=False)
 
     for indx in np.arange(len(unique_cartons)):
         unique_carton = unique_cartons[indx]
@@ -610,9 +617,11 @@ if __name__ == '__main__':
                             nexps_lco=nexps_lco, nepochs_lco=nepochs_lco)
 
         fitsio.write(completeness_file, ntargets_map, header=hdr,
-                     clobber=False)
-        fitsio.write(completeness_file, ngot_map, header=hdr, clobber=False)
-        fitsio.write(completeness_file, fgot_map, header=hdr, clobber=False)
+                     extname=unique_carton.upper() + '_T', clobber=False)
+        fitsio.write(completeness_file, ngot_map, header=hdr,
+                     extname=unique_carton.upper() + '_G', clobber=False)
+        fitsio.write(completeness_file, fgot_map, header=hdr,
+                     extname=unique_carton.upper() + '_F', clobber=False)
 
         subcompleteness_file = sdss_path.full('rsCompleteness', plan=plan,
                                               observatory=observatory)
@@ -634,7 +643,10 @@ if __name__ == '__main__':
             subcompleteness_file = subcompleteness_file.replace('rsCompleteness',
                                                                 'rsCompletenessReassign')
         fitsio.write(subcompleteness_file, outtargets[icarton], header=hdr,
-                     clobber=True)
-        fitsio.write(subcompleteness_file, ntargets_map, header=hdr, clobber=False)
-        fitsio.write(subcompleteness_file, ngot_map, header=hdr, clobber=False)
-        fitsio.write(subcompleteness_file, fgot_map, header=hdr, clobber=False)
+                     extname='TARGETS', clobber=True)
+        fitsio.write(subcompleteness_file, ntargets_map, header=hdr,
+                     extname=unique_carton.upper() + 'T', clobber=False)
+        fitsio.write(subcompleteness_file, ngot_map, header=hdr,
+                     extname=unique_carton.upper() + 'G', clobber=False)
+        fitsio.write(subcompleteness_file, fgot_map, header=hdr,
+                     extname=unique_carton.upper() + 'F', clobber=False)
