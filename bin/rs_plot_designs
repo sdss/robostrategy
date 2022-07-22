@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_plot_designs
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import sdss_access.path
+import robostrategy.allocate
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+try:
+    import mpl_toolkits.basemap as basemap
+except ImportError:
+    basemap = None
+
+
+def _convert_radec(m, ra, dec):
+    return m(((360. - ra) + 180.) % 360., dec, inverse=False)
+
+
+if __name__ == '__main__':
+
+    if basemap is None:
+        raise ImportError('basemap was not imported. Is it installed?')
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Plot planned design counts')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    allocate_lco_file = sdss_path.full('rsAllocation', plan=plan,
+                                       observatory='lco')
+    allocate_lco = robostrategy.allocate.AllocateLST(filename=allocate_lco_file,
+                                                     observatory='lco')
+
+    allocate_apo_file = sdss_path.full('rsAllocation', plan=plan,
+                                       observatory='apo')
+    allocate_apo = robostrategy.allocate.AllocateLST(filename=allocate_apo_file,
+                                                     observatory='apo')
+
+    matplotlib.rcParams['figure.figsize'] = (10.0, 10.0)
+
+    fig, ax = plt.subplots(2, 1)
+
+    m = basemap.Basemap(projection='moll', lon_0=270, resolution='c',
+                        celestial=True, ax=ax[0])
+
+    # draw parallels and meridians.
+    m.drawparallels(np.arange(-90., 120., 30.),
+                    linewidth=0.5,
+                    labels=[0, 0, 0, 0],
+                    labelstyle='+/-')
+    m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+    m.drawmapboundary()
+
+    racen = np.zeros(allocate_apo.field_array['nfilled'].sum(), dtype=np.float64)
+    deccen = np.zeros(allocate_apo.field_array['nfilled'].sum(), dtype=np.float64)
+    i = 0
+    for f in allocate_apo.field_array:
+        nf = f['nfilled']
+        racen[i:i + nf] = f['racen']
+        deccen[i:i + nf] = f['deccen']
+        i = i + nf
+    (xx, yy) = _convert_radec(m, racen, deccen)
+    ax[0].scatter(xx, yy, s=4, c='black', alpha=0.1)
+    ax[0].set_title('Planned Designs (APO)')
+
+    m = basemap.Basemap(projection='moll', lon_0=270, resolution='c',
+                        celestial=True, ax=ax[1])
+
+    # draw parallels and meridians.
+    m.drawparallels(np.arange(-90., 120., 30.),
+                    linewidth=0.5,
+                    labels=[0, 0, 0, 0],
+                    labelstyle='+/-')
+    m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+    m.drawmapboundary()
+
+    racen = np.zeros(allocate_lco.field_array['nfilled'].sum(), dtype=np.float64)
+    deccen = np.zeros(allocate_lco.field_array['nfilled'].sum(), dtype=np.float64)
+    i = 0
+    for f in allocate_lco.field_array:
+        nf = f['nfilled']
+        racen[i:i + nf] = f['racen']
+        deccen[i:i + nf] = f['deccen']
+        i = i + nf
+    (xx, yy) = _convert_radec(m, racen, deccen)
+    ax[1].scatter(xx, yy, s=2, c='black', alpha=0.1)
+    ax[1].set_title('Planned Designs (LCO)')
+
+    pngfile = 'designs-{p}.png'.format(p=plan)
+    plt.savefig(pngfile, dpi=300)
+    plt.clf()
