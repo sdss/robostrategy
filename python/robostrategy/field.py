@@ -56,6 +56,10 @@ targets_dtype = targets_dtype + [('x', np.float64),
                                  ('within', np.int32),
                                  ('incadence', np.int32)]
 
+design_status_dtype = np.dtype([('fieldid', np.int32),
+                                ('designid', np.int32),
+                                ('status', np.compat.unicode, 20)])
+
 # Dictionary defining meaning of flags
 _flagdict = {'STAGE_IS_NONE':1,
              'NOT_SCIENCE':2,
@@ -564,6 +568,7 @@ class Field(object):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
+        self.design_status = None
         self.stage = None
         self.verbose = verbose
         self.oldmag = oldmag
@@ -1120,6 +1125,13 @@ class Field(object):
                                           bright_stars=bs)
 
         self.set_field_cadence(field_cadence)
+
+        if('status' in f.hdu_map):
+            design_status = f['status'].read()
+            self.set_design_status(design_status=design_status)
+        else:
+            self.set_design_status()
+            
         targets = f['TARGET'].read()
         self.targets_fromarray(target_array=targets)
         if(('assign' in f.hdu_map) & (noassign is False)):
@@ -1437,16 +1449,54 @@ class Field(object):
             self.assignments = self._setup_assignments_for_cadence(self.targets)
             if(self.nocalib is False):
                 self._set_has_spare_calib()
+
+            self.set_design_status()
+            
             if(self.verbose):
                 print("fieldid {fid}:   (done setting field cadence)".format(fid=self.fieldid), flush=True)
         else:
             self.field_cadence = None
+            self.design_status = None
             if(self.allgrids):
                 self.robotgrids = []
             else:
                 self.robotgrids = None
             self.assignments_dtype = None
             self._has_spare_calib = None
+        return
+
+    def set_design_status(self, design_status=None):
+        """Set design_status, with assumed status for each design
+        
+        Parameters
+        ----------
+
+        design_status : ndarray
+            [nexp_total] array, with 'designid' and 'status' elements
+
+        Notes
+        -----
+
+        If design_status is none, sets all status to default; designid=-1
+        and status='not started'
+"""
+        if(design_status is None):
+            if(self.field_cadence is not None):
+                self.design_status = np.zeros(self.field_cadence.nexp_total,
+                                              dtype=design_status_dtype)
+                self.design_status['fieldid'] = self.fieldid
+                self.design_status['designid'] = -1
+                self.design_status['status'] = 'not started'
+            else:
+                self.design_status = None
+            return
+        if(len(design_status) != self.field_cadence.nexp_total):
+            raise Exception('design_status must exist for each exposure')
+        if('designid' not in design_status.dtype.names):
+            raise Exception('"designid" must be specified by design_status')
+        if('status' not in design_status.dtype.names):
+            raise Exception('"status" must be specified by design_status')
+        self.design_status = design_status
         return
 
     def set_flag(self, rsid=None, flagname=None):
@@ -2300,7 +2350,7 @@ class Field(object):
                             robots['catalogid'][indx, iexp] = self.targets['catalogid'][robots['itarget'][indx, iexp]]
                             robots['fiberType'][indx, iexp] = self.targets['fiberType'][robots['itarget'][indx, iexp]]
 
-            fitsio.write(filename, robots, extname='ROBOTS')
+            fitsio.write(filename, robots, extname='ROBOTS', clobber=False)
 
         if(self.bright_neighbors):
             if(len(self.bright_stars) > 0):
@@ -2316,8 +2366,13 @@ class Field(object):
                     fitsio.write(filename, self.bright_stars[(design_mode,
                                                               fiberType)],
                                  header=hdr,
-                                 extname='BS{n}'.format(n=nbs))
+                                 extname='BS{n}'.format(n=nbs),
+                                 clobber=False)
                     nbs = nbs + 1
+
+        if(self.design_status is not None):
+            fitsio.write(filename, self.design_status, extname='STATUS',
+                         clobber=False)
                     
         return
 
@@ -4561,13 +4616,9 @@ class Field(object):
         goodness = robostrategy.standards.apogee_standard_goodness(self.targets['magnitude'][icalib, :])
         finished = False
         while(finished is False):
-            print(goodness_threshold)
 
             self._is_good_calibration[icalib] = goodness > goodness_threshold[self.targets['zone'][icalib]]
             achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
-
-            print(achievable['standard_apogee'])
-            print(achievable_zones['standard_apogee'])
 
             # Did this work? If so we are done
             finished = True
@@ -4587,7 +4638,6 @@ class Field(object):
                 izone = izone[np.flip(np.argsort(goodness[izone]))]
                 cgoodness = goodness[izone]
                 ilow = np.where(cgoodness > goodness_threshold[zone])[0]
-                print(len(ilow))
                 if(achievable_zones['standard_apogee'][zone] < nperzone_min):
                     dlow = nperzone_min - achievable_zones['standard_apogee'][zone]
                     ilow = np.where(cgoodness > goodness_threshold[zone])[0]
@@ -4601,9 +4651,6 @@ class Field(object):
                     else:
                         finished = False
                     goodness_threshold[zone] = cgoodness[iupdate] - 1e-6
-
-            print(goodness_threshold)
-            print(finished)
 
         return(badzones)
 
