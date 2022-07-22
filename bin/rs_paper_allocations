@@ -28,7 +28,7 @@ if __name__ == '__main__':
     plan = args.plan
 
     allocation_file = sdss_path.full('rsAllocation', plan=plan,
-                                       observatory='apo')
+                                     observatory='apo')
 
     allocate = ra.AllocateLSTCostE(filename=allocation_file)
 
