@@ -4,6 +4,11 @@
 # @Filename: field.py
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 
+# TODO:
+#   can_offset
+#   offset only on bright?
+
+
 import os
 import re
 import random
@@ -74,6 +79,12 @@ _expflagdict = {'FIXED':1,
                 'COMPLETE':32,
                 'OTHER':64}
 
+_offsetdict = {'FAINT':1,
+               'NO_FLUX':2,
+               'TOO_CLOSE_FOR_MODE':4,
+               'TOO_DARK':8,
+               'NO_CAN_OFFSET':16}
+
 
 __all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus']
 
@@ -125,7 +136,7 @@ def read_cadences(plan=None, observatory=None, unpickle=False,
 def read_field(plan=None, observatory=None, fieldid=None,
                stage='', targets=False, speedy=False,
                verbose=False, unpickle=False, oldmag=False,
-               reset_bright=False):
+               reset_bright=False, offset_min_skybrightness=None):
     """Convenience function to read a field object
 
     Parameters
@@ -210,7 +221,8 @@ def read_field(plan=None, observatory=None, fieldid=None,
     else:
         f = Field(filename=field_file, fieldid=fieldid, verbose=verbose,
                   untrim_cadence_version=untrim_cadence_version, oldmag=oldmag,
-                  reset_bright=reset_bright)
+                  reset_bright=reset_bright,
+                  offset_min_skybrightness=offset_min_skybrightness)
 
     return(f)
 
@@ -572,10 +584,12 @@ class Field(object):
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
                  noassign=False, oldmag=False, reload_design_mode=False,
-                 input_design_mode=None, reset_bright=False):
+                 input_design_mode=None, reset_bright=False,
+                 offset_min_skybrightness=None):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
+        self.offset_min_skybrightness = offset_min_skybrightness
         self.stage = None
         self.verbose = verbose
         self.oldmag = oldmag
@@ -884,15 +898,15 @@ class Field(object):
                 itooclose = np.where(d2d < bright['r_exclude'][ibright] *
                                      astropy.units.arcsec)[0]
 
-                if(self.field_cadence.nexp_total == 1):
-                    isame = np.where((bright['catalogid'][ibright[itooclose]] ==
-                                      targets['catalogid'][itype[itargets[itooclose]]]) &
-                                     (assignments['offset_allowed'][itype[itargets[itooclose]]] > 0))[0]
-                else:
-                    iexp = np.where(self.design_mode == design_mode)[0][0]
-                    isame = np.where((bright['catalogid'][ibright[itooclose]] ==
-                                      targets['catalogid'][itype[itargets[itooclose]]]) &
-                                     (assignments['offset_allowed'][itype[itargets[itooclose]], iexp] > 0))[0]
+                #if(self.field_cadence.nexp_total == 1):
+                    #isame = np.where((bright['catalogid'][ibright[itooclose]] ==
+                                      #targets['catalogid'][itype[itargets[itooclose]]]) &
+                                     #(assignments['offset_allowed'][itype[itargets[itooclose]]] > 0))[0]
+                #else:
+                    #iexp = np.where(self.design_mode == design_mode)[0][0]
+                    #isame = np.where((bright['catalogid'][ibright[itooclose]] ==
+                                      #targets['catalogid'][itype[itargets[itooclose]]]) &
+                                     #(assignments['offset_allowed'][itype[itargets[itooclose]], iexp] > 0))[0]
                 #if(len(isame) > 0):
                 #    print("YUH YOH!!!")
                 #    print(d2d[itooclose[isame]])
@@ -1076,6 +1090,10 @@ class Field(object):
             self.collisionBuffer = hdr['CBUFFER']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
             self.nocalib = np.bool(hdr['NOCALIB'])
+        if(('OFFMINSKY' in hdr) & (self.offset_min_skybrightness is None)):
+            self.offset_min_skybrightness = np.float32(hdr['OFFMINSKY'])
+            if(self.offset_min_skybrightness != self.offset_min_skybrightness):
+                self.offset_min_skybrightness = None
         self._set_masterGrid()
         self.robotIDs = np.array([x for x in self.mastergrid.robotDict.keys()],
                                  dtype=int)
@@ -1138,7 +1156,7 @@ class Field(object):
         else:
             try:
                 if(self.verbose):
-                    print("fieldid {fid}: Design mode from field file", flush=True)
+                    print("fieldid {fid}: Design mode from field file".format(fid=self.fieldid), flush=True)
                 self.designModeDict = mugatu.designmode.allDesignModes(filename,
                                                                        ext='DESMODE')
 
@@ -1396,6 +1414,8 @@ class Field(object):
                                                ('bright_allowed', bool,
                                                 (self.field_cadence.nepochs,)),
                                                ('offset_allowed', bool,
+                                                (self.field_cadence.nepochs,)),
+                                               ('offset_flag', np.int32,
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
@@ -1739,26 +1759,31 @@ class Field(object):
 
         delta_ra = np.zeros(len(targets), dtype=np.float64)
         delta_dec = np.zeros(len(targets), dtype=np.float64)
+        offset_flag = np.zeros(len(targets), dtype=np.int32)
 
         iboss = np.where(boss)[0]
         if(len(iboss) > 0):
             mag_lim = self._mag_lim(design_mode=design_mode, fiberType='BOSS')
-            tmp_delta_ra, tmp_delta_dec = coordio.utils.object_offset(mags[iboss],
-                                                                      mag_lim,
-                                                                      lunation)
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iboss],
+                                                                                       mag_lim,
+                                                                                       lunation,
+                                                                                       'Boss')
             delta_ra[iboss] = tmp_delta_ra
             delta_dec[iboss] = tmp_delta_dec
+            offset_flag[iboss] = tmp_offset_flag
 
         iapogee = np.where(apogee)[0]
         if(len(iapogee) > 0):
             mag_lim = self._mag_lim(design_mode=design_mode, fiberType='APOGEE')
-            tmp_delta_ra, tmp_delta_dec = coordio.utils.object_offset(mags[iapogee],
-                                                                      mag_lim,
-                                                                      lunation)
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iapogee],
+                                                                                       mag_lim,
+                                                                                       lunation,
+                                                                                       'Apogee')
             delta_ra[iapogee] = tmp_delta_ra
             delta_dec[iapogee] = tmp_delta_dec
+            offset_flag[iapogee] = tmp_offset_flag
 
-        return(delta_ra, delta_dec)
+        return(delta_ra, delta_dec, offset_flag)
 
     def radec2xyz(self, ra=None, dec=None, epoch=None, pmra=None,
                   pmdec=None, delta_ra=0., delta_dec=0., fiberType=None):
@@ -2045,19 +2070,25 @@ class Field(object):
         # simpler.
         delta_ra_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
         delta_dec_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
+        offset_flag_all = np.zeros((len(umode), len(targets)), dtype=np.int32)
         for imode, mode in enumerate(umode):
-            tmp_delta_ra, tmp_delta_dec = self.offset(targets=targets,
-                                                      design_mode=mode)
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = self.offset(targets=targets,
+                                                                       design_mode=mode)
             delta_ra_all[imode, :] = tmp_delta_ra
             delta_dec_all[imode, :] = tmp_delta_dec
+            offset_flag_all[imode, :] = tmp_offset_flag
         delta_all = np.sqrt(delta_ra_all**2 + delta_dec_all**2)
         idelta = np.argmin(delta_all, axis=0)
         delta_ra = delta_ra_all[idelta, np.arange(len(targets), dtype=int)]
         delta_dec = delta_dec_all[idelta, np.arange(len(targets), dtype=int)]
         delta = np.sqrt(delta_ra**2 + delta_dec**2)
         offset_allowed = dict()
+        offset_flag = dict()
         for imode, mode in enumerate(umode):
             offset_allowed[mode] = (delta_all[imode, :] <= delta)
+            offset_flag[mode] = offset_flag_all[imode, :]
+            inot = np.where(offset_allowed[mode] == False)[0]
+            offset_flag[mode][inot] = offset_flag[mode][inot] | _offsetdict['TOO_CLOSE_FOR_MODE']
 
         assignments['delta_ra'] = delta_ra
         assignments['delta_dec'] = delta_dec
@@ -2065,6 +2096,20 @@ class Field(object):
         # Set offset allowed so we can double check in _bright_allowed_direct
         for epoch, mode in enumerate(self.design_mode):
             assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
+            assignments['offset_flag'][:, epoch] = offset_flag[mode]
+
+        # Totally disallow for epochs with skybrightness < offset_min_skybrightness
+        if(self.offset_min_skybrightness is not None):
+            for epoch, sb in enumerate(self.field_cadence.skybrightness):
+                toodark = (sb <= self.offset_min_skybrightness)
+                if(toodark):
+                    assignments['offset_allowed'][:, epoch] = False
+                    assignments['offset_flag'][:, epoch] = assignments['offset_flag'][:, epoch] | _offsetdict['TOO_DARK']
+
+        # Do not offset if can_offset is False for the target
+        icantoffset = np.where(targets['can_offset'] == False)[0]
+        assignments['offset_allowed'][icantoffset, :] = False
+        assignments['offset_flag'][icantoffset, :] = assignments['offset_flag'][icantoffset, :] | _offsetdict['NO_CAN_OFFSET']
 
         (assignments['x'],
          assignments['y'],
@@ -2360,6 +2405,14 @@ class Field(object):
         hdr.append({'name':'PA',
                     'value':self.pa,
                     'comment':'position angle (deg E of N)'})
+        if(self.offset_min_skybrightness is not None):
+            hdr.append({'name':'OFFMINSKY',
+                        'value':self.offset_min_skybrightness,
+                        'comment':'minimum skybrightness for offset'})
+        else:
+            hdr.append({'name':'OFFMINSKY',
+                        'value':-1.,
+                        'comment':'minimum skybrightness for offset'})
         hdr.append({'name':'BRIGHTN',
                     'value':self.bright_neighbors,
                     'comment':'account for bright neighbor constraints'})
@@ -4736,13 +4789,9 @@ class Field(object):
         goodness = robostrategy.standards.apogee_standard_goodness(self.targets['magnitude'][icalib, :])
         finished = False
         while(finished is False):
-            print(goodness_threshold)
 
             self._is_good_calibration[icalib] = goodness > goodness_threshold[self.targets['zone'][icalib]]
             achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
-
-            print(achievable['standard_apogee'])
-            print(achievable_zones['standard_apogee'])
 
             # Did this work? If so we are done
             finished = True
@@ -4762,7 +4811,6 @@ class Field(object):
                 izone = izone[np.flip(np.argsort(goodness[izone]))]
                 cgoodness = goodness[izone]
                 ilow = np.where(cgoodness > goodness_threshold[zone])[0]
-                print(len(ilow))
                 if(achievable_zones['standard_apogee'][zone] < nperzone_min):
                     dlow = nperzone_min - achievable_zones['standard_apogee'][zone]
                     ilow = np.where(cgoodness > goodness_threshold[zone])[0]
@@ -4776,9 +4824,6 @@ class Field(object):
                     else:
                         finished = False
                     goodness_threshold[zone] = cgoodness[iupdate] - 1e-6
-
-            print(goodness_threshold)
-            print(finished)
 
         return(badzones)
 
