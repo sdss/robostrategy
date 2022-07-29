@@ -39,6 +39,7 @@ standard_apogee_nperzone_min = -1
 mags_allowed_brighttime = []
 mags_allowed_darktime = []
 dmodes = None
+offset_min_skybrightness = None
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -77,7 +78,8 @@ def assign_update(indx):
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
                                 noassign=True, input_design_mode=dmodes,
-                                reset_bright=reset_bright)
+                                reset_bright=reset_bright,
+                                offset_min_skybrightness=offset_min_skybrightness)
     f.fieldid = fieldid
 
     icsa = list(f.calibration_order).index('standard_apogee')
@@ -194,6 +196,8 @@ if __name__ == '__main__':
             mags_allowed_brighttime = rsParams.cfg['Assignment']['mags_allowed_brighttime'].split()
         if('mags_allowed_darktime' in rsParams.cfg['Assignment']):
             mags_allowed_darktime = rsParams.cfg['Assignment']['mags_allowed_darktime'].split()
+        if('offset_min_skybrightness' in rsParams.cfg['Assignment']):
+            offset_min_skybrightness = np.float32(rsParams.cfg['Assignment']['offset_min_skybrightness'])
 
     cadence_version = None
     if('CadenceVersions' in rsParams.cfg):
@@ -225,13 +229,22 @@ if __name__ == '__main__':
 
     dmodes = mugatu.designmode.allDesignModes() 
 
-    if(end < 0):
-        end = allocate.field_array['fieldid'].max()
-    ikeep = np.where((allocate.field_array['fieldid'] >= start) &
-                     (allocate.field_array['fieldid'] <= end))[0]
+    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+                               return_index=True)
+    neededs = np.zeros(len(fieldids), dtype=int)
+    for i, fieldid in enumerate(fieldids):
+        ifieldid = np.where(allocate.field_array['fieldid'] == fieldid)[0]
+        neededs[i] = allocate.field_array['needed'][ifieldid].sum() 
 
-    isort = np.flip(np.argsort(allocate.field_array['needed'][ikeep]))
-    ikeep = ikeep[isort]
+    if(end < 0):
+        end = fieldids.max()
+    ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
+
+    isort = np.flip(np.argsort(neededs[ikeep]))
+    ikeep = indx[ikeep[isort]]
+
+    print(ikeep)
+
     if(nomultiprocess):
         for i in ikeep:
             assign_update(i)
@@ -247,5 +260,5 @@ if __name__ == '__main__':
                     icurr = (icurr + int(pool._processes)) % len(ikeep)
             pool.map(assign_update, ikeep_distributed)
 
-    print('DONE: rs_assign_final')
+    print('DONE: rs_assign_update')
     print(time.ctime(time.time()))
