@@ -24,6 +24,7 @@ import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdss_access.path
 import fitsio
+import coordio
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
