@@ -545,6 +545,9 @@ if __name__ == '__main__':
                 fgot_lco = np.float32(-1.)
 
         hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'NSIDE',
+                    'value':nside,
+                    'comment':'NSIDE of healpix map'})
         hdr.append({'name': 'CADENCE',
                     'value': unique_base_cadence,
                     'comment': 'cadence group in this HDU'})
@@ -605,6 +608,9 @@ if __name__ == '__main__':
                 fgot_lco = np.float32(-1.)
 
         hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'NSIDE',
+                    'value':nside,
+                    'comment':'NSIDE of healpix map'})
         hdr.append({'name': 'CARTON',
                     'value': unique_carton,
                     'comment': 'carton in this HDU'})
