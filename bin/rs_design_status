@@ -52,6 +52,9 @@ def process_field(ifield):
         hduds = fits.BinTableHDU(name='STATUS', data=curr_design_status)
         hdulist.append(hduds)
 
+    # Make sure we have the right fieldid
+    hdulist['STATUS'].data['fieldid'] = field['fieldid']
+
     # Mark design IDs as existing for any field with any design started
     if(status_by == 'field'):
         idesign = np.where(design_status['fieldid'] == field['fieldid'])[0]
