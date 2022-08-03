@@ -1026,6 +1026,8 @@ class Field(object):
         self.deccen = np.float64(hdr['DECCEN'])
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
+        if('BRIGHTN' in hdr):
+            self.bright_neighbors = np.bool(hdr['BRIGHTN'])
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
             self.bright_stars_coords = collections.OrderedDict()
@@ -5152,7 +5154,9 @@ class Field(object):
 
             # First check if we should convert any science targets to
             # the equivalent calib; but we have to make sure they are 
-            # 'fixed' so that they will never be removed.
+            # 'fixed' so that they will never be removed. Make sure
+            # to only do this for cases that are "allowed", so check
+            # AssignmentStatus
             self._set_equiv(rsids=self.targets['rsid'][icalib], iexps=iexps,
                             science=True)
             for iexp in iexps:
@@ -5160,12 +5164,18 @@ class Field(object):
                                        (self.assignments['robotID'][icalib, iexp] < 0))[0]
                 scienceRobotIDs = self.assignments['scienceRobotID'][icalib[isciencegot], iexp]
                 for i, scienceRobotID in zip(icalib[isciencegot], scienceRobotIDs):
-                    self.assign_robot_exposure(rsid=self.targets['rsid'][i],
-                                               robotID=scienceRobotID,
-                                               iexp=iexp, reset_satisfied=False,
-                                               reset_has_spare=False,
-                                               reset_count=False,
-                                               set_fixed=True)
+                    status = AssignmentStatus(rsid=self.targets['rsid'][i],
+                                              robotID=scienceRobotID,
+                                              iexps=np.int32([iexp]))
+                    self.set_assignment_status(status=status)
+                    if(status.assignable[0]):
+                        self.assign_robot_exposure(rsid=self.targets['rsid'][i],
+                                                   robotID=scienceRobotID,
+                                                   iexp=iexp, reset_satisfied=False,
+                                                   reset_has_spare=False,
+                                                   reset_count=False,
+                                                   set_fixed=True)
+
             self._set_satisfied(rsids=self.targets['rsid'][icalib])
             self._set_has_spare_calib()
             
