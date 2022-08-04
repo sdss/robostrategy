@@ -3731,17 +3731,22 @@ class Field(object):
 
         if(iexps is None):
             iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        else:
+            iexps = np.int32(iexps)
 
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
             count = counts_indx[ekey[indx]]
             update = update_indx[ekey[indx]]
 
+            # Only set equivRobotID or science RobotID if exposure allowed
+            iexps_allowed = iexps[self.assignments['allowed'][indx, iexps]]
+
             if(len(count) == 0):
                 continue
 
             if(len(count) > 1):
-                for iexp in iexps:
+                for iexp in iexps_allowed:
                     robotIDs = self.assignments['robotID'][count, iexp]
                     robotIDs = robotIDs[robotIDs >= 0]
                     if(len(robotIDs) > 0):
@@ -3755,7 +3760,7 @@ class Field(object):
             else:
                 # Assumes update array is a superset of count, so if there is one counted,
                 # it is the one to be updated.
-                self.assignments[robotidname][update[0], iexps] = self.assignments['robotID'][count[0], iexps]
+                self.assignments[robotidname][update[0], iexps_allowed] = self.assignments['robotID'][count[0], iexps_allowed]
 
         return
             
