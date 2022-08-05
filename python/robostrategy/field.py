@@ -39,6 +39,9 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 # Default collision buffer
 defaultCollisionBuffer = 2.
 
+# Default epoch to assume the catalog table has
+default_catalog_epoch = 2015.5
+
 
 # intersection of lists
 def interlist(list1, list2):
@@ -711,17 +714,21 @@ class Field(object):
                                                              self.racen,
                                                              self.deccen)
 
-        bright_stars_dtype = np.dtype([('ra', np.float64),
+        bright_stars_dtype = np.dtype([('catalog_ra', np.float64),
+                                       ('catalog_dec', np.float64),
+                                       ('ra', np.float64),
                                        ('dec', np.float64),
+                                       ('pmra', np.float32),
+                                       ('pmdec', np.float32),
                                        ('mag', np.float32),
                                        ('catalogid', np.int64),
                                        ('r_exclude', np.float32)])
 
         if len(db_query) > 0:
             if isinstance(db_query, tuple):
-                ras, decs, mags, catalogids = db_query
+                ras, decs, mags, catalogids, pmra, pmdec = db_query
             else:
-                ras, decs, mags, catalogids = map(list, zip(*list(db_query.tuples())))
+                ras, decs, mags, catalogids, pmra, pmdec = map(list, zip(*list(db_query.tuples())))
 
             if(bright):
                 r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
@@ -734,11 +741,29 @@ class Field(object):
 
             bright_stars = np.zeros(len(ras), dtype=bright_stars_dtype)
 
-            bright_stars['ra'] = ras
-            bright_stars['dec'] = decs
+            bright_stars['catalog_ra'] = ras
+            bright_stars['catalog_dec'] = decs
+            bright_stars['pmra'] = pmra
+            bright_stars['pmdec'] = pmdec
+            badpm = ((np.isfinite(bright_stars['pmra']) == False) |
+                     (np.isfinite(bright_stars['pmdec']) == False))
+            bright_stars['pmra'][badpm] = 0.
+            bright_stars['pmdec'][badpm] = 0.
             bright_stars['mag'] = mags
             bright_stars['catalogid'] = catalogids
             bright_stars['r_exclude'] = r_exclude
+
+            epoch = (np.zeros(len(bright_stars), dtype=np.float32) +
+                     default_catalog_epoch)
+            x, y, z = self.radec2xyz(ra=bright_stars['catalog_ra'],
+                                     dec=bright_stars['catalog_dec'],
+                                     epoch=epoch,
+                                     pmra=bright_stars['pmra'],
+                                     pmdec=bright_stars['pmdec'],
+                                     fiberType=fiberType)
+            (bright_stars['ra'], 
+             bright_stars['dec']) = self.xy2radec(x=x, y=y, fiberType=fiberType)
+
         else:
             bright_stars = np.zeros(0, dtype=bright_stars_dtype)
 
@@ -1047,8 +1072,9 @@ class Field(object):
         self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
         field_cadence = hdr['FCADENCE']
         if(self._untrim_cadence_version is not None):
-            if(field_cadence.split('_')[-1] != self._untrim_cadence_version):
-                field_cadence = field_cadence + '_' + self._untrim_cadence_version
+            if(field_cadence != 'none'):
+                if(field_cadence.split('_')[-1] != self._untrim_cadence_version):
+                    field_cadence = field_cadence + '_' + self._untrim_cadence_version
         if(self._trim_cadence_version):
             w = field_cadence.split('_')
             if(w[-1][0] == 'v'):
@@ -3740,7 +3766,8 @@ class Field(object):
             update = update_indx[ekey[indx]]
 
             # Only set equivRobotID or science RobotID if exposure allowed
-            iexps_allowed = iexps[self.assignments['allowed'][indx, iexps]]
+            epochs = self.field_cadence.epochs[iexps]
+            iexps_allowed = iexps[self.assignments['allowed'][indx, epochs]]
 
             if(len(count) == 0):
                 continue
