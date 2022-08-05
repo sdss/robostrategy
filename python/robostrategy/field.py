@@ -3740,7 +3740,8 @@ class Field(object):
             update = update_indx[ekey[indx]]
 
             # Only set equivRobotID or science RobotID if exposure allowed
-            iexps_allowed = iexps[self.assignments['allowed'][indx, iexps]]
+            epochs = self.field_cadence.epochs[iexps]
+            iexps_allowed = iexps[self.assignments['allowed'][indx, epochs]]
 
             if(len(count) == 0):
                 continue
