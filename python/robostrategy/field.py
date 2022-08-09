@@ -3760,20 +3760,18 @@ class Field(object):
         else:
             iexps = np.int32(iexps)
 
+        epochs = self.field_cadence.epochs
+
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
             count = counts_indx[ekey[indx]]
             update = update_indx[ekey[indx]]
 
-            # Only set equivRobotID or science RobotID if exposure allowed
-            epochs = self.field_cadence.epochs[iexps]
-            iexps_allowed = iexps[self.assignments['allowed'][indx, epochs]]
-
             if(len(count) == 0):
                 continue
 
             if(len(count) > 1):
-                for iexp in iexps_allowed:
+                for iexp in iexps:
                     robotIDs = self.assignments['robotID'][count, iexp]
                     robotIDs = robotIDs[robotIDs >= 0]
                     if(len(robotIDs) > 0):
@@ -3783,11 +3781,22 @@ class Field(object):
                         robotID = robotIDs[0]
                     else:
                         robotID = -1
-                    self.assignments[robotidname][update, iexp] = robotID
+
+                    # Only update the equivRobotID or scienceRobotID
+                    # for target entries for which this exposure is
+                    # allowed
+                    allowed = self.assignments['allowed'][update,
+                                                          epochs[iexp]]
+                    self.assignments[robotidname][update[allowed],
+                                                  iexp] = robotID
             else:
                 # Assumes update array is a superset of count, so if there is one counted,
-                # it is the one to be updated.
-                self.assignments[robotidname][update[0], iexps_allowed] = self.assignments['robotID'][count[0], iexps_allowed]
+                # it is the one to be updated. Only update for exposures
+                # where this one is allowed. (Should be all of them,
+                # since we think update[0] == count[0]).
+                allowed = self.assignments['allowed'][update[0],
+                                                      epochs[iexps]]
+                self.assignments[robotidname][update[0], iexps[allowed]] = self.assignments['robotID'][count[0], iexps[allowed]]
 
         return
             
