@@ -39,6 +39,7 @@ standard_apogee_nperzone_min = -1
 mags_allowed_brighttime = []
 mags_allowed_darktime = []
 dmodes = None
+test = False
 
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
@@ -64,6 +65,9 @@ def assign_update(indx):
                                             fieldid=fieldid)
     field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
                                                             'final/rsFieldAssignmentsFinal')
+
+    if(test):
+        field_assignments_file = field_assignments_file.replace('Final', 'Test')
 
     if((clobber is False) & os.path.isfile(field_assignments_file)):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_assignments_file), flush=True)
@@ -167,6 +171,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-t', '--test', dest='test',
+                        help='test, so write to test file', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
@@ -177,6 +184,7 @@ if __name__ == '__main__':
     observatory = args.observatory
     start = args.start
     end = args.end
+    test = args.test
     clobber = args.clobber
     nomultiprocess = args.nomultiprocess
 
