@@ -66,6 +66,9 @@ if __name__ == '__main__':
                         help='read the field without creating grids',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-t', '--test', dest='test',
+                        help='read test file', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -78,6 +81,7 @@ if __name__ == '__main__':
     complete = args.complete
     nogrids = args.nogrids
     oldmag = args.oldmag
+    test = args.test
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -112,6 +116,9 @@ if __name__ == '__main__':
     if(final):
         field_target_file = field_target_file.replace('targets/rsFieldAssignments',
                                                       'final/rsFieldAssignmentsFinal')
+
+    if(test):
+        field_target_file = field_target_file.replace('Final', 'Test')
 
     if(final):
         f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version, allgrids=nogrids is False, oldmag=oldmag)
