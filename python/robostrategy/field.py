@@ -609,6 +609,10 @@ class Field(object):
             self.bright_stars_coords = collections.OrderedDict()
             self.bright_stars_rmax = collections.OrderedDict()
             self.bright_neighbor_cache = dict()
+        if(self.bright_neighbors):
+            self.fmagloss = coordio.utils.Moffat2dInterp()
+        else:
+            self.fmagloss = None
         self.robotHasApogee = None
         self.collisionBuffer = collisionBuffer
         if(self.allgrids is False):
@@ -714,8 +718,14 @@ class Field(object):
         r_exclude is the radius of the exclusion zone for each star
 """
         bright = 'bright' in design_mode
+        if(bright):
+            lunation = 'bright'
+        else:
+            lunation = 'dark'
         mag_lim = self._mag_lim(design_mode=design_mode,
                                 fiberType=fiberType)
+        mag_limits = self._mag_limits(design_mode=design_mode,
+                                      fiberType=fiberType)
 
         db_query = mugatu.designmode.build_brigh_neigh_query('designmode',
                                                              fiberType,
@@ -739,15 +749,13 @@ class Field(object):
             else:
                 ras, decs, mags, catalogids, pmra, pmdec = map(list, zip(*list(db_query.tuples())))
 
-            if(bright):
-                r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
-                                                                       mag_lim,
-                                                                       lunation='bright')
-            else:
-                r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
-                                                                       mag_lim,
-                                                                       lunation='dark')
-
+            r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                               mag_limits,
+                                                               lunation,
+                                                               fiberType.capitalize(),
+                                                               safety_factor=0.,
+                                                               fmagloss=self.fmagloss)
+            
             bright_stars = np.zeros(len(ras), dtype=bright_stars_dtype)
 
             bright_stars['catalog_ra'] = ras
@@ -1709,6 +1717,7 @@ class Field(object):
         raoff = ((np.arctan2(yoff, xoff) / deg2rad) + 360.) % 360.
         return(raoff, decoff)
 
+    # This is a bit fragile, since choice must match coordio.utils.offset_definition
     def _mag_lim(self, fiberType=None, design_mode=None):
         """Return the bright limit used by offset()"""
         dm = self.designModeDict[design_mode]
@@ -1716,15 +1725,22 @@ class Field(object):
         if fiberType == 'BOSS':
             # grab r_sdss limit for boss
             if(bright): 
-                # no r_sdss for bright so do g band
-                # this is hacky and needs to be fixed!!!
-                mag_lim = dm.bright_limit_targets['BOSS'][0][0]
+                mag_lim = dm.bright_limit_targets['BOSS'][5][0]
             else:
                 mag_lim = dm.bright_limit_targets['BOSS'][1][0]
         else:
             # grab h 2mass mag for limit
             mag_lim = dm.bright_limit_targets['APOGEE'][8][0]
         return(mag_lim)
+
+    def _mag_limits(self, fiberType=None, design_mode=None):
+        """Return the bright limits in all bands used by offset()"""
+        dm = self.designModeDict[design_mode]
+        if fiberType == 'BOSS':
+            mag_limits = dm.bright_limit_targets['BOSS'][:, 0]
+        else:
+            mag_limits = dm.bright_limit_targets['APOGEE'][:, 0]
+        return(mag_limits)
 
     def offset(self, targets=None, design_mode=None):
         """Returns appropriate offsets for each target given design mode
@@ -1763,22 +1779,24 @@ class Field(object):
 
         iboss = np.where(boss)[0]
         if(len(iboss) > 0):
-            mag_lim = self._mag_lim(design_mode=design_mode, fiberType='BOSS')
+            mag_limits = self._mag_limits(design_mode=design_mode, fiberType='BOSS')
             tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iboss],
-                                                                                       mag_lim,
+                                                                                       mag_limits,
                                                                                        lunation,
-                                                                                       'Boss')
+                                                                                       'Boss',
+                                                                                       fmagloss=self.fmagloss)
             delta_ra[iboss] = tmp_delta_ra
             delta_dec[iboss] = tmp_delta_dec
             offset_flag[iboss] = tmp_offset_flag
 
         iapogee = np.where(apogee)[0]
         if(len(iapogee) > 0):
-            mag_lim = self._mag_lim(design_mode=design_mode, fiberType='APOGEE')
+            mag_limits = self._mag_limits(design_mode=design_mode, fiberType='APOGEE')
             tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iapogee],
-                                                                                       mag_lim,
+                                                                                       mag_limits,
                                                                                        lunation,
-                                                                                       'Apogee')
+                                                                                       'Apogee',
+                                                                                       fmagloss=self.fmagloss)
             delta_ra[iapogee] = tmp_delta_ra
             delta_dec[iapogee] = tmp_delta_dec
             offset_flag[iapogee] = tmp_offset_flag
