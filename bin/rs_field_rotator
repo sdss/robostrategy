@@ -44,6 +44,14 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
+def limit_pa_range(pa, pacen=270., pasym=60.):
+    """Restrict PA range to +/-30 deg from 270"""
+    pasymhalf = pasym / 2.
+    dpa = pa - (pacen - pasymhalf)
+    offpa = dpa % pasym
+    newpa = offpa + (pacen - pasymhalf)
+    return(newpa)
+
 def calc_sky_vertices(fdata, pa, vertex_tan):
 
     inv_pixel_scale = float(3600.0)
@@ -106,6 +114,11 @@ if __name__ == '__main__':
         types_to_rotate = ['AllSkySloane', 'BHMSPIDERS',
                            'BHMAqmesMedium', 'BHMAqmesWide2',
                            'MWMTESS_OBAF', 'MWMWD']
+
+    if('PaCenter' + observatory.upper() in rsParams.cfg.options('Fields')):
+        pacen = np.float32(rsParams.cfg.get('Fields', 'PaCenter' + observatory.upper()))
+    else:
+        pacen = None
 
     infile = sdss_path.full('rsFields', plan=plan,
                             observatory=observatory)
@@ -203,6 +216,11 @@ if __name__ == '__main__':
     for i1, i2 in ii:
         pa1[i2] = pa_mean[i1]
         pa2[i2] = pa_furthest[i1]
+
+    # Restrict range for LCO
+    if(pacen is not None):
+        pa1 = limit_pa_range(pa1, pacen=pacen)
+        pa2 = limit_pa_range(pa2, pacen=pacen)
 
     print("Preparing output columns")
     fdata = rf.append_fields(fdata,

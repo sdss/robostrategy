@@ -1,7 +1,10 @@
+import os
 import robostrategy
 import roboscheduler
 import kaiju
 import mugatu
+import coordio
+import fps_calibrations
 
 
 def rsheader():
@@ -15,7 +18,16 @@ def rsheader():
     hdr.append({'name':'MUGATVER',
                 'value':mugatu.__version__,
                 'comment':'mugatu version'})
+    hdr.append({'name':'COORDVER',
+                'value':coordio.__version__,
+                'comment':'coordio version'})
+    hdr.append({'name':'FPSCAVER',
+                'value':fps_calibrations.__version__,
+                'comment':'fps_calibrations version'})
     hdr.append({'name':'KAIJUVER',
                 'value':kaiju.__version__,
+                'comment':'kaiju version'})
+    hdr.append({'name':'WOKDIR',
+                'value':os.getenv('WOKCALIB_DIR'),
                 'comment':'kaiju version'})
     return(hdr)

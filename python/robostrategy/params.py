@@ -39,5 +39,6 @@ class RobostrategyParams(object, metaclass=RobostrategyParamsSingleton):
                                            'Schedule': 'normal',
                                            'ExtraTimeFactor': 1.0,
                                            'fClearAPO': 0.5,
-                                           'fClearLCO': 0.7}})
+                                           'fClearLCO': 0.7},
+                            'Fields': {'PaCenterLCO': 270.}})
         self.cfg.read(cfgfile)
