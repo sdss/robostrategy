@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import matplotlib.pyplot as plt
+import robostrategy.plots as rp
+
+
+plt.rcParams.update({'font.size': 18})
+plt.rcParams.update({'figure.figsize': (10, 10)})
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pretty plot of FPS')
+
+
+    fig, ax = rp.plot_targets(hexagon=False)
+
+    ax.set_xlabel('X (mm)')
+    ax.set_ylabel('Y (mm)')
+    ax.set_xlim([-318., 318.])
+    ax.set_ylim([-318., 318.])
+
+    plt.tight_layout()
+    plt.savefig('fps.png')
