@@ -1308,9 +1308,6 @@ class Field(object):
             self.robotHasApogee = np.array([rg.robotDict[x].hasApogee
                                             for x in rg.robotDict.keys()],
                                            dtype=bool)
-
-        for r in rg.robotDict:
-            print(r)
         return(rg)
 
     def _set_radius(self):
@@ -1400,9 +1397,6 @@ class Field(object):
                                                ('expflag', np.int32,
                                                 (self.field_cadence.nexp_total,))])
             self.assignments = np.zeros(0, dtype=self.assignments_dtype)
-
-            print(self.field_cadence)
-            print(self.field_cadence.obsmode_pk)
 
             try:
                 obsmode_pk = self.field_cadence.obsmode_pk
