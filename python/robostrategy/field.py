@@ -79,12 +79,12 @@ _expflagdict = {'FIXED':1,
                 'COMPLETE':32,
                 'OTHER':64}
 
-_offsetdict = {'FAINT':1,
+_offsetdict = {'TOO_FAINT':1,
                'NO_FLUX':2,
                'TOO_CLOSE_FOR_MODE':4,
                'TOO_DARK':8,
-               'NO_CAN_OFFSET':16}
-
+               'NO_CAN_OFFSET':16,
+               'TOO_BRIGHT':32}
 
 __all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus']
 
@@ -1765,8 +1765,10 @@ class Field(object):
 """
         if('bright' in design_mode):
             lunation = 'bright'
+            skybrightness = 1.0
         if('dark' in design_mode):
             lunation = 'dark'
+            skybrightness = 0.35
         mags = np.zeros(len(targets), dtype=np.float32)
         boss = targets['fiberType'] == 'BOSS'
         apogee = targets['fiberType'] == 'APOGEE'
@@ -1784,7 +1786,10 @@ class Field(object):
                                                                                        mag_limits,
                                                                                        lunation,
                                                                                        'Boss',
-                                                                                       fmagloss=self.fmagloss)
+                                                                                       fmagloss=self.fmagloss,
+                                                                                       can_offset=targets['can_offset'][iboss],
+                                                                                       skybrightness=skybrightness,
+                                                                                       offset_min_skybrightness=self.offset_min_skybrightness)
             delta_ra[iboss] = tmp_delta_ra
             delta_dec[iboss] = tmp_delta_dec
             offset_flag[iboss] = tmp_offset_flag
@@ -1796,7 +1801,10 @@ class Field(object):
                                                                                        mag_limits,
                                                                                        lunation,
                                                                                        'Apogee',
-                                                                                       fmagloss=self.fmagloss)
+                                                                                       fmagloss=self.fmagloss,
+                                                                                       can_offset=targets['can_offset'][iapogee],
+                                                                                       skybrightness=skybrightness,
+                                                                                       offset_min_skybrightness=self.offset_min_skybrightness)
             delta_ra[iapogee] = tmp_delta_ra
             delta_dec[iapogee] = tmp_delta_dec
             offset_flag[iapogee] = tmp_offset_flag
@@ -2103,8 +2111,8 @@ class Field(object):
         offset_allowed = dict()
         offset_flag = dict()
         for imode, mode in enumerate(umode):
-            offset_allowed[mode] = (delta_all[imode, :] <= delta)
             offset_flag[mode] = offset_flag_all[imode, :]
+            offset_allowed[mode] = (delta_all[imode, :] <= delta) & (offset_flag[mode] == 0)
             inot = np.where(offset_allowed[mode] == False)[0]
             offset_flag[mode][inot] = offset_flag[mode][inot] | _offsetdict['TOO_CLOSE_FOR_MODE']
 
@@ -2116,18 +2124,19 @@ class Field(object):
             assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
             assignments['offset_flag'][:, epoch] = offset_flag[mode]
 
+        # Following are accounted for in object_offset() now
         # Totally disallow for epochs with skybrightness < offset_min_skybrightness
-        if(self.offset_min_skybrightness is not None):
-            for epoch, sb in enumerate(self.field_cadence.skybrightness):
-                toodark = (sb <= self.offset_min_skybrightness)
-                if(toodark):
-                    assignments['offset_allowed'][:, epoch] = False
-                    assignments['offset_flag'][:, epoch] = assignments['offset_flag'][:, epoch] | _offsetdict['TOO_DARK']
+        #if(self.offset_min_skybrightness is not None):
+            #for epoch, sb in enumerate(self.field_cadence.skybrightness):
+                #toodark = (sb <= self.offset_min_skybrightness)
+                #if(toodark):
+                    #assignments['offset_allowed'][:, epoch] = False
+                    #assignments['offset_flag'][:, epoch] = assignments['offset_flag'][:, epoch] | _offsetdict['TOO_DARK']
 
         # Do not offset if can_offset is False for the target
-        icantoffset = np.where(targets['can_offset'] == False)[0]
-        assignments['offset_allowed'][icantoffset, :] = False
-        assignments['offset_flag'][icantoffset, :] = assignments['offset_flag'][icantoffset, :] | _offsetdict['NO_CAN_OFFSET']
+        #icantoffset = np.where(targets['can_offset'] == False)[0]
+        #assignments['offset_allowed'][icantoffset, :] = False
+        #assignments['offset_flag'][icantoffset, :] = assignments['offset_flag'][icantoffset, :] | _offsetdict['NO_CAN_OFFSET']
 
         (assignments['x'],
          assignments['y'],
