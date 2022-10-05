@@ -2,6 +2,7 @@
 <style>
     table, th, tr, td {border: 1px solid black;
                        border-collapse: collapse;
+		                   font-size: 24px;
 }
 </style>
 
@@ -11,6 +12,33 @@
 
 <h1>{{plan}}</h1>
 
+<h2>Science Target Completeness Maps</h2>
+
+<table style='border: 0px;' cellspacing=0px>
+	<tbody>
+		<tr style='border: 0px;' cellspacing=0px>
+			<td style='border: 0px;' cellspacing=0px>
+				<a href="rsCompleteness-sci-ntargets-{{plan}}-both.png">
+					<img src="rsCompleteness-sci-ntargets-{{plan}}-both.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td style='border: 0px;' cellspacing=0px>
+				<a href="rsCompleteness-sci-ngot-{{plan}}-both.png">
+					<img src="rsCompleteness-sci-ngot-{{plan}}-both.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td style='border: 0px;' cellspacing=0px>
+				<a href="rsCompleteness-sci-fgot-{{plan}}-both.png">
+					<img src="rsCompleteness-sci-fgot-{{plan}}-both.png"
+							 width=300px></img>
+				</a>
+			</td>
+		</tr>
+	</tbody>
+</table>
+
 <h2>Statistics by carton</h2>
 
 <table style="border: 1px solid black;" cellspacing=0px>
@@ -18,6 +46,7 @@
     <tr>
     <th><b>Carton</b></th>
     <th><b>Description</b></th>
+    <th><b>Maps</b></th>
     <th><b>Targets</b></th>
     <th><b>Satisfied</b></th>
     <th><b>Reassigned</b></th>
@@ -41,6 +70,32 @@
 <tr>
 <td align='right' style="color: blue;">{{c}}</td>
 <td align='right'>{{cartons[c].description}}</td>
+<td align='right'>
+<table style='border: 0px;' cellspacing=0px>
+	<tbody>
+		<tr style='border: 0px;' cellspacing=0px>
+			<td style='border: 0px;' cellspacing=0px>
+				<a href="rsCompleteness-{{c}}-ntargets-{{plan}}-both.png">
+					<img src="rsCompleteness-{{c}}-ntargets-{{plan}}-both.png"
+							 width=100px></img>
+				</a>
+			</td>
+			<td style='border: 0px;' cellspacing=0px>
+				<a href="rsCompleteness-{{c}}-ngot-{{plan}}-both.png">
+					<img src="rsCompleteness-{{c}}-ngot-{{plan}}-both.png"
+							 width=100px></img>
+				</a>
+			</td>
+			<td style='border: 0px;' cellspacing=0px>
+				<a href="rsCompleteness-{{c}}-fgot-{{plan}}-both.png">
+					<img src="rsCompleteness-{{c}}-fgot-{{plan}}-both.png"
+							 width=100px></img>
+				</a>
+			</td>
+		</tr>
+	</tbody>
+</table>
+</td>
 <td align='right' style="color: blue;">{{cartons[c].ntarget}}</td>
 <td align='right' style="color: blue;">{{cartons[c].nsatisfied}}</td>
 <td align='right'>{{cartons[c].nextra}}</td>

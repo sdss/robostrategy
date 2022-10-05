@@ -1,0 +1,214 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import mugatu.designmode
+import coordio.utils
+
+matplotlib.rcParams['font.size'] = 14
+matplotlib.rcParams['figure.figsize'] = [8., 5.]
+
+bright_row = "{name} & {fiberType} & {bright_g} & {bright_r} & {bright_i} & {bright_Bp} & {bright_G} & {bright_Rp} & {bright_H}\\cr\n"
+
+stds_row = "{name} & {fiberType} & {nstds} & {nskies} & {bright_r} & {faint_r} & {bright_Bp} & {faint_Bp} & {bright_Rp} & {faint_Rp} & {bright_H} & {faint_H}\\cr\n"
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Latex for design modes')
+
+    args = parser.parse_args()
+
+    dm = mugatu.designmode.allDesignModes()
+
+    fp = open("bright-limits.tex", "w")
+
+    fp.write("""\\begin{deluxetable}{llccccccc}
+\\tablecaption{\\label{table:bright-limits} Bright limits in each band 
+for each design mode and fiber type.}
+\\tablehead{
+\colhead{Mode} &
+\colhead{Fiber Type} &
+\colhead{$g_{\\rm min}$} & 
+\colhead{$r_{\\rm min}$} & 
+\colhead{$i_{\\rm min}$} & 
+\colhead{${\\rm BP}_{\\rm min}$} & 
+\colhead{$G_{\\rm min}$} & 
+\colhead{${\\rm RP}_{\\rm min}$} & 
+\colhead{$H_{\\rm min}$}
+}
+\\startdata
+""")
+
+    for name in dm:
+        d = dm[name].todict()
+        for fiberType in ['APOGEE', 'BOSS']:
+            bright_g = d['bright_limit_targets'][fiberType][0][0]
+            if(bright_g == -999.):
+                bright_g = '---'
+            bright_r = d['bright_limit_targets'][fiberType][1][0]
+            if(bright_r == -999.):
+                bright_r = '---'
+            bright_i = d['bright_limit_targets'][fiberType][2][0]
+            if(bright_i == -999.):
+                bright_i = '---'
+            bright_Bp = d['bright_limit_targets'][fiberType][4][0]
+            if(bright_Bp == -999.):
+                bright_Bp = '---'
+            bright_G = d['bright_limit_targets'][fiberType][5][0]
+            if(bright_G == -999.):
+                bright_G = '---'
+            bright_Rp = d['bright_limit_targets'][fiberType][6][0]
+            if(bright_Rp == -999.):
+                bright_Rp = '---'
+            bright_H = d['bright_limit_targets'][fiberType][8][0]
+            if(bright_H == -999.):
+                bright_H = '---'
+            if(fiberType == 'APOGEE'):
+                uname = name.replace('_', '\_')
+            else:
+                uname = '---'
+            out = bright_row.format(name=uname, fiberType=fiberType,
+                                    bright_g=bright_g,
+                                    bright_r=bright_r,
+                                    bright_i=bright_i,
+                                    bright_Bp=bright_Bp,
+                                    bright_G=bright_G,
+                                    bright_Rp=bright_Rp,
+                                    bright_H=bright_H)
+            fp.write(out)
+                                    
+    fp.write("""\\enddata
+\end{deluxetable}""")
+    fp.close()
+
+    fp = open("calibrations.tex", "w")
+
+    fp.write("""\\begin{deluxetable}{llcccccccccc}
+\\tablecaption{\\label{table:calibrations} Calibration
+requirements for each design mode and fiber type.}
+\\tablehead{
+\colhead{Mode} &
+\colhead{Fiber Type} &
+\colhead{$N_{\\rm std}$} & 
+\colhead{$N_{\\rm sky}$} &
+\colhead{$r_{\\rm min}$} & 
+\colhead{$r_{\\rm max}$} & 
+\colhead{${\\rm BP}_{\\rm min}$} & 
+\colhead{${\\rm BP}_{\\rm max}$} & 
+\colhead{${\\rm RP}_{\\rm min}$} & 
+\colhead{${\\rm RP}_{\\rm max}$} & 
+\colhead{$H_{\\rm min}$} & 
+\colhead{$H_{\\rm max}$}
+}
+\\startdata
+""")
+
+    for name in dm:
+        d = dm[name].todict()
+        for fiberType in ['APOGEE', 'BOSS']:
+            nskies = d['n_skies_min'][fiberType]
+            nstds = d['n_stds_min'][fiberType]
+            bright_r = d['stds_mags'][fiberType][1][0]
+            if(bright_r == -999.):
+                bright_r = '---'
+            faint_r = d['stds_mags'][fiberType][1][1]
+            if(faint_r == -999.):
+                faint_r = '---'
+            bright_Bp = d['stds_mags'][fiberType][4][0]
+            if(bright_Bp == -999.):
+                bright_Bp = '---'
+            faint_Bp = d['stds_mags'][fiberType][4][1]
+            if(faint_Bp == -999.):
+                faint_Bp = '---'
+            bright_Rp = d['stds_mags'][fiberType][6][0]
+            if(bright_Rp == -999.):
+                bright_Rp = '---'
+            faint_Rp = d['stds_mags'][fiberType][6][1]
+            if(faint_Rp == -999.):
+                faint_Rp = '---'
+            bright_H = d['stds_mags'][fiberType][8][0]
+            if(bright_H == -999.):
+                bright_H = '---'
+            faint_H = d['stds_mags'][fiberType][8][1]
+            if(faint_H == -999.):
+                faint_H = '---'
+            if(fiberType == 'APOGEE'):
+                uname = name.replace('_', '\_')
+            else:
+                uname = '---'
+            out = stds_row.format(name=uname, fiberType=fiberType,
+                                  nstds=nstds,
+                                  nskies=nskies,
+                                  bright_r=bright_r,
+                                  faint_r=faint_r,
+                                  bright_Bp=bright_Bp,
+                                  faint_Bp=faint_Bp,
+                                  bright_Rp=bright_Rp,
+                                  faint_Rp=faint_Rp,
+                                  bright_H=bright_H,
+                                  faint_H=faint_H)
+            fp.write(out)
+                                    
+    fp.write("""\\enddata
+\end{deluxetable}""")
+    fp.close()
+
+    nmags = 1000
+    minmags = 1.
+    maxmags = 17.
+    mags = minmags + (maxmags - minmags) * np.arange(nmags) / np.float32(nmags - 1)
+
+    colors = dict()
+    colors['bright_time'] = 'blue'
+    colors['dark_plane'] = 'magenta'
+    colors['dark_faint'] = 'orange'
+
+    for mode in ['bright_time', 'dark_plane', 'dark_faint']:
+        d = dm[mode].todict()
+        lunation = mode.split('_')[0]
+        mag_lim_g = d['bright_limit_targets']['BOSS'][0][0]
+        rex = mugatu.designmode.bright_neigh_exclusion_r(mags,
+                                                         mag_lim_g,
+                                                         lunation=lunation)
+        offra, offdec = coordio.utils.object_offset(mags,
+                                                    mag_lim_g,
+                                                    lunation=lunation)
+
+        label = 'Exclusion ({m})'.format(m=mode)
+        plt.plot(mags, rex, color=colors[mode], linewidth=2, label=label)
+        label = 'Offset ({m})'.format(m=mode)
+        plt.plot(mags, offra, color='black', linewidth=1)
+
+    plt.xlabel('Magnitude')
+    plt.ylabel('Radius (arcsec)')
+    plt.legend()
+    plt.savefig('offset-exclusion-boss.png', dpi=300)
+    plt.clf()
+
+    for mode in ['bright_time', 'dark_plane']:
+        d = dm[mode].todict()
+        lunation = mode.split('_')[0]
+        mag_lim_g = d['bright_limit_targets']['APOGEE'][8][0]
+        rex = mugatu.designmode.bright_neigh_exclusion_r(mags,
+                                                         mag_lim_g,
+                                                         lunation=lunation)
+        offra, offdec = coordio.utils.object_offset(mags,
+                                                    mag_lim_g,
+                                                    lunation=lunation)
+
+        label = 'Exclusion ({m})'.format(m=lunation)
+        plt.plot(mags, rex, color=colors[mode], linewidth=2, label=label)
+        label = 'Offset ({m})'.format(m=lunation)
+        plt.plot(mags, offra, color='black', linewidth=1)
+
+    plt.xlabel('Magnitude')
+    plt.ylabel('Radius (arcsec)')
+    plt.legend()
+    plt.savefig('offset-exclusion-apogee.png', dpi=300)
+    plt.clf()

@@ -46,6 +46,7 @@ defaultCollisionBuffer = 2.
 # Default epoch to assume the catalog table has
 default_catalog_epoch = 2015.5
 
+
 # intersection of lists
 def interlist(list1, list2):
     return(list(set(list1).intersection(list2)))
@@ -61,6 +62,10 @@ targets_dtype = targets_dtype + [('x', np.float64),
                                  ('fiber_dec', np.float64),
                                  ('within', np.int32)]
                                  
+
+design_status_dtype = np.dtype([('fieldid', np.int32),
+                                ('designid', np.int32),
+                                ('status', np.compat.unicode, 20)])
 
 # Dictionary defining meaning of flags
 _flagdict = {'STAGE_IS_NONE':1,
@@ -590,6 +595,7 @@ class Field(object):
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
         self.offset_min_skybrightness = offset_min_skybrightness
+        self.design_status = None
         self.stage = None
         self.verbose = verbose
         self.oldmag = oldmag
@@ -737,6 +743,8 @@ class Field(object):
                                        ('catalog_dec', np.float64),
                                        ('ra', np.float64),
                                        ('dec', np.float64),
+                                       ('pmra', np.float32),
+                                       ('pmdec', np.float32),
                                        ('mag', np.float32),
                                        ('pmra', np.float32),
                                        ('pmdec', np.float32),
@@ -763,8 +771,8 @@ class Field(object):
             bright_stars['mag'] = mags
             bright_stars['pmra'] = pmra
             bright_stars['pmdec'] = pmdec
-            badpm = ((bright_stars['pmra'] != bright_stars['pmra']) |
-                     (bright_stars['pmdec'] != bright_stars['pmdec']))  # check for NaNs
+            badpm = ((np.isfinite(bright_stars['pmra']) == False) |
+                     (np.isfinite(bright_stars['pmdec']) == False))
             bright_stars['pmra'][badpm] = 0.
             bright_stars['pmdec'][badpm] = 0.
             bright_stars['catalogid'] = catalogids
@@ -1089,6 +1097,8 @@ class Field(object):
         self.deccen = np.float64(hdr['DECCEN'])
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
+        if('BRIGHTN' in hdr):
+            self.bright_neighbors = np.bool(hdr['BRIGHTN'])
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
             self.bright_stars_coords = collections.OrderedDict()
@@ -1112,8 +1122,9 @@ class Field(object):
         self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
         field_cadence = hdr['FCADENCE']
         if(self._untrim_cadence_version is not None):
-            if(field_cadence.split('_')[-1] != self._untrim_cadence_version):
-                field_cadence = field_cadence + '_' + self._untrim_cadence_version
+            if(field_cadence != 'none'):
+                if(field_cadence.split('_')[-1] != self._untrim_cadence_version):
+                    field_cadence = field_cadence + '_' + self._untrim_cadence_version
         if(self._trim_cadence_version):
             w = field_cadence.split('_')
             if(w[-1][0] == 'v'):
@@ -1191,6 +1202,13 @@ class Field(object):
                                       bright_stars=bs)
 
         self.set_field_cadence(field_cadence)
+
+        if('status' in f.hdu_map):
+            design_status = f['status'].read()
+            self.set_design_status(design_status=design_status)
+        else:
+            self.set_design_status()
+            
         targets = f['TARGET'].read()
         self.targets_fromarray(target_array=targets)
         if(('assign' in f.hdu_map) & (noassign is False)):
@@ -1521,16 +1539,54 @@ class Field(object):
             
             if(self.nocalib is False):
                 self._set_has_spare_calib()
+
+            self.set_design_status()
+            
             if(self.verbose):
                 print("fieldid {fid}:   (done setting field cadence)".format(fid=self.fieldid), flush=True)
         else:
             self.field_cadence = None
+            self.design_status = None
             if(self.allgrids):
                 self.robotgrids = []
             else:
                 self.robotgrids = None
             self.assignments_dtype = None
             self._has_spare_calib = None
+        return
+
+    def set_design_status(self, design_status=None):
+        """Set design_status, with assumed status for each design
+        
+        Parameters
+        ----------
+
+        design_status : ndarray
+            [nexp_total] array, with 'designid' and 'status' elements
+
+        Notes
+        -----
+
+        If design_status is none, sets all status to default; designid=-1
+        and status='not started'
+"""
+        if(design_status is None):
+            if(self.field_cadence is not None):
+                self.design_status = np.zeros(self.field_cadence.nexp_total,
+                                              dtype=design_status_dtype)
+                self.design_status['fieldid'] = self.fieldid
+                self.design_status['designid'] = -1
+                self.design_status['status'] = 'not started'
+            else:
+                self.design_status = None
+            return
+        if(len(design_status) != self.field_cadence.nexp_total):
+            raise Exception('design_status must exist for each exposure')
+        if('designid' not in design_status.dtype.names):
+            raise Exception('"designid" must be specified by design_status')
+        if('status' not in design_status.dtype.names):
+            raise Exception('"status" must be specified by design_status')
+        self.design_status = design_status
         return
 
     def set_flag(self, rsid=None, flagname=None):
@@ -2551,7 +2607,7 @@ class Field(object):
                             robots['catalogid'][indx, iexp] = self.targets['catalogid'][robots['itarget'][indx, iexp]]
                             robots['fiberType'][indx, iexp] = self.targets['fiberType'][robots['itarget'][indx, iexp]]
 
-            fitsio.write(filename, robots, extname='ROBOTS')
+            fitsio.write(filename, robots, extname='ROBOTS', clobber=False)
 
         if(self.bright_neighbors):
             if(len(self.bright_stars) > 0):
@@ -2567,8 +2623,13 @@ class Field(object):
                     fitsio.write(filename, self.bright_stars[(design_mode,
                                                               fiberType)],
                                  header=hdr,
-                                 extname='BS{n}'.format(n=nbs))
+                                 extname='BS{n}'.format(n=nbs),
+                                 clobber=False)
                     nbs = nbs + 1
+
+        if(self.design_status is not None):
+            fitsio.write(filename, self.design_status, extname='STATUS',
+                         clobber=False)
                     
         return
 
@@ -3928,6 +3989,10 @@ class Field(object):
 
         if(iexps is None):
             iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
+        else:
+            iexps = np.int32(iexps)
+
+        epochs = self.field_cadence.epochs
 
         for rsid in rsids:
             indx = self.rsid2indx[rsid]
@@ -3948,11 +4013,22 @@ class Field(object):
                         robotID = robotIDs[0]
                     else:
                         robotID = -1
-                    self.assignments[robotidname][update, iexp] = robotID
+
+                    # Only update the equivRobotID or scienceRobotID
+                    # for target entries for which this exposure is
+                    # allowed
+                    allowed = self.assignments['allowed'][update,
+                                                          epochs[iexp]]
+                    self.assignments[robotidname][update[allowed],
+                                                  iexp] = robotID
             else:
                 # Assumes update array is a superset of count, so if there is one counted,
-                # it is the one to be updated.
-                self.assignments[robotidname][update[0], iexps] = self.assignments['robotID'][count[0], iexps]
+                # it is the one to be updated. Only update for exposures
+                # where this one is allowed. (Should be all of them,
+                # since we think update[0] == count[0]).
+                allowed = self.assignments['allowed'][update[0],
+                                                      epochs[iexps]]
+                self.assignments[robotidname][update[0], iexps[allowed]] = self.assignments['robotID'][count[0], iexps[allowed]]
 
         return
             
@@ -5352,7 +5428,9 @@ class Field(object):
 
             # First check if we should convert any science targets to
             # the equivalent calib; but we have to make sure they are 
-            # 'fixed' so that they will never be removed.
+            # 'fixed' so that they will never be removed. Make sure
+            # to only do this for cases that are "allowed", so check
+            # AssignmentStatus
             self._set_equiv(rsids=self.targets['rsid'][icalib], iexps=iexps,
                             science=True)
             for iexp in iexps:
@@ -5360,12 +5438,18 @@ class Field(object):
                                        (self.assignments['robotID'][icalib, iexp] < 0))[0]
                 scienceRobotIDs = self.assignments['scienceRobotID'][icalib[isciencegot], iexp]
                 for i, scienceRobotID in zip(icalib[isciencegot], scienceRobotIDs):
-                    self.assign_robot_exposure(rsid=self.targets['rsid'][i],
-                                               robotID=scienceRobotID,
-                                               iexp=iexp, reset_satisfied=False,
-                                               reset_has_spare=False,
-                                               reset_count=False,
-                                               set_fixed=True)
+                    status = AssignmentStatus(rsid=self.targets['rsid'][i],
+                                              robotID=scienceRobotID,
+                                              iexps=np.int32([iexp]))
+                    self.set_assignment_status(status=status)
+                    if(status.assignable[0]):
+                        self.assign_robot_exposure(rsid=self.targets['rsid'][i],
+                                                   robotID=scienceRobotID,
+                                                   iexp=iexp, reset_satisfied=False,
+                                                   reset_has_spare=False,
+                                                   reset_count=False,
+                                                   set_fixed=True)
+
             self._set_satisfied(rsids=self.targets['rsid'][icalib])
             self._set_has_spare_calib()
             

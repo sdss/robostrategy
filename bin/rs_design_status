@@ -1,0 +1,143 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_design_status
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import numpy as np
+import astropy.io.fits as fits
+import robostrategy.params as params
+import robostrategy.field
+import sdss_access.path
+import fitsio
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+status_by = None
+design_status = None
+
+
+def process_field(ifield):
+    field = fields[ifield]
+    
+    fieldfile = sdss_path.full('rsFieldAssignments', plan=plan,
+                               observatory=observatory,
+                               fieldid=field['fieldid'])
+    fieldfile = fieldfile.replace('targets/rsFieldAssignments',
+                                  'final/rsFieldAssignmentsFinal')
+    
+    hdulist = fits.open(fieldfile, mode='update')
+    nexp = hdulist[0].header['NEXP']
+    if('STATUS' not in hdulist):
+        curr_design_status = np.zeros(nexp,
+                                      dtype=robostrategy.field.design_status_dtype)
+        curr_design_status['fieldid'] = field['fieldid']
+        curr_design_status['designid'] = -1
+        curr_design_status['status'] = 'not started'
+        hduds = fits.BinTableHDU(name='STATUS', data=curr_design_status)
+        hdulist.append(hduds)
+
+    # Make sure we have the right fieldid
+    hdulist['STATUS'].data['fieldid'] = field['fieldid']
+
+    # Mark design IDs as existing for any field with any design started
+    if(status_by == 'field'):
+        idesign = np.where(design_status['fieldid'] == field['fieldid'])[0]
+        anystarted = np.any(design_status['status'][idesign] != 'not started')
+        hdulist['STATUS'].data['designid'] = -1
+        hdulist['STATUS'].data['status'] = 'not started'
+        for ds in design_status[idesign]:
+            hdulist['STATUS'].data['status'][ds['field_exposure']] = ds['status']
+            if(anystarted):
+                hdulist['STATUS'].data['designid'][ds['field_exposure']] = ds['designid']
+
+    hdulist.flush()
+    hdulist.close()
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final allocation file, splitting mixed cadences')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-f', '--from-plan', dest='fromplan',
+                        type=str, help='name of plan with status', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
+                        help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    fromplan = args.fromplan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    nomultiprocess = args.nomultiprocess
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    sdatestr = 'statusDate{obs}'.format(obs=observatory.upper())
+    status_bystr = 'statusBy{obs}'.format(obs=observatory.upper())
+    sdate = rsParams.cfg['Fields'][sdatestr]
+    status_by = rsParams.cfg['Fields'][status_bystr]
+
+    if(status_by not in ['field', 'design']):
+        raise Exception("statusBy keywork in cfg file needs to be one of 'field' or 'design'")
+
+    design_status_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                      'allocations', '{plan}',
+                                      'rsDesignStatus-{fromplan}-{obs}-{d}.fits')
+    design_status_file = design_status_file.format(plan=plan,
+                                                   fromplan=fromplan,
+                                                   obs=observatory,
+                                                   d=sdate)
+    design_status = fitsio.read(design_status_file)
+
+    allocate_file = sdss_path.full('rsAllocationFinal', plan=plan,
+                                   observatory=observatory)
+    fields = fitsio.read(allocate_file, ext=1)
+    ufieldid, iunique = np.unique(fields['fieldid'], return_index=True)
+    fields = fields[iunique]
+
+    if(end < 0):
+        end = fields['fieldid'].max()
+    ifields = np.arange(len(fields), dtype=int)
+    ikeep = np.where((fields['fieldid'] >= start) &
+                     (fields['fieldid'] <= end))[0]
+    ifields = ifields[ikeep]
+
+    if(nomultiprocess):
+        for i in ifields:
+            process_field(i)
+    else:
+        with multiprocessing.Pool() as pool:
+            pool.map(process_field, ifields)
+

@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_designs_done
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import time
+import numpy as np
+import fitsio
+import robostrategy.dbutils
+import robostrategy.allocate
+import sdss_access.path
+
+from sdssdb.peewee.sdss5db import database
+database.set_profile('operations')
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pull out of db which designs are done for field list')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    allocation_file = sdss_path.full('rsAllocationFinal', plan=plan,
+                                     observatory=observatory)
+
+    allocate = robostrategy.allocate.AllocateLSTCostE(filename=allocation_file)
+
+    fieldids = np.unique(allocate.field_array['fieldid'])
+    ndesigns = allocate.field_array['nfilled'].sum()
+
+    designs_dtype = np.dtype([('fieldid', np.int32),
+                              ('designid', np.int32),
+                              ('field_exposure', np.int32),
+                              ('status', np.compat.unicode, 20),
+                              ('field_status', np.compat.unicode, 20)])
+    designs = np.zeros(ndesigns, dtype=designs_dtype)
+
+    idesigns = 0
+    for fieldid in fieldids:
+        field_status, d, status, field_exposure = robostrategy.dbutils.field_status(fieldid=fieldid,
+                                                                                    plan=plan,
+                                                                                    observatory=observatory)
+        ndesigns = len(d)
+        tmp_designs = np.zeros(ndesigns, dtype=designs_dtype)
+        tmp_designs['fieldid'] = fieldid
+        tmp_designs['designid'] = d
+        tmp_designs['status'] = status
+        tmp_designs['field_exposure'] = field_exposure
+        tmp_designs['field_status'] = field_status
+        designs[idesigns:idesigns + ndesigns] = tmp_designs
+        idesigns = idesigns + ndesigns
+
+    if(idesigns != len(designs)):
+        raise("Number of designs is a mismatch in the database!")
+
+    t = time.localtime()
+    d = "{y:04d}-{m:02d}-{d:02d}".format(y=t.tm_year, m=t.tm_mon, d=t.tm_mday)
+    fitsio.write('rsDesignStatus-{plan}-{obs}-{d}.fits'.format(plan=plan,
+                                                               obs=observatory,
+                                                               d=d),
+                 designs, clobber=True)

@@ -2,6 +2,7 @@ import os
 import numpy as np
 import peewee
 import sdssdb.peewee.sdss5db.targetdb as targetdb
+import sdssdb.peewee.sdss5db.opsdb as opsdb
 import robostrategy.targets
 
 from sdssdb.peewee.sdss5db import database
@@ -105,3 +106,78 @@ def get_design_targets(designid=None):
     tmp_targets['rsid'] = tmp_targets['carton_to_target_pk']
 
     return(tmp_targets)
+
+
+def field_status(fieldid=None, plan=None, observatory=None):
+    """Extract field status from the db
+    
+    Parameters
+    ----------
+
+    fieldid : int
+        field identifier
+
+    plan : str
+        which robostrategy plan
+
+    observatory : str
+        which observatory ('apo' or 'lco')
+
+    Returns
+    -------
+
+    status : str
+        one of 'not started', 'started', 'done'
+
+    designid : ndarray of np.int32
+        which design IDs satisfy each exposure
+
+    designid_status : ndarray of str
+        one of 'not started', 'started', 'done'
+
+    Notes
+    -----
+
+    Designs are returned in order of field_exposure
+"""
+    dinfo = (targetdb.Field.select(targetdb.Field.field_id,
+                                   targetdb.Field.racen,
+                                   targetdb.Field.deccen,
+                                   targetdb.Version.plan,
+                                   targetdb.Cadence.label.alias('cadence'),
+                                   targetdb.Observatory.label.alias('observatory'),
+                                   targetdb.DesignToField.field_exposure,
+                                   opsdb.CompletionStatus.label.alias('status'),
+                                   targetdb.Design.design_id)
+             .join(targetdb.Version).switch(targetdb.Field)
+             .join(targetdb.Cadence).switch(targetdb.Field)
+             .join(targetdb.Observatory).switch(targetdb.Field)
+             .join(targetdb.DesignToField, peewee.JOIN.LEFT_OUTER)
+             .join(targetdb.Design)
+             .join(opsdb.DesignToStatus)
+             .join(opsdb.CompletionStatus)
+             .where((targetdb.Field.field_id == fieldid) &
+                    (targetdb.Observatory.label == observatory.upper()) &
+                    (targetdb.Version.plan == plan)).dicts())
+    
+    designid = np.zeros(len(dinfo), dtype=np.int32)
+    designid_status = np.array(['not started'] * len(dinfo))
+    field_exposure = np.zeros(len(dinfo), dtype=np.int32)
+    for i, d in enumerate(dinfo):
+        designid[i] = d['design_id']
+        designid_status[i] = d['status']
+        field_exposure[i] = d['field_exposure']
+
+    isort = np.argsort(field_exposure)
+    designid = designid[isort]
+    designid_status = designid_status[isort]
+    field_exposure = field_exposure[isort]
+
+    if(np.all(designid_status == 'done')):
+        status = 'done'
+    elif(np.any(designid_status != 'not started')):
+        status = 'started'
+    else:
+        status = 'not started'
+
+    return(status, designid, designid_status, field_exposure)

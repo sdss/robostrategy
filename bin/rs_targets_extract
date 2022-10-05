@@ -140,6 +140,27 @@ if __name__ == '__main__':
                 tmp_targets['priority'] = (tmp_targets['priority'] +
                                            adjust[name])
             tmp_targets['stage'] = carton['stage']
+
+            # Perform some validation checks
+            ibad = np.where((tmp_targets['category'] == 'science') &
+                            (tmp_targets['cadence'] == ''))[0]
+            if(len(ibad) > 0):
+                print("SOME TARGETS EXIST WITHOUT CADENCE! WILL NOT WRITE THIS FILE!")
+                print(np.unique(tmp_targets['category'][ibad]))
+                print(np.unique(tmp_targets['carton'][ibad]))
+                print(np.unique(tmp_targets['cadence'][ibad]))
+
+            ibad = np.where((tmp_targets['category'] != 'science') &
+                            (tmp_targets['category'] != 'standard_apogee') &
+                            (tmp_targets['category'] != 'sky_apogee') &
+                            (tmp_targets['category'] != 'standard_boss') &
+                            (tmp_targets['category'] != 'sky_boss'))[0]
+            if(len(ibad) > 0):
+                print("SOME TARGETS EXIST WITH BAD CATEGORY! WILL NOT WRITE THIS FILE!")
+                print(np.unique(tmp_targets['category'][ibad]))
+                print(np.unique(tmp_targets['carton'][ibad]))
+                print(np.unique(tmp_targets['cadence'][ibad]))
+
             targets[nt:nt + len(tmp_targets)] = tmp_targets
             nt = nt + len(tmp_targets)
 
@@ -196,6 +217,9 @@ if __name__ == '__main__':
                     (targets['cadence'] == ''))[0]
     if(len(ibad) > 0):
         print("SOME TARGETS EXIST WITHOUT CADENCE! WILL NOT WRITE THIS FILE!")
+        print(np.unique(targets['category'][ibad]))
+        print(np.unique(targets['carton'][ibad]))
+        print(np.unique(targets['cadence'][ibad]))
         sys.exit(1)
 
     ibad = np.where((targets['category'] != 'science') &
@@ -205,6 +229,9 @@ if __name__ == '__main__':
                     (targets['category'] != 'sky_boss'))[0]
     if(len(ibad) > 0):
         print("SOME TARGETS EXIST WITH BAD CATEGORY! WILL NOT WRITE THIS FILE!")
+        print(np.unique(targets['category'][ibad]))
+        print(np.unique(targets['carton'][ibad]))
+        print(np.unique(targets['cadence'][ibad]))
         sys.exit(1)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,

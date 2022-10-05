@@ -29,5 +29,5 @@ def rsheader():
                 'comment':'kaiju version'})
     hdr.append({'name':'WOKDIR',
                 'value':os.getenv('WOKCALIB_DIR'),
-                'comment':'kaiju version'})
+                'comment':'wok directory in fps_calibrations'})
     return(hdr)

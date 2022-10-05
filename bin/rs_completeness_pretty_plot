@@ -32,13 +32,19 @@ def clean_minmax(n):
 
 
 def make_map(hdr, tmap, perarea=True, log=True):
-    nside = np.int32(hdr['NSIDE'])
+    if('NSIDE' in hdr):
+        nside = np.int32(hdr['NSIDE'])
+    else:
+        nside = 32
     area = healpy.pixelfunc.nside2pixarea(nside, degrees=True)
 
     if(perarea):
         tmap = tmap / area
     if(log):
-        tmap = np.log10(tmap)
+        nzero = tmap > 0
+        zero = tmap <= 0
+        tmap[nzero] = np.log10(tmap[nzero])
+        tmap[zero] = np.log10(0.1)
 
     return(tmap)
 
@@ -68,6 +74,39 @@ def plot_map(hdr, tmap, name=None, title=None, vmin=None, vmax=None,
     return
 
 
+def make_maps(completeness_file, ttype, ttype_pretty):
+    ntargets, hdr = fitsio.read(completeness_file, header=True,
+                                ext='{tt}_T'.format(tt=ttype.upper()))
+    ngot, hdr = fitsio.read(completeness_file, header=True,
+                                ext='{tt}_G'.format(tt=ttype.upper()))
+    fgot, hdr = fitsio.read(completeness_file, header=True,
+                            ext='{tt}_F'.format(tt=ttype.upper()))
+
+    nmap = make_map(hdr, ntargets)
+    tmp_vmin, vmax = clean_minmax(nmap)
+
+    nmap = make_map(hdr, ngot)
+    vmin, tmp_vmax = clean_minmax(nmap)
+
+    print("Targets")
+    plot_map(hdr, ntargets, name='{tt}-ntargets'.format(tt=ttype.lower()),
+             title='$\log_{10}$ Target Density (deg$^{-2}$) ' + '('
+             + ttype_pretty + ')',
+             vmin=vmin, vmax=vmax)
+
+    print("Gotten")
+    plot_map(hdr, ngot, name='{tt}-ngot'.format(tt=ttype.lower()),
+             title='$\log_{10}$ Assigned Target Density (deg$^{-2}$) ' +
+             '(' + ttype_pretty + ')',
+             vmin=vmin, vmax=vmax)
+
+    print("Fraction")
+    plot_map(hdr, fgot, name='{tt}-fgot'.format(tt=ttype.lower()),
+             title='Assigned Target Fraction ({tt})'.format(tt=ttype_pretty),
+             vmin=0., vmax=1., log=False, perarea=False)
+
+    return
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -84,31 +123,30 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
+    cfile = sdss_path.full('rsTargetCadences', plan=plan,
+                           observatory='apo')
+
+    cartons = fitsio.read(cfile, ext='CARTONS')
+
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
                                        observatory=observatory)
     completeness_file = completeness_file.replace('rsCompleteness',
                                                   'final/rsCompletenessFinal')
 
-    ntargets, hdr = fitsio.read(completeness_file, header=True, ext=2)
-    ngot, hdr = fitsio.read(completeness_file, header=True, ext=3)
-    fgot, hdr = fitsio.read(completeness_file, header=True, ext=4)
-
-    nmap = make_map(hdr, ntargets)
-    tmp_vmin, vmax = clean_minmax(nmap)
-
-    nmap = make_map(hdr, ngot)
-    vmin, tmp_vmax = clean_minmax(nmap)
-
-    plot_map(hdr, ntargets, name='ntargets',
-             title='$\log_{10}$ Target Density (deg$^{-2}$)',
-             vmin=vmin, vmax=vmax)
-
-    plot_map(hdr, ngot, name='ngot',
-             title='$\log_{10}$ Assigned Target Density (deg$^{-2}$)',
-             vmin=vmin, vmax=vmax)
-
-    plot_map(hdr, fgot, name='fgot',
-             title='Assigned Target Fraction',
-             vmin=0., vmax=1., log=False, perarea=False)
-
+    make_maps(completeness_file, 'All', 'All')
+    make_maps(completeness_file, 'SCI', 'Science')
+    make_maps(completeness_file, 'BRIGHT', 'Bright')
+    make_maps(completeness_file, 'DARK', 'Dark')
     
+    for carton in cartons:
+        print(carton[0])
+        try:
+            make_maps(completeness_file, carton[0], carton[0])
+        except:
+            print(" -- Failed on carton: {carton}".format(carton=carton[0]))
+            if(carton[0] == 'bhm_spiders_agn_efeds_straggle'):
+                c = 'bhm_spiders_agn_efeds_stragglers'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'bhm_spiders_clusters_efeds_str'):
+                c = 'bhm_spiders_clusters_efeds_stragglers'
+                make_maps(completeness_file, c, c)

@@ -42,6 +42,7 @@ dmodes = None
 test = False
 offset_min_skybrightness = None
 
+
 def assign_update(indx):
     fieldid = allocate.field_array['fieldid'][indx]
     rs_fieldid = allocate.field_array['rs_fieldid'][indx]
