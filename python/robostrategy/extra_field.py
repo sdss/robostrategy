@@ -25,13 +25,14 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         extra_rv = self.assign_rv_extra()
         extra_partial = self.assign_partial()
         extra_bright = self.assign_bright_extra()
+        extra_bhm = self.assign_bhm()
 
         self._set_satisfied()
         self._set_satisfied(science=True)
         self._set_count(reset_equiv=False)
         self.set_stage(stage=None)
 
-        any_success = extra_dark or extra_rv or extra_partial or extra_bright
+        any_success = extra_dark or extra_rv or extra_partial or extra_bright or extra_bhm
         return any_success
 
     def assign_extra(self, rsids=None, max_extra=1, nexps=1, skip_assigned_epochs=True):
@@ -106,6 +107,54 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             nsuccess[idx] = n_assign
 
             self.assignments['extra'][self.rsid2indx[rsid]] += n_assign
+
+        self.decollide_unassigned()
+
+        return(nsuccess)
+
+    def assign_extra_exps(self, rsids=None, max_extra=1):
+        '''
+        This is a generic code for assigning exposures outside of the nominal target cadence.
+        This is modeled a bit after assign_cadences().
+        Parameters:
+        ----------
+        rsids : ndarray of np.int64
+            rsids of targets to assign
+        max_extra: np.int
+            maximum number of extra exposures to assign (default 1)
+        Returns:
+        -------
+        nsuccess: ndarray of type np.int
+            number of exposures successfully assigned for each input rsid
+        '''
+        nsuccess = np.zeros(len(rsids), dtype=np.int) #count how many extra exposures assigned
+
+        first = True # Only return first available robot at each epoch
+                     # Simplest to code but may be limiting for cases when max_extra > 1
+                     # Other available robots could have more exposures available
+        iexps = np.arange(len(self.assignments['robotID'][0]))
+        for idx,rsid in enumerate(rsids):
+            free = self.available_epochs(rsid=rsid, first=first) # By default requests 1 exposures
+
+            n_assign = 0
+            not_assigned = iexps[(self.assignments['equivRobotID'][self.rsid2indx[rsid]] < 0)]
+
+            n_avail = len(not_assigned)
+            if n_avail <= max_extra:
+                done = self.assign_exposures(rsid=rsid, iexps=not_assigned)
+                n_assign = n_assign + done.sum()
+            else:
+                done = 0
+                for one_exp in not_assigned:
+                    one_done = self.assign_exposures(rsid=rsid, iexps=np.array([one_exp]))
+                    done = done + one_done
+                    if done >= max_extra:
+                        break
+                n_assign = n_assign + done
+
+            nsuccess[idx] = n_assign
+
+            self.assignments['extra'][self.rsid2indx[rsid]] = self.assignments['extra'][self.rsid2indx[rsid]] + n_assign
 
         self.decollide_unassigned()
 
