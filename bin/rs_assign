@@ -104,7 +104,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     else:
         igot = np.where(f.assignments['satisfied'])[0]
     target_got[igot] = 1
-    iok = np.where((f.targets['incadence']) & (f.targets['within']))[0]
+    iok = np.where((f.assignments['incadence']) & (f.assignments['within']))[0]
     assign_entry['nwithin'] = len(iok)
     assign_entry['ngot'] = target_got.sum()
     assign_entry['valuegot'] = f.targets['value'][igot].sum()
@@ -112,23 +112,23 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     for indx in np.arange(len(utcadences), dtype=np.int32):
         utcadence = utcadences[indx]
         ic = np.where((f.targets['cadence'] == utcadence) &
-                      (f.targets['incadence']))[0]
-        assign_entry['nwithin_pcd'][0, indx] = f.targets['within'][ic].sum()
+                      (f.assignments['incadence']))[0]
+        assign_entry['nwithin_pcd'][0, indx] = f.assignments['within'][ic].sum()
         assign_entry['ngot_pcd'][0, indx] = target_got[ic].sum()
         icg = np.where((f.targets['cadence'] == utcadence) &
                        (target_got > 0) &
-                       (f.targets['incadence']))[0]
+                       (f.assignments['incadence']))[0]
         assign_entry['valuegot_pcd'][0, indx] = f.targets['value'][icg].sum()
 
     for indx in np.arange(len(utcartons), dtype=np.int32):
         utcarton = utcartons[indx]
         ip = np.where((f.targets['carton'] == utcarton) &
-                      (f.targets['incadence']))[0]
-        assign_entry['nwithin_pct'][0, indx] = f.targets['within'][ip].sum()
+                      (f.assignments['incadence']))[0]
+        assign_entry['nwithin_pct'][0, indx] = f.assignments['within'][ip].sum()
         assign_entry['ngot_pct'][0, indx] = target_got[ip].sum()
         ipg = np.where((f.targets['carton'] == utcarton) &
                        (target_got > 0) &
-                       (f.targets['incadence']))[0]
+                       (f.assignments['incadence']))[0]
         assign_entry['valuegot_pct'][0, indx] = f.targets['value'][ipg].sum()
 
     return(assign_entry[0])

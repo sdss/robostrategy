@@ -121,10 +121,9 @@ if __name__ == '__main__':
         field_target_file = field_target_file.replace('Final', 'Test')
 
     if(final):
-        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version, allgrids=nogrids is False, oldmag=oldmag)
+        f = field.Field(filename=field_target_file, untrim_cadence_version=cadence_version, allgrids=nogrids is False, reload_design_mode=True)
     else:
-        f = field.Field(filename=field_target_file, allgrids=nogrids is False,
-                        oldmag=oldmag)
+        f = field.Field(filename=field_target_file, allgrids=nogrids is False, reload_design_mode=True)
 
     print(f.assess())
     nprob = f.validate()

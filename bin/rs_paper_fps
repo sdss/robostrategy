@@ -3,8 +3,10 @@
 import argparse
 import os
 import sys
+import numpy as np
 import matplotlib.pyplot as plt
 import robostrategy.plots as rp
+import robostrategy.standards
 
 
 plt.rcParams.update({'font.size': 18})
@@ -18,6 +20,31 @@ if __name__ == '__main__':
 
 
     fig, ax = rp.plot_targets(hexagon=False)
+
+    r = 122.
+    th = np.arange(1000) / 999. * 2. * np.pi
+    x = r * np.cos(th)
+    y = r * np.sin(th)
+    ax.plot(x, y, color='black', linewidth=2)
+    ax.plot(np.array([0., 0.]), np.array([- r, r]), color='black', linewidth=2)
+
+    rout = 315. * np.sqrt(3.) / 2.
+    rs = np.array([r, rout])
+    for i in np.arange(6):
+        th = np.pi / 6. + i * np.pi / 3.
+        ths = np.array([th, th])
+        x = rs * np.cos(ths)
+        y = rs * np.sin(ths)
+        ax.plot(x, y, color='black', linewidth=2)
+
+    xr = (np.random.random(10000000) - 0.5) * 500.
+    yr = (np.random.random(10000000) - 0.5) * 500.
+    zs = robostrategy.standards.standard_zone(xr, yr)
+    for i in np.arange(8, dtype=int):
+        ii = np.where(zs == i)[0]
+        xx = np.median(xr[ii])
+        yy = np.median(yr[ii])
+        plt.text(xx, yy, str(i), ma='center')
 
     ax.set_xlabel('X (mm)')
     ax.set_ylabel('Y (mm)')

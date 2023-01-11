@@ -54,10 +54,8 @@ targets_dtype = targets_dtype + [('x', np.float64),
                                  ('y', np.float64),
                                  ('z', np.float64),
                                  ('zone', np.int32),
-                                 ('fiber_ra', np.float64),
-                                 ('fiber_dec', np.float64),
-                                 ('within', np.int32),
-                                 ('incadence', np.int32)]
+                                 ('within', np.int32)]
+                                 
 
 design_status_dtype = np.dtype([('fieldid', np.int32),
                                 ('designid', np.int32),
@@ -80,6 +78,12 @@ _expflagdict = {'FIXED':1,
                 'COMPLETE':32,
                 'OTHER':64}
 
+_offsetdict = {'TOO_FAINT':1,
+               'NO_FLUX':2,
+               'TOO_CLOSE_FOR_MODE':4,
+               'TOO_DARK':8,
+               'NO_CAN_OFFSET':16,
+               'TOO_BRIGHT':32}
 
 __all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus']
 
@@ -121,7 +125,7 @@ def read_cadences(plan=None, observatory=None, unpickle=False,
 """
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    if(stage.capitalize == 'Final'):
+    if(stage.capitalize() == 'Final'):
         cadences_file = cadences_file.replace('rsCadences',
                                               'final/rsCadencesFinal')
     clist.fromfits(filename=cadences_file, unpickle=unpickle)
@@ -130,7 +134,8 @@ def read_cadences(plan=None, observatory=None, unpickle=False,
 
 def read_field(plan=None, observatory=None, fieldid=None,
                stage='', targets=False, speedy=False,
-               verbose=False, unpickle=False, oldmag=False):
+               verbose=False, unpickle=False, oldmag=False,
+               reset_bright=False, offset_min_skybrightness=None):
     """Convenience function to read a field object
 
     Parameters
@@ -146,7 +151,10 @@ def read_field(plan=None, observatory=None, fieldid=None,
         field id
 
     oldmag : bool
-        if True, read in file with [N, 7] magnitude array
+        if True, read in file with [N, 7] magnitude array (default False)
+
+    reset_bright : bool
+        if True, ignore bright star list in file, reload from db (default False)
 
     stage : str
         stage of assignments ('', 'Open', 'Filler', 'Reassign', 'Complete', 'Final')
@@ -208,10 +216,12 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     if(speedy):
         f = FieldSpeedy(filename=field_file, fieldid=fieldid,
-                        verbose=verbose, oldmag=oldmag)
+                        verbose=verbose, oldmag=oldmag, reset_bright=reset_bright)
     else:
         f = Field(filename=field_file, fieldid=fieldid, verbose=verbose,
-                  untrim_cadence_version=untrim_cadence_version, oldmag=oldmag)
+                  untrim_cadence_version=untrim_cadence_version, oldmag=oldmag,
+                  reset_bright=reset_bright,
+                  offset_min_skybrightness=offset_min_skybrightness)
 
     return(f)
 
@@ -351,6 +361,9 @@ class Field(object):
     bright_neighbors : bool
         if True, check bright neighbor conditions (default False)
 
+    reset_bright : bool
+        if True, doesn't read bright stars with fromfits() (default False)
+
     verbose : bool
         if True, issue a lot of output statements (default False)
 
@@ -455,6 +468,9 @@ class Field(object):
     radius : np.float32
         distance from racen, deccen to search for for targets (deg);
         set to 1.5 for observatory 'apo' and 0.95 for observatory 'lco'
+
+    reset_bright : bool
+        if True, will not load bright stars in fromfits()
 
     reload_design_mode : bool
         if True, will reload design mode dictionary from targetdb
@@ -567,10 +583,12 @@ class Field(object):
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
                  noassign=False, oldmag=False, reload_design_mode=False,
-                 input_design_mode=None):
+                 input_design_mode=None, reset_bright=False,
+                 offset_min_skybrightness=None):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
+        self.offset_min_skybrightness = offset_min_skybrightness
         self.design_status = None
         self.stage = None
         self.verbose = verbose
@@ -584,12 +602,17 @@ class Field(object):
         self.allgrids = allgrids
         self.reload_design_mode = reload_design_mode
         self.input_design_mode = input_design_mode
+        self.reset_bright = reset_bright
         self.bright_neighbors = bright_neighbors
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
             self.bright_stars_coords = collections.OrderedDict()
             self.bright_stars_rmax = collections.OrderedDict()
             self.bright_neighbor_cache = dict()
+        if(self.bright_neighbors):
+            self.fmagloss = coordio.utils.Moffat2dInterp()
+        else:
+            self.fmagloss = None
         self.robotHasApogee = None
         self.collisionBuffer = collisionBuffer
         if(self.allgrids is False):
@@ -622,7 +645,7 @@ class Field(object):
             self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
             if(self.collisionBuffer is None):
                 self.collisionBuffer = defaultCollisionBuffer
-            self.mastergrid = self._robotGrid()
+            self._set_masterGrid()
             self.robotIDs = np.array([x for x in self.mastergrid.robotDict.keys()],
                                      dtype=int)
             self.robotID2indx = dict()
@@ -694,19 +717,15 @@ class Field(object):
 
         r_exclude is the radius of the exclusion zone for each star
 """
-        desmode = self.designModeDict[design_mode]
         bright = 'bright' in design_mode
-        if fiberType == 'BOSS':
-            # grab r_sdss limit for boss
-            if(bright): 
-                # no r_sdss for bright so do g band
-                # this is hacky and needs to be fixed!!!
-                mag_lim = desmode.bright_limit_targets['BOSS'][0][0]
-            else:
-                mag_lim = desmode.bright_limit_targets['BOSS'][1][0]
+        if(bright):
+            lunation = 'bright'
         else:
-            # grab h 2mass mag for limit
-            mag_lim = desmode.bright_limit_targets['APOGEE'][8][0]
+            lunation = 'dark'
+        mag_lim = self._mag_lim(design_mode=design_mode,
+                                fiberType=fiberType)
+        mag_limits = self._mag_limits(design_mode=design_mode,
+                                      fiberType=fiberType)
 
         db_query = mugatu.designmode.build_brigh_neigh_query('designmode',
                                                              fiberType,
@@ -730,26 +749,24 @@ class Field(object):
             else:
                 ras, decs, mags, catalogids, pmra, pmdec = map(list, zip(*list(db_query.tuples())))
 
-            if(bright):
-                r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
-                                                                       mag_lim,
-                                                                       lunation='bright')
-            else:
-                r_exclude = mugatu.designmode.bright_neigh_exclusion_r(mags,
-                                                                       mag_lim,
-                                                                       lunation='dark')
-
+            r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                               mag_limits,
+                                                               lunation,
+                                                               fiberType.capitalize(),
+                                                               safety_factor=0.,
+                                                               fmagloss=self.fmagloss)
+            
             bright_stars = np.zeros(len(ras), dtype=bright_stars_dtype)
 
             bright_stars['catalog_ra'] = ras
             bright_stars['catalog_dec'] = decs
+            bright_stars['mag'] = mags
             bright_stars['pmra'] = pmra
             bright_stars['pmdec'] = pmdec
             badpm = ((np.isfinite(bright_stars['pmra']) == False) |
                      (np.isfinite(bright_stars['pmdec']) == False))
             bright_stars['pmra'][badpm] = 0.
             bright_stars['pmdec'][badpm] = 0.
-            bright_stars['mag'] = mags
             bright_stars['catalogid'] = catalogids
             bright_stars['r_exclude'] = r_exclude
 
@@ -843,7 +860,8 @@ class Field(object):
         self.bright_stars_rmax[(design_mode, fiberType)] = bright_stars_rmax
         return
 
-    def _bright_allowed_direct(self, design_mode=None, targets=None):
+    def _bright_allowed_direct(self, design_mode=None, targets=None,
+                               assignments=None):
         """Report which input targets are not too close to a bright neighbor
 
         Parameters
@@ -854,6 +872,9 @@ class Field(object):
 
         targets : ndarray
             some elements of the targets ndarray
+
+        assignments : ndarray
+            some elements of the assignments ndarray
 
         Returns
         -------
@@ -871,8 +892,8 @@ class Field(object):
         too (with _bright_allowed_robot).
 """
         bright_allowed = np.ones(len(targets), dtype=bool)
-        target_coords = astropy.coordinates.SkyCoord(targets['fiber_ra'],
-                                                     targets['fiber_dec'],
+        target_coords = astropy.coordinates.SkyCoord(assignments['fiber_ra'],
+                                                     assignments['fiber_dec'],
                                                      frame='icrs',
                                                      unit='deg')
         for fiberType in ['APOGEE', 'BOSS']:
@@ -913,6 +934,7 @@ class Field(object):
         self.mastergrid.assignRobot2Target(robotID, rsid)
         x = dict()
         y = dict()
+        
         x['BOSS'] = self.mastergrid.robotDict[robotID].bossWokXYZ[0]
         y['BOSS'] = self.mastergrid.robotDict[robotID].bossWokXYZ[1]
         x['APOGEE'] = self.mastergrid.robotDict[robotID].apWokXYZ[0]
@@ -1062,7 +1084,11 @@ class Field(object):
             self.collisionBuffer = hdr['CBUFFER']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
             self.nocalib = np.bool(hdr['NOCALIB'])
-        self.mastergrid = self._robotGrid()
+        if(('OFFMINSKY' in hdr) & (self.offset_min_skybrightness is None)):
+            self.offset_min_skybrightness = np.float32(hdr['OFFMINSKY'])
+            if(self.offset_min_skybrightness != self.offset_min_skybrightness):
+                self.offset_min_skybrightness = None
+        self._set_masterGrid()
         self.robotIDs = np.array([x for x in self.mastergrid.robotDict.keys()],
                                  dtype=int)
         self.robotID2indx = dict()
@@ -1125,7 +1151,7 @@ class Field(object):
         else:
             try:
                 if(self.verbose):
-                    print("fieldid {fid}: Design mode from field file", flush=True)
+                    print("fieldid {fid}: Design mode from field file".format(fid=self.fieldid), flush=True)
                 self.designModeDict = mugatu.designmode.allDesignModes(filename,
                                                                        ext='DESMODE')
 
@@ -1137,20 +1163,19 @@ class Field(object):
                                               'default_designmodes.fits')
                 self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
 
-
-        if(self.bright_neighbors):
+        if((self.reset_bright is False) & (self.bright_neighbors is True)):
             nbs = 0
             while('bs{n}'.format(n=nbs) in f.hdu_map):
                 nbs = nbs + 1
-                for ibs in range(nbs):
-                    key = 'BS{ibs}'.format(ibs=ibs)
-                    bshdr = f[key].read_header()
-                    bs = f[key].read()
-                    design_mode = bshdr['DESMODE']
-                    fiberType = bshdr['FIBERTY']
-                    self.set_bright_stars(design_mode=design_mode,
-                                          fiberType=fiberType,
-                                          bright_stars=bs)
+            for ibs in range(nbs):
+                key = 'BS{ibs}'.format(ibs=ibs)
+                bshdr = f[key].read_header()
+                bs = f[key].read()
+                design_mode = bshdr['DESMODE']
+                fiberType = bshdr['FIBERTY']
+                self.set_bright_stars(design_mode=design_mode,
+                                      fiberType=fiberType,
+                                      bright_stars=bs)
 
         self.set_field_cadence(field_cadence)
 
@@ -1206,6 +1231,7 @@ class Field(object):
                 self.assignments['rsflags'][indx] = assignment['rsflags']
                 if(hasexpflag):
                     self.assignments['expflag'][indx] = assignment['expflag']
+            self._set_masterGrid()
             self._set_has_spare_calib()
             self._set_satisfied()
             self._set_satisfied(science=True)
@@ -1375,11 +1401,23 @@ class Field(object):
                                                ('extra', np.int32),
                                                ('nexps', np.int32),
                                                ('nepochs', np.int32),
+                                               ('x', np.float64),
+                                               ('y', np.float64),
+                                               ('z', np.float64),
+                                               ('fiber_ra', np.float64),
+                                               ('fiber_dec', np.float64),
+                                               ('delta_ra', np.float32),
+                                               ('delta_dec', np.float32),
+                                               ('incadence', bool),
                                                ('allowed', bool,
                                                 (self.field_cadence.nepochs,)),
                                                ('mags_allowed', bool,
                                                 (self.field_cadence.nepochs,)),
                                                ('bright_allowed', bool,
+                                                (self.field_cadence.nepochs,)),
+                                               ('offset_allowed', bool,
+                                                (self.field_cadence.nepochs,)),
+                                               ('offset_flag', np.int32,
                                                 (self.field_cadence.nepochs,)),
                                                ('robotID', np.int32,
                                                 (self.field_cadence.nexp_total,)),
@@ -1470,11 +1508,11 @@ class Field(object):
                                               fiberType=fiberType)
 
             if(self.verbose):
-                print("fieldid {fieldid}: Setup targets for cadence".format(fieldid=self.fieldid), flush=True)
-            self.targets = self._setup_targets_for_cadence(self.targets)
-            if(self.verbose):
                 print("fieldid {fieldid}: Setup assignments".format(fieldid=self.fieldid), flush=True)
             self.assignments = self._setup_assignments_for_cadence(self.targets)
+
+            self._set_masterGrid()
+            
             if(self.nocalib is False):
                 self._set_has_spare_calib()
 
@@ -1711,6 +1749,100 @@ class Field(object):
         raoff = ((np.arctan2(yoff, xoff) / deg2rad) + 360.) % 360.
         return(raoff, decoff)
 
+    # This is a bit fragile, since choice must match coordio.utils.offset_definition
+    def _mag_lim(self, fiberType=None, design_mode=None):
+        """Return the bright limit used by offset()"""
+        dm = self.designModeDict[design_mode]
+        bright = 'bright' in design_mode
+        if fiberType == 'BOSS':
+            # grab r_sdss limit for boss
+            if(bright): 
+                mag_lim = dm.bright_limit_targets['BOSS'][5][0]
+            else:
+                mag_lim = dm.bright_limit_targets['BOSS'][1][0]
+        else:
+            # grab h 2mass mag for limit
+            mag_lim = dm.bright_limit_targets['APOGEE'][8][0]
+        return(mag_lim)
+
+    def _mag_limits(self, fiberType=None, design_mode=None):
+        """Return the bright limits in all bands used by offset()"""
+        dm = self.designModeDict[design_mode]
+        if fiberType == 'BOSS':
+            mag_limits = dm.bright_limit_targets['BOSS'][:, 0]
+        else:
+            mag_limits = dm.bright_limit_targets['APOGEE'][:, 0]
+        return(mag_limits)
+
+    def offset(self, targets=None, design_mode=None):
+        """Returns appropriate offsets for each target given design mode
+
+        Parameters
+        ----------
+
+        targets : ndarray
+            target information
+        
+        design_mode : str
+            key to designModeDict
+
+        Returns
+        -------
+
+        delta_ra : ndarray of np.float64
+            offset in RA (proper angular distance)
+
+        delta_dec : ndarray of np.float64
+            offset in Dec (proper angular distance)
+"""
+        if('bright' in design_mode):
+            lunation = 'bright'
+            skybrightness = 1.0
+        if('dark' in design_mode):
+            lunation = 'dark'
+            skybrightness = 0.35
+        mags = np.zeros(len(targets), dtype=np.float32)
+        boss = targets['fiberType'] == 'BOSS'
+        apogee = targets['fiberType'] == 'APOGEE'
+        mags[boss] = targets['magnitude'][boss, 5]
+        mags[apogee] = targets['magnitude'][apogee, 8]
+
+        delta_ra = np.zeros(len(targets), dtype=np.float64)
+        delta_dec = np.zeros(len(targets), dtype=np.float64)
+        offset_flag = np.zeros(len(targets), dtype=np.int32)
+
+        iboss = np.where(boss)[0]
+        if(len(iboss) > 0):
+            mag_limits = self._mag_limits(design_mode=design_mode, fiberType='BOSS')
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iboss],
+                                                                                       mag_limits,
+                                                                                       lunation,
+                                                                                       'Boss',
+                                                                                       fmagloss=self.fmagloss,
+                                                                                       can_offset=targets['can_offset'][iboss],
+                                                                                       skybrightness=skybrightness,
+                                                                                       offset_min_skybrightness=self.offset_min_skybrightness)
+            delta_ra[iboss] = tmp_delta_ra
+            delta_dec[iboss] = tmp_delta_dec
+            offset_flag[iboss] = tmp_offset_flag
+
+        iapogee = np.where(apogee)[0]
+        if(len(iapogee) > 0):
+            mag_limits = self._mag_limits(design_mode=design_mode, fiberType='APOGEE')
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iapogee],
+                                                                                       mag_limits,
+                                                                                       lunation,
+                                                                                       'Apogee',
+                                                                                       fmagloss=self.fmagloss,
+                                                                                       can_offset=targets['can_offset'][iapogee],
+                                                                                       skybrightness=skybrightness,
+                                                                                       offset_min_skybrightness=self.offset_min_skybrightness)
+            delta_ra[iapogee] = tmp_delta_ra
+            delta_dec[iapogee] = tmp_delta_dec
+            offset_flag[iapogee] = tmp_offset_flag
+
+        return(delta_ra, delta_dec, offset_flag)
+
     def radec2xyz(self, ra=None, dec=None, epoch=None, pmra=None,
                   pmdec=None, delta_ra=0., delta_dec=0., fiberType=None):
         """Converts ra and dec to wok x, y, and z
@@ -1897,7 +2029,8 @@ class Field(object):
                 target_allowed[icurr] = ok
         return(target_allowed)
 
-    def _targets_to_robotgrid(self, targets=None, robotgrid=None):
+    def _targets_to_robotgrid(self, targets=None, assignments=None,
+                              robotgrid=None):
         """Assign targets to a RobotGrid object
 
         Parameters
@@ -1905,6 +2038,9 @@ class Field(object):
 
         targets : ndarray
             targets array
+
+        assignments : ndarray
+            assignments array (delta_ra, delta_dec here)
 
         robotgrid : RobotGrid object
             robot grid to assign to
@@ -1914,65 +2050,17 @@ class Field(object):
                 fiberType = kaiju.cKaiju.ApogeeFiber
             else:
                 fiberType = kaiju.cKaiju.BossFiber
+            if(assignments is not None):
+                xyzWok = [assignments['x'][indx],
+                          assignments['y'][indx],
+                          assignments['z'][indx]]
+            else:
+                xyzWok = [target['x'], target['y'], target['z']]
             robotgrid.addTarget(targetID=target['rsid'],
-                                xyzWok=[target['x'],
-                                        target['y'],
-                                        target['z']],
+                                xyzWok=xyzWok,
                                 priority=np.float64(target['priority']),
                                 fiberType=fiberType)
         return
-
-    def _setup_targets_for_cadence(self, targets=None):
-        """Set up targets for a particular cadence
-
-        Parameters
-        ----------
-        
-        targets : ndarray
-            array of targets
-
-        Returns
-        -------
-
-        targets : ndarray
-            adjusted array of targets
-
-        Notes
-        -----
-
-        Assumes field cadence is defined.
-
-        Sets 'incadence' column in targets array, according to whether this 
-        target can be satisfied in the field cadence.
-
-        Adds targets to each RobotGrid object in robotgrids list.
-"""
-        if(targets is None):
-            return(None)
-
-        if(self.verbose):
-            print("fieldid {fieldid}: Setting up targets for cadence".format(fieldid=self.fieldid))
-
-        # Determine if it is within the field cadence
-        if(self.verbose):
-            print("fieldid {fieldid}: Check cadences".format(fieldid=self.fieldid), flush=True)
-        for itarget, target_cadence in enumerate(targets['cadence']):
-            if(self.veryverbose):
-                  print("fieldid {fieldid}: Checking {rsid} with cadence {c}".format(fieldid=self.fieldid, rsid=targets['rsid'][itarget], c=targets['cadence'][itarget]))
-                  
-            if(target_cadence in clist.cadences):
-                ok, solns = clist.cadence_consistency(target_cadence,
-                                                      self.field_cadence.name)
-                targets['incadence'][itarget] = ok
-
-        if(self.allgrids):
-            if(self.verbose):
-                print("fieldid {fieldid}: Setup all grids".format(fieldid=self.fieldid), flush=True)
-            for rg in self.robotgrids:
-                self._targets_to_robotgrid(targets=targets,
-                                           robotgrid=rg)
-
-        return(targets)
 
     def _setup_assignments_for_cadence(self, targets=None,
                                        assignment_array=None):
@@ -2001,7 +2089,9 @@ class Field(object):
           field_skybrightness
           mags_allowed (is it allowed by magnitude limits)
           bright_allowed (is it allowed by bright neighbor limits)
+          offset_allowed (is it allowed because of its offset)
           allowed
+          incadence
 """
         if(targets is None):
             return(None)
@@ -2013,10 +2103,91 @@ class Field(object):
         field_skybrightness = self.field_cadence.skybrightness[self.field_cadence.epochs]
         assignments['field_skybrightness'] = np.outer(np.ones(len(targets)),
                                                       field_skybrightness)
+
+        # Determine if it is within the field cadence
+        if(self.verbose):
+            print("fieldid {fieldid}: Check cadences".format(fieldid=self.fieldid), flush=True)
+        for itarget, target_cadence in enumerate(targets['cadence']):
+            if(self.veryverbose):
+                  print("fieldid {fieldid}: Checking {rsid} with cadence {c}".format(fieldid=self.fieldid, rsid=targets['rsid'][itarget], c=targets['cadence'][itarget]))
+                  
+            if(target_cadence in clist.cadences):
+                ok, solns = clist.cadence_consistency(target_cadence,
+                                                      self.field_cadence.name)
+                assignments['incadence'][itarget] = ok
         
         if(self.verbose):
             print("fieldid {fieldid}: Setup allowed".format(fieldid=self.fieldid), flush=True)
         umode = np.unique(self.design_mode)
+
+        # Now find minimum offset among all modes; use this offset; for
+        # any modes where the offset is larger, exclude these. The idea
+        # is that (a) probably we don't want to mix these offsets; (b)
+        # we don't want to take an unnecessarily large offset when an
+        # epoch will allow it to be smaller; (c) this makes life much
+        # simpler.
+        delta_ra_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
+        delta_dec_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
+        offset_flag_all = np.zeros((len(umode), len(targets)), dtype=np.int32)
+        for imode, mode in enumerate(umode):
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = self.offset(targets=targets,
+                                                                       design_mode=mode)
+            delta_ra_all[imode, :] = tmp_delta_ra
+            delta_dec_all[imode, :] = tmp_delta_dec
+            offset_flag_all[imode, :] = tmp_offset_flag
+        delta_all = np.sqrt(delta_ra_all**2 + delta_dec_all**2)
+        idelta = np.argmin(delta_all, axis=0)
+        delta_ra = delta_ra_all[idelta, np.arange(len(targets), dtype=int)]
+        delta_dec = delta_dec_all[idelta, np.arange(len(targets), dtype=int)]
+        delta = np.sqrt(delta_ra**2 + delta_dec**2)
+        offset_allowed = dict()
+        offset_flag = dict()
+        for imode, mode in enumerate(umode):
+            offset_flag[mode] = offset_flag_all[imode, :]
+            offset_allowed[mode] = (delta_all[imode, :] <= delta) & (offset_flag[mode] == 0)
+            inot = np.where(offset_allowed[mode] == False)[0]
+            offset_flag[mode][inot] = offset_flag[mode][inot] | _offsetdict['TOO_CLOSE_FOR_MODE']
+
+        assignments['delta_ra'] = delta_ra
+        assignments['delta_dec'] = delta_dec
+
+        # Set offset allowed so we can double check in _bright_allowed_direct
+        for epoch, mode in enumerate(self.design_mode):
+            assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
+            assignments['offset_flag'][:, epoch] = offset_flag[mode]
+
+        # Following are accounted for in object_offset() now
+        # Totally disallow for epochs with skybrightness < offset_min_skybrightness
+        #if(self.offset_min_skybrightness is not None):
+            #for epoch, sb in enumerate(self.field_cadence.skybrightness):
+                #toodark = (sb <= self.offset_min_skybrightness)
+                #if(toodark):
+                    #assignments['offset_allowed'][:, epoch] = False
+                    #assignments['offset_flag'][:, epoch] = assignments['offset_flag'][:, epoch] | _offsetdict['TOO_DARK']
+
+        # Do not offset if can_offset is False for the target
+        #icantoffset = np.where(targets['can_offset'] == False)[0]
+        #assignments['offset_allowed'][icantoffset, :] = False
+        #assignments['offset_flag'][icantoffset, :] = assignments['offset_flag'][icantoffset, :] | _offsetdict['NO_CAN_OFFSET']
+
+        (assignments['x'],
+         assignments['y'],
+         assignments['z']) = self.radec2xyz(ra=targets['ra'],
+                                            dec=targets['dec'],
+                                            epoch=targets['epoch'],
+                                            pmra=targets['pmra'],
+                                            pmdec=targets['pmdec'],
+                                            delta_ra=assignments['delta_ra'],
+                                            delta_dec=assignments['delta_dec'],
+                                            fiberType=targets['fiberType'])
+
+        # Convert back to RA/Dec
+        (assignments['fiber_ra'],
+         assignments['fiber_dec']) = self.xy2radec(x=assignments['x'],
+                                                   y=assignments['y'],
+                                                   fiberType=targets['fiberType'])
+
+        # Check for each mode whether each target is allowed
         mags_allowed = dict()
         bright_allowed = dict()
         for mode in umode:
@@ -2025,15 +2196,29 @@ class Field(object):
                                                     targets=targets)
             if(self.bright_neighbors):
                 bright_allowed[mode] = self._bright_allowed_direct(design_mode=mode,
-                                                                   targets=targets)
+                                                                   targets=targets,
+                                                                   assignments=assignments)
             else:
                 bright_allowed[mode] = np.ones(len(targets), dtype=bool)
 
+        # Set allowed in assignments; note offset_allowed was already
+        # set above.
         for epoch, mode in enumerate(self.design_mode):
             assignments['mags_allowed'][:, epoch] = mags_allowed[mode]
             assignments['bright_allowed'][:, epoch] = bright_allowed[mode]
-            assignments['allowed'][:, epoch] = (mags_allowed[mode] &
+            assignments['allowed'][:, epoch] = ((mags_allowed[mode] |
+                                                 offset_allowed[mode]) &
                                                 bright_allowed[mode])
+
+        if(self.allgrids):
+            if(self.verbose):
+                print("fieldid {fieldid}: Setup all grids".format(fieldid=self.fieldid), flush=True)
+
+            for iexp, rg in enumerate(self.robotgrids):
+                epoch = self.field_cadence.epochs[iexp]
+                self._targets_to_robotgrid(targets=targets,
+                                           assignments=assignments,
+                                           robotgrid=rg)
 
         if(self.verbose):
             print("fieldid {fieldid}: assign inputs".format(fieldid=self.fieldid), flush=True)
@@ -2052,6 +2237,18 @@ class Field(object):
                 else:
                     assignments[n] = assignment_array[n]
         return(assignments)
+
+    def _set_masterGrid(self):
+        """Reset the master grid and associated information"""
+        self.mastergrid = self._robotGrid()
+        self._targets_to_robotgrid(targets=self.targets,
+                                   assignments=self.assignments,
+                                   robotgrid=self.mastergrid)
+        self.masterTargetDict = self.mastergrid.targetDict
+        for itarget, rsid in enumerate(self.targets['rsid']):
+            t = self.masterTargetDict[rsid]
+            self.targets['within'][itarget] = len(t.validRobotIDs) > 0
+        return
 
     def targets_fromarray(self, target_array=None, assignment_array=None):
         """Read in targets from ndarray
@@ -2076,6 +2273,7 @@ class Field(object):
                     continue
                 targets[n] = target_array[n]
 
+        # Deal with unusual use case where we need to reference a cadence version
         if(self._untrim_cadence_version is not None):
             for itarget, tc in enumerate(targets['cadence']):
                 if(tc.split('_')[-1] != self._untrim_cadence_version):
@@ -2102,11 +2300,6 @@ class Field(object):
                                         delta_ra=targets['delta_ra'],
                                         delta_dec=targets['delta_dec'],
                                         fiberType=targets['fiberType'])
-
-        # Convert back to RA/Dec
-        targets['fiber_ra'], targets['fiber_dec'] = self.xy2radec(x=targets['x'],
-                                                                  y=targets['y'],
-                                                                  fiberType=targets['fiberType'])
 
         # Set zone
         targets['zone'] = robostrategy.standards.standard_zone(x=targets['x'],
@@ -2153,9 +2346,6 @@ class Field(object):
 
         # If field_cadence is set, set up potential outputs
         if(self.field_cadence is not None):
-            if(self.verbose):
-                print("fieldid {fieldid}: Setup targets".format(fieldid=self.fieldid), flush=True)
-            targets = self._setup_targets_for_cadence(targets)
             if(self.verbose):
                 print("fieldid {fieldid}: Setup assignments".format(fieldid=self.fieldid), flush=True)
             assignments = self._setup_assignments_for_cadence(targets,
@@ -2208,6 +2398,8 @@ class Field(object):
             self._set_satisfied()
             self._set_satisfied(science=True)
             self._set_count(reset_equiv=False)
+
+        self._set_masterGrid()
 
         return
 
@@ -2267,6 +2459,14 @@ class Field(object):
         hdr.append({'name':'PA',
                     'value':self.pa,
                     'comment':'position angle (deg E of N)'})
+        if(self.offset_min_skybrightness is not None):
+            hdr.append({'name':'OFFMINSKY',
+                        'value':self.offset_min_skybrightness,
+                        'comment':'minimum skybrightness for offset'})
+        else:
+            hdr.append({'name':'OFFMINSKY',
+                        'value':-1.,
+                        'comment':'minimum skybrightness for offset'})
         hdr.append({'name':'BRIGHTN',
                     'value':self.bright_neighbors,
                     'comment':'account for bright neighbor constraints'})
@@ -2949,8 +3149,10 @@ class Field(object):
         success : bool
             True if successful, False otherwise
 """
-        # Only try to assign if you can.
-        if(rsid not in self.mastergrid.robotDict[robotID].validTargetIDs):
+        # Only try to assign if you can. You should count on it being
+        # assignable if any exposure in the epoch can be observed.
+        iexpst = self.field_cadence.epoch_indx[epoch]
+        if(rsid not in self.robotgrids[iexpst].robotDict[robotID].validTargetIDs):
             return False
 
         # Get list of available exposures in the epoch
@@ -3014,6 +3216,7 @@ class Field(object):
         -----
 
         Sets attribute _competing_targets to an array with number of competing targets.
+
 """
         self._competing_targets = np.zeros(len(self.mastergrid.robotDict), dtype=np.int32)
         for rsid in rsids:
@@ -4366,6 +4569,7 @@ class Field(object):
 """
         rsids = self.targets['rsid']
 
+        # This don't work with offset
         rg = self.mastergrid
         for r in rg.robotDict:
             rg.unassignRobot(r)
@@ -4786,7 +4990,7 @@ class Field(object):
 
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['within']) &
-                            (self.targets['incadence']) &
+                            (self.assignments['incadence']) &
                             (self.target_duplicated == 0) &
                             (self.targets['stage'] == stage_select))[0]
         np.random.seed(self.fieldid)
@@ -4843,7 +5047,7 @@ class Field(object):
 
         isscience = ((self.targets['category'] == 'science') &
                      (self.targets['within']) &
-                     (self.targets['incadence']) &
+                     (self.assignments['incadence']) &
                      (self.target_duplicated == 0) &
                      (self.targets['stage'] == stage_select))
         iscience = np.where(isscience)[0]
@@ -5026,7 +5230,7 @@ class Field(object):
         self.set_flag(rsid=self.targets['rsid'][inotscience],
                       flagname='NOT_SCIENCE')
 
-        inotincadence = np.where(self.targets['incadence'] == 0)[0]
+        inotincadence = np.where(self.assignments['incadence'] == 0)[0]
         self.set_flag(rsid=self.targets['rsid'][inotincadence],
                       flagname='NOT_INCADENCE')
 
@@ -5040,7 +5244,7 @@ class Field(object):
         
         iscience = np.where((self.targets['category'] == 'science') &
                             (self.targets['within']) &
-                            (self.targets['incadence']) &
+                            (self.assignments['incadence']) &
                             (self.target_duplicated == 0) &
                             (self.targets['stage'] == stage_select))[0]
         np.random.shuffle(iscience)
@@ -5755,7 +5959,10 @@ Carton completion:
             for iexp in np.arange(self.field_cadence.nexp_total,
                                   dtype=int):
                 design_mode = dms[iexp]
-                rg = self.mastergrid
+                if(self.allgrids is False):
+                    rg = self.mastergrid
+                else:
+                    rg = self.robotgrids[iexp]
                 for irobot, indx in enumerate(self._robot2indx[:, iexp]):
                     if(indx >= 0):
                         rsid = self.targets['rsid'][indx]
@@ -5767,7 +5974,6 @@ Carton completion:
                             nproblems = nproblems + 1
 
         # Check that the number of calibrators has been tracked right
-        # TODO check zones tracked right
         if(self.nocalib is False):
             for c in self.calibration_order:
                 for iexp in range(self.field_cadence.nexp_total):
@@ -6057,19 +6263,19 @@ Carton completion:
         axleg = fig.add_axes([0.71, 0., 0.26, 1.])
 
         itarget = np.where(self.targets['category'] == 'science')[0]
-        axfig.scatter(self.targets['x'][itarget],
-                      self.targets['y'][itarget], s=1, color='black',
+        axfig.scatter(self.assignments['x'][itarget],
+                      self.assignments['y'][itarget], s=1, color='black',
                       label='Science targets', alpha=0.2)
-        axleg.plot(self.targets['x'][itarget],
-                   self.targets['y'][itarget], linewidth=4, alpha=0.2, color='black',
+        axleg.plot(self.assignments['x'][itarget],
+                   self.assignments['y'][itarget], linewidth=4, alpha=0.2, color='black',
                    label='Science targets')
 
         itarget = np.where(self.targets['category'] != 'science')[0]
-        axfig.scatter(self.targets['x'][itarget],
-                      self.targets['y'][itarget], s=1, color='blue',
+        axfig.scatter(self.assignments['x'][itarget],
+                      self.assignments['y'][itarget], s=1, color='blue',
                       label='Calib targets', alpha=0.1)
-        axleg.plot(self.targets['x'][itarget],
-                   self.targets['y'][itarget], linewidth=4, alpha=0.2, color='blue',
+        axleg.plot(self.assignments['x'][itarget],
+                   self.assignments['y'][itarget], linewidth=4, alpha=0.2, color='blue',
                    label='Calib targets')
 
         if(self.assignments is not None):
@@ -6080,8 +6286,8 @@ Carton completion:
             target_robotid[itarget] = self.assignments['robotID'][itarget, iexp]
             itarget = np.where(target_got > 0)[0]
             
-            axfig.scatter(self.targets['x'][itarget],
-                          self.targets['y'][itarget], s=3, color='black')
+            axfig.scatter(self.assignments['x'][itarget],
+                          self.assignments['y'][itarget], s=3, color='black')
 
             for i in itarget:
                 if(self.targets['category'][i] == 'science'):
