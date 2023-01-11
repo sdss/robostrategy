@@ -1,0 +1,58 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import matplotlib.pyplot as plt
+import roboscheduler.cadence 
+import robostrategy.allocate as ra
+import sdss_access.path
+
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+plt.rcParams.update({'font.size': 18})
+plt.rcParams.update({'figure.figsize': (8, 6)})
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pretty plot of LST allocations')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
+    clist.fromfits(sdss_path.full('rsCadences', plan=plan, observatory=observatory))
+
+    allocation_file = sdss_path.full('rsAllocation', plan=plan,
+                                     observatory=observatory)
+
+    allocate = ra.AllocateLSTCostE(filename=allocation_file)
+
+    allocate.plot_full(iskybrightness=0, title='Dark time at {o}'.format(o=observatory))
+    if(observatory == 'apo'):
+        plt.ylim([-50., 1200.])
+    else:
+        plt.ylim([-50., 1700.])
+    plt.savefig('rsAllocationLST-' + plan + '-' + observatory + '-dark.png')
+    plt.tight_layout()
+    plt.clf()
+
+    allocate.plot_full(iskybrightness=1, title='Bright time at {o}'.format(o=observatory))
+    if(observatory == 'apo'):
+        plt.ylim([-50., 1500.])
+    else:
+        plt.ylim([-50., 1850.])
+    plt.savefig('rsAllocationLST-' + plan + '-' + observatory + '-bright.png')
+    plt.tight_layout()
+    plt.clf()
