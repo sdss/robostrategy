@@ -4,10 +4,6 @@
 # @Filename: field.py
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 
-# TODO:
-#   can_offset
-#   offset only on bright?
-
 
 import os
 import re
@@ -58,8 +54,6 @@ targets_dtype = targets_dtype + [('x', np.float64),
                                  ('y', np.float64),
                                  ('z', np.float64),
                                  ('zone', np.int32),
-                                 ('fiber_ra', np.float64),
-                                 ('fiber_dec', np.float64),
                                  ('within', np.int32)]
                                  
 
@@ -746,8 +740,6 @@ class Field(object):
                                        ('pmra', np.float32),
                                        ('pmdec', np.float32),
                                        ('mag', np.float32),
-                                       ('pmra', np.float32),
-                                       ('pmdec', np.float32),
                                        ('catalogid', np.int64),
                                        ('r_exclude', np.float32)])
 
@@ -913,22 +905,6 @@ class Field(object):
                 ibright, itargets, d2d, d3d = astropy.coordinates.search_around_sky(bright_coords, target_coords[itype], rmax * astropy.units.arcsec)
                 itooclose = np.where(d2d < bright['r_exclude'][ibright] *
                                      astropy.units.arcsec)[0]
-
-                #if(self.field_cadence.nexp_total == 1):
-                    #isame = np.where((bright['catalogid'][ibright[itooclose]] ==
-                                      #targets['catalogid'][itype[itargets[itooclose]]]) &
-                                     #(assignments['offset_allowed'][itype[itargets[itooclose]]] > 0))[0]
-                #else:
-                    #iexp = np.where(self.design_mode == design_mode)[0][0]
-                    #isame = np.where((bright['catalogid'][ibright[itooclose]] ==
-                                      #targets['catalogid'][itype[itargets[itooclose]]]) &
-                                     #(assignments['offset_allowed'][itype[itargets[itooclose]], iexp] > 0))[0]
-                #if(len(isame) > 0):
-                #    print("YUH YOH!!!")
-                #    print(d2d[itooclose[isame]])
-                #    print(bright['r_exclude'][ibright[itooclose[isame]]])
-                #    import sys
-                #    sys.exit()
                 bright_allowed[itype[itargets[itooclose]]] = 0
         return(bright_allowed)
 
@@ -2324,11 +2300,6 @@ class Field(object):
                                         delta_ra=targets['delta_ra'],
                                         delta_dec=targets['delta_dec'],
                                         fiberType=targets['fiberType'])
-
-        # Convert back to RA/Dec
-        targets['fiber_ra'], targets['fiber_dec'] = self.xy2radec(x=targets['x'],
-                                                                  y=targets['y'],
-                                                                  fiberType=targets['fiberType'])
 
         # Set zone
         targets['zone'] = robostrategy.standards.standard_zone(x=targets['x'],
