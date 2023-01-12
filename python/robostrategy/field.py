@@ -285,6 +285,11 @@ class AssignmentStatus(object):
 
     bright_neighbor checks both the APOGEE and BOSS fibers on the 
     robot.
+
+    There is a certain fragility to this code, since AssignmentStatus
+    does not check (and cannot check) whether a given robotID can 
+    reach a given rsid. So using it properly relies on Field only
+    creating an AssignmentStatus in appropriate cases.
 """
     def __init__(self, rsid=None, robotID=None, iexps=None):
         if(rsid is not None):
@@ -550,6 +555,9 @@ class Field(object):
 
     _ot : ObsTime object
         observing time object for convenience
+
+    _robot_locked : ndarray of bool
+        True if the robot is locked from use; used to block robots from use if necessary
 
     _robot2indx : ndarray of int32 or None
         [nrobots, nexp_total] array of indices into targets from robots
@@ -1282,6 +1290,7 @@ class Field(object):
             for i in range(self.field_cadence.nexp_total):
                 self.robotgrids[i] = None
             self.robotgrids = []
+        self._robot_locked = None
         self._robot2indx = None
         self._robotnexp = None
         self._robotnexp_max = None
@@ -1383,6 +1392,9 @@ class Field(object):
             if(self.allgrids):
                 for i in range(self.field_cadence.nexp_total):
                     self.robotgrids.append(self._robotGrid())
+            self._robot_locked = np.zeros((len(self.mastergrid.robotDict),
+                                           self.field_cadence.nexp_total),
+                                          dtype=bool)
             self._robot2indx = np.zeros((len(self.mastergrid.robotDict),
                                          self.field_cadence.nexp_total),
                                         dtype=np.int32) - 1
@@ -2699,26 +2711,28 @@ class Field(object):
             else:
                 allowed = True
             status.currindx = self._robot2indx[robotindx, status.iexps]
-            free = (status.currindx < 0)
+            status.locked = self._robot_locked[robotindx, status.iexps]
+            free = (status.currindx < 0) & (status.locked == False)
             has_spare =self.has_spare_calib(indx=status.currindx,
                                             iexps=status.iexps)
             fixed = (((self.assignments['expflag'][status.currindx, status.iexps] &
                        self.expflagdict['FIXED']) != 0) & (status.currindx >= 0))
             status.spare = (has_spare > 0) & (isspare == False) & (free == False) & (fixed == False)
             if(check_spare):
-                status.assignable = (free | status.spare) & (allowed > 0) & (fixed == False)
+                status.assignable = (free | status.spare) & (allowed > 0) & (fixed == False) & (status.locked == False)
             else:
-                status.assignable = (free) & (allowed > 0) & (fixed == False)
+                status.assignable = (free) & (allowed > 0) & (fixed == False) & (status.locked == False)
         else:
             # Consider exposures for this epoch
             status.currindx = self._robot2indx[robotindx, status.iexps]
+            status.locked = self._robot_locked[robotindx, status.iexps]
             if(status.rsid is not None):
                 indx = self.rsid2indx[status.rsid]
                 epochs = self.field_cadence.epochs
                 allowed = self.assignments['allowed'][indx, epochs[status.iexps]]
             else:
                 allowed = True
-            status.assignable = (status.currindx < 0) & (allowed > 0)
+            status.assignable = (status.currindx < 0) & (allowed > 0) & (status.locked == False)
 
         if(status.rsid is not None):
             for iexp in status.assignable_exposures():
@@ -2951,36 +2965,6 @@ class Field(object):
                                    reset_has_spare=reset_has_spare)
 
         return
-
-#    def collide_robot_exposure(self):
-#        """Depreca
-#        collide : bool
-#            True if it causes a collision, False if not
-#
-#        Notes
-#        -----
-#
-#        If there is no RobotGrid to check collisions and/or nocollide
-#        is set for this object, it doesn't actually check collisions.
-#        However, it does report a collision if any OTHER equivalent 
-#        target was assigned.
-#"""
-#        if((not self.allgrids) |
-#           (self.nocollide)):
-#            indx = self.rsid2indx[rsid]
-#            allindxs = set(self._equivindx[self._equivkey[indx]])
-#            if(len(allindxs) > 1):
-#                allindxs.discard(indx)
-#                allindxs = np.array(list(allindxs), dtype=np.int32)
-#                if(self.assignments['robotID'][allindxs, iexp].max() >= 0):
-#                    return(True)
-#                else:
-#                    return(False)
-#            else:
-#                return(False)
-#
-#        rg = self.robotgrids[iexp]
-#        return rg.wouldCollideWithAssigned(robotID, rsid)[0]
 
     def available_robot_epoch(self, rsid=None,
                               robotID=None, epoch=None, nexp=None,
@@ -3266,12 +3250,16 @@ class Field(object):
             True if successful, False otherwise
 """
         itarget = self.rsid2indx[rsid]
+        robotindx = self.robotID2indx[robotID]
+
+        if(self._robot_locked[robotindx, iexp]):
+            print("fieldid {fid}: WARNING, tried to assign locked robot rsid={rsid} iexp={iexp} robotID={robotID}, expflag={expflag}".format(rsid=rsid, iexp=iexp, robotID=robotID, fid=self.fieldid, expflag=self.assignments['expflag'][itarget, iexp]), flush=True)
+            return
 
         if(self.assignments['robotID'][itarget, iexp] >= 0):
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
                                    reset_satisfied=True, reset_has_spare=True)
 
-        robotindx = self.robotID2indx[robotID]
         if(self._robot2indx[robotindx, iexp] >= 0):
             rsid_unassign = self.targets['rsid'][self._robot2indx[robotindx,
                                                                   iexp]]
@@ -4606,12 +4594,16 @@ class Field(object):
                 if(self.targets['category'][indx] == 'science'):
                     ww_science.append(wwrt[robotID][rsid])
 
-        # Constrain to use only one target per robot
+        # Constrain to use only one target per robot (0 if robot is locked)
         wwsum_robot = dict()
         for robotID in wwrt:
+            robotindx = self.robotID2indx[robotID]
             rlist = [wwrt[robotID][c] for c in wwrt[robotID]]
             wwsum_robot[robotID] = cp_model.LinearExpr.Sum(rlist)
-            model.Add(wwsum_robot[robotID] <= 1)
+            if(self._robot_locked[robotindx, 0]):
+                model.Add(wwsum_robot[robotID] == 0)
+            else:
+                model.Add(wwsum_robot[robotID] <= 1)
 
         # Constrain to use only one robot per target
         wwsum_target = dict()
@@ -5548,6 +5540,37 @@ class Field(object):
         self._set_count(reset_equiv=False)
         return
 
+    def assign_done_exposure(self, iexp=None, rsids=None, holeIDs=None):
+        """Record robot assignments for a design as done
+
+        Parameters
+        ----------
+
+        iexp : int, np.int32
+            design index to record as done
+        
+        rsids : ndarray of np.int64
+            unique IDs of completed exposures
+
+        holeIDs : ndarray of np.int32
+            hole IDs of completed exposures
+
+        Notes
+        -----
+
+        rsids and holeIDs should be the same length.
+
+        The caller has to find the right rsids depending on their input targets. 
+        This method finds the right robotIDs given the holeIDs.
+
+        Any robots in the exposure that are not used are marked as unusable.
+
+        Any cases where the rsid cannot be reached by the robot in the holeID
+        is fudged to work (HOW????).
+"""
+        
+        return
+
     def complete_epochs_assigned(self):
         """Complete the epochs of any assigned science targets"""
 
@@ -5952,6 +5975,17 @@ Carton completion:
             if((isassigned) != (assignment['assigned'])):
                 print("rsid={rsid} : assigned misclassification (assigned is set to {assigned}, category is {cat})".format(rsid=target['rsid'], assigned=assignment['assigned'], cat=target['category']))
                 nproblems += 1
+
+        # Check that no locked robots are used
+        for indx, target in enumerate(self.targets):
+            assignment = self.assignments[indx]
+            for iexp in np.arange(self.field_cadence.nexp_total, dtype=int):
+                robotID = assignment['robotID'][iexp]
+                if(robotID >= 0):
+                    robotindx = self.robotID2indx[robotID]
+                    if(self._robot_locked[robotindx, iexp]):
+                        print("robotID={robotID} iexp={iexp}: locked robot used for assignment".format(robotID=robotID, iexp=iexp))
+                        nproblems += 1
 
         # Check that the bright neighbors are respected
         if(self.bright_neighbors):

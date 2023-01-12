@@ -722,6 +722,34 @@ def test_assign_science():
             assert rg.isCollided(robotID) is False
 
 
+def test_lock():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=3, m=1)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_3x1')
+    ntot = 2000
+    targets(f, nt=ntot, seed=101)
+
+    f._robot_locked[10, 0:2] = True
+    f._robot_locked[30, 1:] = True
+    f._robot_locked[400, 1] = True
+
+    f.assign_science()
+    f.decollide_unassigned()
+    assert f.validate() == 0
+
+    assert f._robot2indx[10, 0] == -1
+    assert f._robot2indx[10, 1] == -1
+    assert f._robot2indx[30, 1] == -1
+    assert f._robot2indx[30, 2] == -1
+    assert f._robot2indx[400, 1] == -1
+    return
+
+
 def test_assign():
     clist = cadence.CadenceList()
     clist.reset()
