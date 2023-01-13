@@ -76,7 +76,8 @@ _expflagdict = {'FIXED':1,
                 'OPEN':8,
                 'FILLER':16,
                 'COMPLETE':32,
-                'OTHER':64}
+                'OTHER':64,
+                'FORCED':128}
 
 _offsetdict = {'TOO_FAINT':1,
                'NO_FLUX':2,
@@ -3213,7 +3214,7 @@ class Field(object):
     def assign_robot_exposure(self, robotID=None, rsid=None, iexp=None,
                               reset_satisfied=True, reset_has_spare=True,
                               reset_count=True, set_expflag=True,
-                              set_fixed=False):
+                              set_fixed=False, force=False):
         """Assign an rsid to a particular robot-exposure
 
         Parameters
@@ -3242,6 +3243,9 @@ class Field(object):
 
         set_fixed : bool
             if True, set 'expflag's FIXED bit so this assignment is not removed (default False)
+
+        force : bool
+            if True, does everything but if the target cannot be reached, skips setting RobotGrid; use with EXTREME care (default False)
 
         Returns
         --------
@@ -3296,7 +3300,14 @@ class Field(object):
 
         if(self.allgrids):
             rg = self.robotgrids[iexp]
-            rg.assignRobot2Target(robotID, rsid)
+            if(force):
+                if(rsid in rg.robotDict[robotID].validTargetIDs):
+                    rg.assignRobot2Target(robotID, rsid)
+                else:
+                    self.set_expflag(rsid=rsid, iexp=iexp, flagname='FORCED')
+                    print("fieldid {fid}: WARNING, forcing unreachable robot assignment rsid={rsid} iexp={iexp} robotID={robotID}".format(rsid=rsid, iexp=iexp, robotID=robotID, fid=self.fieldid, flush=True))
+            else:
+                rg.assignRobot2Target(robotID, rsid)
 
         if(reset_satisfied | reset_count):
             self._set_equiv(rsids=[rsid], iexps=[iexp])

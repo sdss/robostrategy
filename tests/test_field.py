@@ -750,6 +750,25 @@ def test_lock():
     return
 
 
+def test_force():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1')
+    ntot = 400
+    targets(f, nt=ntot, seed=101)
+
+    robotID = list(f.robotgrids[0].robotDict.keys())[10]
+    assert 10 not in f.robotgrids[0].robotDict[robotID].validTargetIDs
+    
+    f.assign_robot_exposure(robotID=robotID, rsid=10, iexp=0, force=True)
+    assert f.assignments['robotID'][f.rsid2indx[10]] == robotID
+    return
+
+
 def test_assign():
     clist = cadence.CadenceList()
     clist.reset()
