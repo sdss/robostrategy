@@ -3258,7 +3258,7 @@ class Field(object):
 
         if(self._robot_locked[robotindx, iexp]):
             print("fieldid {fid}: WARNING, tried to assign locked robot rsid={rsid} iexp={iexp} robotID={robotID}, expflag={expflag}".format(rsid=rsid, iexp=iexp, robotID=robotID, fid=self.fieldid, expflag=self.assignments['expflag'][itarget, iexp]), flush=True)
-            return
+            return False
 
         if(self.assignments['robotID'][itarget, iexp] >= 0):
             self.unassign_exposure(rsid=rsid, iexp=iexp, reset_assigned=True,
@@ -3321,7 +3321,7 @@ class Field(object):
         if(reset_has_spare & (self.nocalib is False)):
             self._set_has_spare_calib()
 
-        return
+        return True
 
     def assign_exposures(self, rsid=None, iexps=None, check_spare=True,
                          reset_satisfied=True, reset_has_spare=True,
@@ -5550,8 +5550,9 @@ class Field(object):
         self._set_satisfied(science=True)
         self._set_count(reset_equiv=False)
         return
-
-    def assign_done_exposure(self, iexp=None, rsids=None, holeIDs=None):
+    
+    def assign_done_exposure(self, iexp=None, rsids=None, holeIDs=None, force=False,
+                             lock=False):
         """Record robot assignments for a design as done
 
         Parameters
@@ -5566,6 +5567,12 @@ class Field(object):
         holeIDs : ndarray of np.int32
             hole IDs of completed exposures
 
+        force : bool
+            if True, force cases to be assigned even if robot does not reach (default False) 
+
+        lock : bool
+            if True, lock down any unassigned robots in this exposure so they can't be assigned
+
         Notes
         -----
 
@@ -5574,12 +5581,31 @@ class Field(object):
         The caller has to find the right rsids depending on their input targets. 
         This method finds the right robotIDs given the holeIDs.
 
-        Any robots in the exposure that are not used are marked as unusable.
+        If "lock" is set robots in the exposure that are not used are marked as unusable
+        (uses _robot_locked).
 
-        Any cases where the rsid cannot be reached by the robot in the holeID
-        is fudged to work (HOW????).
+        If "force" is set, cases where the rsid cannot be reached by the robot in 
+        the holeID are fudged to work using the "force" option in the 
+        assign_robot_exposure method.
 """
+        holeID2robotID = dict()
+        for robotID in self.mastergrid.robotDict:
+            holeID = self.mastergrid.robotDict[robotID].holeID 
+            holeID2robotID[holeID] = robotID
+        robotIDs = np.array([holeID2robotID[hid] for hid in holeIDs], dtype=int)
         
+        for robotID, rsid in zip(robotIDs, rsids):
+            self.assign_robot_exposure(robotID=robotID, rsid=rsid, iexp=iexp,
+                                       set_fixed=True, force=force)
+
+        if(lock):
+            # Make sure we check against _robot2indx since if force is set we cannot
+            # rely on RobotGrid; should not really matter though.
+            for robotID in self.mastergrid.robotDict:
+                robotindx = self.robotID2indx[robotID]
+                if(self._robot2indx[robotindx, iexp] == -1):
+                    self._robot_locked[robotindx, iexp] = True
+
         return
 
     def complete_epochs_assigned(self):

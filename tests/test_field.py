@@ -750,6 +750,56 @@ def test_lock():
     return
 
 
+def test_assign_done():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=3, m=1)
+
+    forig = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                        field_cadence='single_3x1')
+    ntot = 1000
+    targets(forig, nt=ntot, seed=101)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_3x1')
+    ntot = 1000
+    targets(f, nt=ntot, seed=101)
+
+    forig.assign_science()
+    forig.decollide_unassigned()
+
+    for iexp in range(3):
+        iassigned = np.where(forig.assignments['robotID'][:, iexp] >= 0)[0]
+        holeIDs = np.array([forig.mastergrid.robotDict[rid].holeID
+                            for rid in forig.assignments['robotID'][iassigned, iexp]])
+        f.assign_done_exposure(iexp=iexp, rsids=forig.targets['rsid'][iassigned],
+                               holeIDs=holeIDs, force=True, lock=True)
+
+    f.decollide_unassigned()
+    
+    assert forig.validate() == 0
+    assert f.validate() == 0
+    for iexp in range(3):
+        for i in np.arange(len(forig.targets), dtype=int):
+            assert forig.assignments['robotID'][i, iexp] == f.assignments['robotID'][i, iexp]
+
+    inot = np.where((forig.assignments['robotID'][:, 0] == -1) &
+                    (forig.targets['within'] > 0))[0]
+    for i in inot:
+        result = f.assign_exposures(rsid=forig.targets['rsid'][i],
+                                    iexps=np.array([0], dtype=int))
+        assert result[0] == False
+
+    rid = forig.mastergrid.targetDict[forig.targets['rsid'][inot[0]]].validRobotIDs[0]
+    result = f.assign_robot_exposure(rsid=forig.targets['rsid'][inot[0]],
+                                     robotID=rid,
+                                     iexp=0)
+    assert result == False
+    return
+
+
 def test_force():
     clist = cadence.CadenceList()
     clist.reset()
