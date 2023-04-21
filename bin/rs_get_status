@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_get_status
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.status
+import robostrategy.allocate
+import robostrategy.header
+import sdss_access.path
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+cadencelist = cadence.CadenceList(skybrightness_only=True)
+
+clobber = False
+offset_min_skybrightness = None
+plan = None
+fromplan = None
+
+
+def get_status(indx):
+    fieldid = allocate.field_array['fieldid'][indx]
+    
+    print("fieldid {fid}: Get status".format(fid=fieldid), flush=True)
+
+    field_status_file = sdss_path.full('rsFieldTargets',
+                                       plan=plan, observatory=observatory,
+                                       fieldid=fieldid)
+    field_status_file = field_status_file.replace('targets/rsFieldTargets',
+                                                  'final/rsFieldStatus')
+
+    if((clobber is False) & os.path.isfile(field_status_file)):
+        print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_file), flush=True)
+        return
+
+    status = robostrategy.status.get_status_by_fieldid(plan=fromplan, fieldid=fieldid)
+
+    if(status is not None):
+        print("Write status information", flush=True)
+        hdr = robostrategy.header.rsheader()
+        fitsio.write(field_status_file, status, header=hdr, clobber=True)
+
+    print("fieldid {f}: Done".format(f=fieldid), flush=True)
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Extract current status information')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-f', '--from-plan', dest='fromplan',
+                        type=str, help='name of plan to start from', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-c', '--clobber', dest='clobber',
+                        help='clobber', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
+                        help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    fromplan = args.fromplan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    clobber = args.clobber
+    nomultiprocess = args.nomultiprocess
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate_file = allocate_file.replace('rsAllocation',
+                                          'final/rsAllocationFinal')
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+                               return_index=True)
+
+    if(end < 0):
+        end = fieldids.max()
+    ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
+    ikeep = indx[ikeep]
+
+    if(nomultiprocess):
+        for i in ikeep:
+            get_status(i)
+    else:
+        with multiprocessing.Pool(8) as pool:
+            ikeep = list(ikeep)
+            ikeep_distributed = []
+            icurr = 0
+            while(len(ikeep) > 0):
+                ikeep_distributed.append(ikeep[icurr])
+                ikeep.remove(ikeep[icurr])
+                if(len(ikeep) > 0):
+                    icurr = (icurr + int(pool._processes)) % len(ikeep)
+            pool.map(get_status, ikeep_distributed)
+
+    print('DONE: rs_get_status')
+    print(time.ctime(time.time()))
