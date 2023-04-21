@@ -540,6 +540,9 @@ class Field(object):
         delta_dec), values are ndarray of np.int32, with 0-indexed 
         positions in targets of all targets with those settings
 
+    _exposure_locked : ndarray of bool
+        whether the exposure has been locked because it is done
+
     _equivkey : OrderedDict
         keys are 0-indexed positions in targets, values are tuples of
         that target's (catalogid, fiberType, lamdda_eff, delta_ra,
@@ -940,7 +943,16 @@ class Field(object):
             True if the assignment is allowed by bright neighbor considerations
             and False if not
 """
-        self.mastergrid.assignRobot2Target(robotID, rsid)
+        try:
+            self.mastergrid.assignRobot2Target(robotID, rsid)
+        except RuntimeError:
+            print("assignRobot2Target failure", flush=True)
+            print("robotID={r}".format(r=robotID), flush=True)
+            print("rsid={r}".format(r=rsid), flush=True)
+            irobot = self.robotID2indx[robotID]
+            print("{rl}".format(rl=self._robot_locked[irobot, :]))
+            adsfjkhdsaf
+
         x = dict()
         y = dict()
         
@@ -1291,6 +1303,7 @@ class Field(object):
             for i in range(self.field_cadence.nexp_total):
                 self.robotgrids[i] = None
             self.robotgrids = []
+        self._exposure_locked = None
         self._robot_locked = None
         self._robot2indx = None
         self._robotnexp = None
@@ -1393,6 +1406,8 @@ class Field(object):
             if(self.allgrids):
                 for i in range(self.field_cadence.nexp_total):
                     self.robotgrids.append(self._robotGrid())
+            self._exposure_locked = np.zeros(self.field_cadence.nexp_total,
+                                             dtype=bool)
             self._robot_locked = np.zeros((len(self.mastergrid.robotDict),
                                            self.field_cadence.nexp_total),
                                           dtype=bool)
@@ -1530,6 +1545,8 @@ class Field(object):
                 self._set_has_spare_calib()
 
             self.set_design_status()
+
+            self._set_holeid()
             
             if(self.verbose):
                 print("fieldid {fid}:   (done setting field cadence)".format(fid=self.fieldid), flush=True)
@@ -2418,9 +2435,9 @@ class Field(object):
 
     def _set_holeid(self):
         if(self.field_cadence.nexp_total == 1):
-            self.assignments['holeID'][:] = ' '
+            self.assignments['holeID'][:] = ''
         else:
-            self.assignments['holeID'][:, :] = ' '
+            self.assignments['holeID'][:, :] = ''
         for i, assignment in enumerate(self.assignments):
             if(self.field_cadence.nexp_total == 1):
                 if(assignment['robotID'][0] >= 1):
@@ -2781,6 +2798,31 @@ class Field(object):
         i = status.expindx[iexp]
         status.bright_neighbor_allowed[i] = self.bright_neighbor_cache[key]
         return
+
+    def equiv_target(self, target=None):
+        """Find rsids which are equivalent to an input target
+
+        Parameters
+        ----------
+
+        target : single-element ndarray record array
+            target input (with 'catalogid', 'lambda_eff', 'fiberType', 'delta_ra', 'delta_dec')
+
+        Returns
+        -------
+
+        rsids : ndarray of np.int64
+            equivalent rsids
+"""
+        ekey = (target['catalogid'], target['fiberType'],
+                target['lambda_eff'], target['delta_ra'],
+                target['delta_dec'])
+        if(ekey in self._equivindx.keys()):
+            itargets = self._equivindx[ekey]
+            rsids = self.targets['rsid'][itargets]
+            return(rsids)
+        else:
+            return(np.zeros(0, dtype=np.int64))
 
     def set_collided_status(self, status=None, iexp=None, check_spare=True):
         """Set the collded attribute of status
@@ -4831,6 +4873,8 @@ class Field(object):
         There are 8 zones, and it had better be that the number of zones times the
         minimum number of per zone is greater than the required number. 
 
+        It uses the first exposure, unless it is marked as locked, in which case it 
+        uses the earliest not locked.
 """
         zones = np.arange(robostrategy.standards.nzone, dtype=int)
 
@@ -4849,7 +4893,8 @@ class Field(object):
         # First just check if we shouldn't have any threholds, because
         # all zones are sparse. If so, give up and return
         self._is_good_calibration[icalib] = True
-        achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
+        iexpunlocked = np.where(self._exposure_locked == False)[0][0]
+        achievable, achievable_zones = self.determine_achievable(iexp=iexpunlocked, limit=False)
         badzones = np.zeros(len(zones), dtype=bool)
         for zone in zones:
             if(achievable_zones['standard_apogee'][zone] < nperzone_min):
@@ -4868,7 +4913,7 @@ class Field(object):
         while(finished is False):
 
             self._is_good_calibration[icalib] = goodness > goodness_threshold[self.targets['zone'][icalib]]
-            achievable, achievable_zones = self.determine_achievable(iexp=0, limit=False)
+            achievable, achievable_zones = self.determine_achievable(iexp=iexpunlocked, limit=False)
 
             # Did this work? If so we are done
             finished = True
@@ -5210,7 +5255,11 @@ class Field(object):
         self.achievable_calibrations_per_zone = self.calibrations_per_zone * 0
         for design_mode in udesign_mode:
             iexpall = np.where(self.design_mode[epochs] == design_mode)[0]
-            iexp = iexpall[0]
+            iunlocked = np.where(self._exposure_locked[iexpall] == False)[0]
+            if(len(iunlocked) == 0):
+                iexp = iexpall[0]  # doesn't matter if they are locked, just pick first
+            else:
+                iexp = iexpall[iunlocked[0]]  # use an unlocked exposure
             achievable, achievable_zones = self.determine_achievable(iexp=iexp)
             for c in self.calibration_order:
                 self.achievable_calibrations[c][iexpall] = achievable[c]
@@ -5282,7 +5331,7 @@ class Field(object):
                     print("fieldid {fid}: Unassigning science".format(fid=self.fieldid), flush=True)
 
                 # Back out the last round of science targets
-                self.unassign(rsids=self.targets['rsid'][ipriority])
+                self.unassign(rsids=self.targets['rsid'][ipriority], respect_fixed=True)
 
                 # Make sure any temporary calibrations are unassigned
                 self._unassign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
@@ -5304,7 +5353,7 @@ class Field(object):
                 print("fieldid {fid}: Still have shortfall after {nc} cycles.".format(fid=self.fieldid, nc=ncycle), flush=True)
                 
                 # Back out the last round of science targets
-                self.unassign(rsids=self.targets['rsid'][ipriority])
+                self.unassign(rsids=self.targets['rsid'][ipriority], respect_fixed=True)
 
                 # Make sure any temporary calibrations are unassigned
                 self._unassign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
@@ -5357,6 +5406,8 @@ class Field(object):
         for ic, c in enumerate(self.calibration_order):
             shortfalls[c] = set()
             for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+                if(self._exposure_locked[iexp]):  # skip if this exposure is locked anyway
+                    continue
                 if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
                     shortfalls[c].add(iexp)
                     if(self.verbose):
@@ -5550,6 +5601,49 @@ class Field(object):
         self._set_satisfied(science=True)
         self._set_count(reset_equiv=False)
         return
+
+    def apply_observed_status(self, observed_status=None):
+        """Apply the information from the observational status
+
+        Parameters
+        ----------
+
+        status : ndarray
+            array of status information, with 'carton_to_target_pk', 'catalogid'
+              'fiberType', 'lambda_eff', 'delta_ra', 'delta_dec', 'field_exposure',
+               'status', and 'holeid'
+
+        Notes
+        -----
+
+        Uses assign_done_exposure() method to set each completed exposure.
+        Only runs on field exposures which have at least one done target (and this
+        will mean nothing is changed for those exposures at all).
+"""
+        c2t_to_rsid = dict()
+        for t in self.targets:
+            c2t_to_rsid[t['carton_to_target_pk']] = t['rsid']
+        iexps = np.unique(observed_status['field_exposure'])
+        for iexp in iexps:
+            idone = np.where((observed_status['field_exposure'] == iexp) &
+                             (observed_status['status'] != 0))[0]
+            if(len(idone) > 0):
+                if(self.verbose):
+                    print("fieldid {fid}: Accounting for exposure={iexp} completion".format(fid=self.fieldid, iexp=iexp), flush=True)
+                rsids = np.zeros(len(idone), dtype=np.int64) - 1
+                for indx, cstatus in enumerate(observed_status[idone]):
+                    if(cstatus['carton_to_target_pk'] in c2t_to_rsid):
+                        rsids[indx] = c2t_to_rsid[cstatus['carton_to_target_pk']]
+                    else:
+                        tmp_rsids = self.equiv_target(cstatus)
+                        if(len(tmp_rsids) > 0):
+                            rsids[indx] = tmp_rsids[0]
+                        
+                infield = (rsids >= 0)
+                self.assign_done_exposure(iexp=iexp, rsids=rsids[infield],
+                                          holeIDs=observed_status['holeid'][idone[infield]],
+                                          force=True, lock=True)
+        return
     
     def assign_done_exposure(self, iexp=None, rsids=None, holeIDs=None, force=False,
                              lock=False):
@@ -5581,8 +5675,8 @@ class Field(object):
         The caller has to find the right rsids depending on their input targets. 
         This method finds the right robotIDs given the holeIDs.
 
-        If "lock" is set robots in the exposure that are not used are marked as unusable
-        (uses _robot_locked).
+        If "lock" is set robots in the exposure that are not used are marked as unusable,
+        and the exposure itself is marked as locked (uses _robot_locked and _exposure_locked).
 
         If "force" is set, cases where the rsid cannot be reached by the robot in 
         the holeID are fudged to work using the "force" option in the 
@@ -5601,6 +5695,7 @@ class Field(object):
         if(lock):
             # Make sure we check against _robot2indx since if force is set we cannot
             # rely on RobotGrid; should not really matter though.
+            self._exposure_locked[iexp] = True
             for robotID in self.mastergrid.robotDict:
                 robotindx = self.robotID2indx[robotID]
                 if(self._robot2indx[robotindx, iexp] == -1):
@@ -5909,7 +6004,7 @@ Unassigned fibers per exposure:
  APOGEE:{% for n in napogee_unused %} {{n}}{% endfor %}
 
 Carton completion:
-{% for c in cartons %} {{c}}: \033[0;34m{{cartons[c].nsatisfied}} / {{cartons[c].nwithin}}\033[0;3m ({{cartons[c].nexposures}} exp)
+{% for c in cartons %} {{c}}: {{cartons[c].nsatisfied}} / {{cartons[c].nwithin}} ({{cartons[c].nexposures}} exp)
 {% endfor %}
 """
         assessment = self.assess_data()
@@ -6038,8 +6133,11 @@ Carton completion:
                     if(indx >= 0):
                         rsid = self.targets['rsid'][indx]
                         robotID = self.robotIDs[irobot]
-                        allowed = self._bright_allowed_robot(rsid=rsid, robotID=robotID,
-                                                             design_mode=design_mode)
+                        if(self.check_expflag(rsid=rsid, iexp=iexp, flagname='FORCED') == False):
+                            allowed = self._bright_allowed_robot(rsid=rsid, robotID=robotID,
+                                                                 design_mode=design_mode)
+                        else:
+                            allowed = True
                         if(allowed is False):
                             print("bright neighbor to rsid={rsid} on robotID={robotID} in iexp={iexp}".format(rsid=rsid, robotID=robotID, iexp=iexp))
                             nproblems = nproblems + 1
@@ -6088,42 +6186,45 @@ Carton completion:
         if(self.allgrids):
             # Check for collisions
             for iexp, rg in enumerate(self.robotgrids):
-                for robotID in rg.robotDict:
-                    c = rg.isCollided(robotID)
-                    if(c):
-                        if(rg.robotDict[robotID].isAssigned()):
-                            print("robotID={robotID} iexp={iexp} : collision of assigned robot".format(robotID=robotID, iexp=iexp))
-                        else:
-                            print("robotID={robotID} iexp={iexp} : collision of unassigned robot".format(robotID=robotID, iexp=iexp))
-                        nproblems = nproblems + 1
+                if(self._exposure_locked[iexp] == False):
+                    for robotID in rg.robotDict:
+                        c = rg.isCollided(robotID)
+                        if(c):
+                            if(rg.robotDict[robotID].isAssigned()):
+                                print("robotID={robotID} iexp={iexp} : collision of assigned robot".format(robotID=robotID, iexp=iexp))
+                            else:
+                                print("robotID={robotID} iexp={iexp} : collision of unassigned robot".format(robotID=robotID, iexp=iexp))
+                            nproblems = nproblems + 1
 
             # Check _robot2indx, assignments is tracking things correctly
             for iexp, rg in enumerate(self.robotgrids):
-                for robotID in rg.robotDict:
-                    robotindx = self.robotID2indx[robotID]
-                    if(rg.robotDict[robotID].isAssigned()):
-                        tid = rg.robotDict[robotID].assignedTargetID
-                        itarget = self.rsid2indx[tid]
-                    else:
-                        itarget = -1
-                    if(self._robot2indx[robotindx, iexp] != itarget):
-                        print("robotID={robotID} iexp={iexp} : expected {i1} in _robot2indx got {i2}".format(robotID=robotID, iexp=iexp, i1=itarget, i2=self._robot2indx[robotindx, iexp]))
-                        nproblems = nproblems + 1
-
-                    if(itarget != -1):
-                        if(self.assignments['robotID'][itarget, iexp] !=
-                           robotID):
-                            print("rsid={rsid} iexp={iexp} : expected {robotID} in assignments['robotID'], got {actual}".format(rsid=tid, iexp=iexp, robotID=robotID, actual=self.assignments['robotID'][itarget, iexp]))
+                if(self._exposure_locked[iexp] == False):
+                    for robotID in rg.robotDict:
+                        robotindx = self.robotID2indx[robotID]
+                        if(rg.robotDict[robotID].isAssigned()):
+                            tid = rg.robotDict[robotID].assignedTargetID
+                            itarget = self.rsid2indx[tid]
+                        else:
+                            itarget = -1
+                        if(self._robot2indx[robotindx, iexp] != itarget):
+                            print("robotID={robotID} iexp={iexp} : expected {i1} in _robot2indx got {i2}".format(robotID=robotID, iexp=iexp, i1=itarget, i2=self._robot2indx[robotindx, iexp]))
                             nproblems = nproblems + 1
+
+                        if(itarget != -1):
+                            if(self.assignments['robotID'][itarget, iexp] !=
+                               robotID):
+                                print("rsid={rsid} iexp={iexp} : expected {robotID} in assignments['robotID'], got {actual}".format(rsid=tid, iexp=iexp, robotID=robotID, actual=self.assignments['robotID'][itarget, iexp]))
+                                nproblems = nproblems + 1
 
             # Check assignments is tracking things correctly
             for iexp, rg in enumerate(self.robotgrids):
-                for itarget, assignment in enumerate(self.assignments):
-                    if(assignment['robotID'][iexp] >= 0):
-                        if(rg.robotDict[assignment['robotID'][iexp]].assignedTargetID != 
-                           self.targets['rsid'][itarget]):
-                            print("robotID={robotID} iexp={iexp} : expected {rsid} in assignedTargetID, got {actual}".format(rsid=self.targets['rsid'][itarget], iexp=iexp, robotID=robotID, actual=rg.robotDict[assignment['robotID'][iexp]].assignedTargetID))
-                            nproblems = nproblems + 1
+                if(self._exposure_locked[iexp] == False):
+                    for itarget, assignment in enumerate(self.assignments):
+                        if(assignment['robotID'][iexp] >= 0):
+                            if(rg.robotDict[assignment['robotID'][iexp]].assignedTargetID != 
+                               self.targets['rsid'][itarget]):
+                                print("robotID={robotID} iexp={iexp} : expected {rsid} in assignedTargetID, got {actual}".format(rsid=self.targets['rsid'][itarget], iexp=iexp, robotID=robotID, actual=rg.robotDict[assignment['robotID'][iexp]].assignedTargetID))
+                                nproblems = nproblems + 1
 
         epochs = self.field_cadence.epochs
         inotallowed = np.where((self.assignments['allowed'][:, epochs] == 0) &
