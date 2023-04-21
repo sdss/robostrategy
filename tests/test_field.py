@@ -982,6 +982,7 @@ def test_clear():
     for indx, aorig, anew in zip(range(len(assignments)),
                                  assignments, f.assignments):
         for n in aorig.dtype.names:
+            print(n)
             assert aorig[n] == anew[n]
 
 
