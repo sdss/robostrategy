@@ -234,3 +234,229 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
                     print("{msg}, NOT FIXING".format(msg=msg))
 
     return(tmp_targets)
+
+
+def match_v1_to_v0p5(catalogids_v1=None, all=False):
+    """Find catalogids in v0.5 corresponding to v1
+    
+    Parameters
+    ----------
+
+    catalogids_v1 : ndarray of np.int64
+        input catalogids in v1
+
+    all : bool
+        if set True, return all v0.5 catalogids (not just one)
+
+    Returns
+    -------
+
+    catalogids_v1 : ndarray of np.int64
+        catalogids in v1
+
+    catalogids_v0p5 : ndarray of np.int64
+        catalogids in v0.5 (-1 if not found)
+
+    Notes
+    -----
+
+    If all is False, then the two arrays are in the same
+    order as the input list, and have the same length.
+
+    If all is True, then only matches are included in the 
+    output lists, and repeats are included
+
+    Hard-coded between these two versions because the db
+    has the version names hard-coded into tables
+"""
+    if(len(catalogids_v1) == 0):
+        return(np.zeros(0, dtype=np.int64),
+               np.zeros(0, dtype=np.int64))
+    
+    # Construct query
+    sql_template = """SELECT lowest_catalogid, highest_catalogid FROM sandbox.catalog_ver25_to_ver31_full_unique JOIN (VALUES {v}) AS ver31(catalogid) ON sandbox.catalog_ver25_to_ver31_full_unique.highest_catalogid = ver31.catalogid;
+"""
+    values = ""
+    ucatalogids_v1 = np.unique(catalogids_v1)
+    for value in ucatalogids_v1:
+        values = values + "({v}),".format(v=value)
+    values = values[0:-1]
+    sql_command = sql_template.format(v=values)
+
+    if(all is False):
+        # Set up output
+        out_catalogids_v1 = catalogids_v1
+        out_catalogids_v0p5 = np.zeros(len(catalogids_v1), dtype=np.int64) - 1
+        indxs = dict()
+        for cid_v1 in ucatalogids_v1:
+            indxs[cid_v1] = np.where(catalogids_v1 == cid_v1)[0]
+
+        # Run query
+        cursor = database.execute_sql(sql_command)
+        for row in cursor.fetchall():
+            catalogid_v1 = row[1]
+            catalogid_v0p5 = row[0]
+            out_catalogids_v0p5[indxs[catalogid_v1]] = catalogid_v0p5
+    else:
+        cursor = database.execute_sql(sql_command)
+        out_catalogids_v1 = np.zeros(len(catalogids_v1), dtype=np.int64)
+        out_catalogids_v0p5 = np.zeros(len(catalogids_v1), dtype=np.int64)
+        i = 0
+        for row in cursor.fetchall():
+            out_catalogids_v1[i] = row[1]
+            out_catalogids_v0p5[i] = row[0]
+            i = i + 1
+            if(i >= len(out_catalogids_v1)):
+                out_catalogids_v1 = np.append(out_catalogids_v1,
+                                              np.zeros(len(out_catalogids_v1),
+                                                       dtype=np.int64) - 1)
+                out_catalogids_v0p5 = np.append(out_catalogids_v0p5,
+                                                np.zeros(len(out_catalogids_v0p5),
+                                                         dtype=np.int64) - 1)
+        out_catalogids_v1 = out_catalogids_v1[0:i]
+        out_catalogids_v0p5 = out_catalogids_v0p5[0:i]
+        
+    return(out_catalogids_v1, out_catalogids_v0p5)
+
+
+def catalogids_are_targets(catalogids=None):
+    """Check if catalogids are in target table
+
+    Parameters
+    ----------
+
+    catalogids : ndarray of np.int64
+        catalogids 
+
+    Returns
+    -------
+
+    istarget : ndarray of bool
+        whether present
+"""
+    # Construct query
+    sql_template = """SELECT targetdb.target.catalogid FROM targetdb.target
+JOIN (VALUES {v}) AS input(catalogid) ON targetdb.target.catalogid = input.catalogid;
+"""
+
+    values = ""
+    ucatalogids = np.unique(catalogids)
+    for value in ucatalogids:
+        values = values + "({v}),".format(v=value)
+    values = values[0:-1]
+    sql_command = sql_template.format(v=values)
+
+    # Set up output
+    istarget = np.zeros(len(catalogids), dtype=bool)
+    indxs = dict()
+    for cid in ucatalogids:
+        indxs[cid] = np.where(catalogids == cid)[0]
+        
+    # Run query
+    cursor = database.execute_sql(sql_command)
+    for row in cursor.fetchall():
+        catalogid = row[0]
+        print(catalogid)
+        istarget[indxs[catalogid]] = True
+
+    return(istarget)
+
+
+def catalogids_to_target_ids(catalogids=None, input_catalog=None):
+    """Return target_ids for input catalog for catalogid
+
+    Parameters
+    ----------
+
+    catalogids : ndarray of np.int64
+        catalogids 
+
+    input_catalog : str
+        name of input catalog (like 'tic_v8')
+
+    Returns
+    -------
+
+    target_ids : ndarray of np.int64
+        input catalog IDs
+"""
+    # Construct query
+    sql_template = """SELECT catalogdb.catalog.catalogid, catalogdb.catalog_to_{s}.target_id FROM catalogdb.catalog
+JOIN catalogdb.catalog_to_{s} ON catalogdb.catalog.catalogid = catalogdb.catalog_to_{s}.catalogid
+JOIN (VALUES {v}) AS desired(catalogid) ON catalogdb.catalog.catalogid = desired.catalogid;
+"""
+
+    values = ""
+    ucatalogids = np.unique(catalogids)
+    for value in ucatalogids:
+        values = values + "({v}),".format(v=value)
+    values = values[0:-1]
+    sql_command = sql_template.format(v=values, s=input_catalog)
+
+    # Set up output
+    target_ids = np.zeros(len(catalogids), dtype=np.int64) - 1
+    indxs = dict()
+    for cid in ucatalogids:
+        indxs[cid] = np.where(catalogids == cid)[0]
+        
+    # Run query
+    cursor = database.execute_sql(sql_command)
+    for row in cursor.fetchall():
+        catalogid = row[0]
+        target_id = row[1]
+        target_ids[indxs[catalogid]] = target_id
+
+    return(target_ids)
+
+
+def target_ids_to_catalogids(target_ids=None, input_catalog=None,
+                             crossmatch=None):
+    """Map target_id to a catalogids from a particular version
+
+    Parameters
+    ----------
+
+    target_ids : ndarray of np.int64
+        IDs from input catalog
+
+    crossmatch : str
+        cross match version
+
+    input_catalog : str
+        name of input catalog (like 'tic_v8')
+
+    Returns
+    -------
+
+    catalogids : ndarray of np.int64
+        catalogids 
+"""
+    # Construct query
+    sql_template = """SELECT catalogdb.catalog_to_{s}.target_id, catalogdb.catalog.catalogid FROM catalogdb.catalog_to_{s}
+JOIN (VALUES {v}) AS desired(target_id) ON catalogdb.catalog_to_{s}.target_id = desired.target_id
+JOIN catalogdb.catalog ON catalogdb.catalog.catalogid = catalogdb.catalog_to_{s}.catalogid
+JOIN catalogdb.version ON catalogdb.version.id = catalogdb.catalog.version_id
+WHERE catalogdb.version.plan = '{c}';
+"""
+
+    values = ""
+    utarget_ids = np.unique(target_ids)
+    for value in utarget_ids:
+        values = values + "({v}),".format(v=value)
+    values = values[0:-1]
+    sql_command = sql_template.format(v=values, c=crossmatch, s=input_catalog)
+
+    # Set up output
+    catalogids = np.zeros(len(target_ids), dtype=np.int64) - 1
+    indxs = dict()
+    for tid in utarget_ids:
+        indxs[tid] = np.where(target_ids == tid)[0]
+        
+    # Run query
+    cursor = database.execute_sql(sql_command)
+    for row in cursor.fetchall():
+        target_id = row[0]
+        catalogid = row[1]
+        catalogids[indxs[target_id]] = catalogid
+
+    return(catalogids)
