@@ -722,6 +722,49 @@ def test_assign_science():
             assert rg.isCollided(robotID) is False
 
 
+def test_assign_cadences():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_1x1')
+    ntot = 400
+    targets(f, nt=ntot, seed=101)
+
+    f.assign_cadences(rsids=f.targets['rsid'])
+    f.decollide_unassigned()
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() > 0
+    for rg in f.robotgrids:
+        for robotID in rg.robotDict:
+            assert rg.isCollided(robotID) is False
+
+
+def test_assign_cadences_test_only():
+    clist = cadence.CadenceList()
+    clist.reset()
+
+    add_cadence_single_nxm(n=1, m=1)
+    add_cadence_single_nxm(n=3, m=1)
+    add_cadence_single_nxm(n=4, m=1)
+
+    f = field.Field(racen=180., deccen=0., pa=45, observatory='lco',
+                    field_cadence='single_4x1')
+    ntot = 400
+    targets(f, nt=ntot, seed=101)
+    targets(f, nt=ntot, rsid_start=ntot, seed=101, cadence='single_3x1')
+
+    f.assign_cadences(rsids=f.targets['rsid'], test_only=True)
+    f.decollide_unassigned()
+    assert f.validate() == 0
+    assert f.assignments['assigned'].sum() == 0
+    for rg in f.robotgrids:
+        for robotID in rg.robotDict:
+            assert rg.isCollided(robotID) is False
+
+
 def test_lock():
     clist = cadence.CadenceList()
     clist.reset()
