@@ -2,7 +2,7 @@
 <style>
     table, th, tr, td {border: 1px solid black;
                        border-collapse: collapse;
-		                   font-size: 24px;
+		                   font-size: 20px;
 }
 </style>
 
@@ -68,7 +68,9 @@
 <tbody>
 {% for c in cartons %}
 <tr>
-<td align='right' style="color: blue;">{{c}}</td>
+	<td align='right' style="color: blue;">
+		<a href="bycarton/rsCompletenessFinal-{{c}}-{{plan}}-both.fits">{{c}}</a>
+	</td>
 <td align='right'>{{cartons[c].description}}</td>
 <td align='right'>
 <table style='border: 0px;' cellspacing=0px>
@@ -77,19 +79,19 @@
 			<td style='border: 0px;' cellspacing=0px>
 				<a href="rsCompleteness-{{c}}-ntargets-{{plan}}-both.png">
 					<img src="rsCompleteness-{{c}}-ntargets-{{plan}}-both.png"
-							 width=100px></img>
+							 width=70px></img>
 				</a>
 			</td>
 			<td style='border: 0px;' cellspacing=0px>
 				<a href="rsCompleteness-{{c}}-ngot-{{plan}}-both.png">
 					<img src="rsCompleteness-{{c}}-ngot-{{plan}}-both.png"
-							 width=100px></img>
+							 width=70px></img>
 				</a>
 			</td>
 			<td style='border: 0px;' cellspacing=0px>
 				<a href="rsCompleteness-{{c}}-fgot-{{plan}}-both.png">
 					<img src="rsCompleteness-{{c}}-fgot-{{plan}}-both.png"
-							 width=100px></img>
+							 width=70px></img>
 				</a>
 			</td>
 		</tr>
