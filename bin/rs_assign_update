@@ -43,6 +43,7 @@ dmodes = None
 test = False
 offset_min_skybrightness = None
 noassignmentstatus = False
+nooffset = False
 
 
 def assign_update(indx):
@@ -100,7 +101,8 @@ def assign_update(indx):
                                 untrim_cadence_version=cadence_version,
                                 noassign=True, input_design_mode=dmodes,
                                 reset_bright=reset_bright,
-                                offset_min_skybrightness=offset_min_skybrightness)
+                                offset_min_skybrightness=offset_min_skybrightness,
+                                nooffset=nooffset)
     f.fieldid = fieldid
 
     icsa = list(f.calibration_order).index('standard_apogee')
@@ -121,13 +123,7 @@ def assign_update(indx):
         # Account for observed exposures
         if((noassignmentstatus is False) | (status is None)):
             print("fieldid {fid}: Apply observed exposures".format(fid=fieldid), flush=True)
-            idone = np.where(status['status'])[0]
-            f.apply_observed_status(observed_status=status[idone])
-
-        print(f.calibrations['sky_apogee'])
-        print(f.calibrations['standard_apogee'])
-        print(f.calibrations['standard_boss'])
-        print(f.calibrations['sky_boss'])
+            f.apply_observed_status(observed_status=status)
 
         # For some cartons, allow them even if mags are not allowed
         for carton in mags_allowed_brighttime:
@@ -150,7 +146,7 @@ def assign_update(indx):
                     f.assignments['allowed'][ic, epoch] = True
  
         # Escape if all exposures are locked
-        iunlocked = np.where(f._exposure_locked == False)[0]
+        iunlocked = np.where(f.exposure_locked == False)[0]
         if(len(iunlocked) == 0):
             print("fieldid {fid}: All exposures locked".format(fid=fieldid), flush=True)
             print("Write assignments", flush=True)
@@ -205,6 +201,9 @@ if __name__ == '__main__':
     parser.add_argument('-A', '--no-assignment-status', dest='noassignmentstatus',
                         help='do not use assignment status', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-O', '--no-offset-status', dest='nooffset',
+                        help='do not allow offsets', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-s', '--start', dest='start',
                         type=np.int32, help='field to start', required=False,
                         default=0)
@@ -234,6 +233,7 @@ if __name__ == '__main__':
     clobber = args.clobber
     nomultiprocess = args.nomultiprocess
     noassignmentstatus = args.noassignmentstatus
+    nooffset = args.nooffset
     reset_bright = args.reset_bright
 
     rsParams = params.RobostrategyParams(plan=plan)
