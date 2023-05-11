@@ -1801,11 +1801,9 @@ class Field(object):
         if('dark' in design_mode):
             lunation = 'dark'
             skybrightness = 0.35
-        mags = np.zeros(len(targets), dtype=np.float32)
+        mags = targets['magnitude'][:, :]
         boss = targets['fiberType'] == 'BOSS'
         apogee = targets['fiberType'] == 'APOGEE'
-        mags[boss] = targets['magnitude'][boss, 5]
-        mags[apogee] = targets['magnitude'][apogee, 8]
 
         delta_ra = np.zeros(len(targets), dtype=np.float64)
         delta_dec = np.zeros(len(targets), dtype=np.float64)
@@ -1814,7 +1812,7 @@ class Field(object):
         iboss = np.where(boss)[0]
         if(len(iboss) > 0):
             mag_limits = self._mag_limits(design_mode=design_mode, fiberType='BOSS')
-            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iboss],
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iboss, :],
                                                                                        mag_limits,
                                                                                        lunation,
                                                                                        'Boss',
@@ -1829,7 +1827,7 @@ class Field(object):
         iapogee = np.where(apogee)[0]
         if(len(iapogee) > 0):
             mag_limits = self._mag_limits(design_mode=design_mode, fiberType='APOGEE')
-            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iapogee],
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iapogee, :],
                                                                                        mag_limits,
                                                                                        lunation,
                                                                                        'Apogee',
