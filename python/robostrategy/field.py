@@ -1605,6 +1605,50 @@ class Field(object):
         self.design_status = design_status
         return
 
+    def set_design_status_from_status_field(self, status_field=None):
+        """Set design_status based on get_status_by_field() output
+        
+        Parameters
+        ----------
+
+        status_field : ndarray
+            array with 'designid', 'field_exposure', and 'status' elements
+
+        Notes
+        -----
+
+        If status_field is None, sets all status to default; designid=-1
+        and status='not started'
+
+        Otherwise, status_field should contain any instance of a
+        designid associated with this field.
+
+        In that case sets design_status to an array with nexp_total elements
+        with designid=-1 and status='not started' for incomplete designs
+        and status='done' for done ones, and assigning the lowest designid.
+"""
+        if(status_field is None):
+            self.set_design_status(design_status=None)
+            return
+        design_status = np.zeros(self.field_cadence.nexp_total, dtype=design_status_dtype)
+        design_status['fieldid'] = self.fieldid
+        for field_exposure in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+            icurr = np.where((status_field['fieldid'] == self.fieldid) &
+                             (status_field['field_exposure'] == field_exposure) &
+                             (status_field['status'] == 'done'))[0]
+            if(len(icurr) > 0):
+                designid = status_field['design_id'][icurr].min()
+                if(designid < 0):
+                    raise Exception('A done designid should not be negative')
+                design_status['designid'][field_exposure] = designid
+                design_status['status'][field_exposure] = 'done'
+            else:
+                design_status['designid'][field_exposure] = -1
+                design_status['status'][field_exposure] = 'not started'
+                
+        self.set_design_status(design_status=design_status)
+        return
+
     def set_flag(self, rsid=None, flagname=None):
         """Set a bitmask flag for a target
 
@@ -5844,7 +5888,7 @@ class Field(object):
         is an [ntarget, nexp] ndarray of np.int32 with the robotID
         to be preferred for that exposure of that target.
 
-        The use case for this is within apply_done_exposures().
+        The use case for this is within apply_observed_status().
         For exposures which have been planned before, but haven't
         been observed yet, we set the original robotID as the preferred
         one, which will lead to a more consistent set of assignments
