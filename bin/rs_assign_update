@@ -87,10 +87,21 @@ def assign_update(indx):
     if(noassignmentstatus is False):
         if(os.path.exists(field_status_file)):
             print("fieldid {f}: Reading assignment status file".format(f=fieldid), flush=True)
-            status = fitsio.read(field_status_file)
+            status = fitsio.read(field_status_file, ext='TARGET')
+            status_field = fitsio.read(field_status_file, ext='FIELD')
+            iobs = np.where(status['mjd'] > 0)[0]
+            if(len(iobs) > 0):
+                print("fieldid {f}:   status found in {e}".format(f=fieldid,
+                                                                  e=np.unique(status['field_exposure'][iobs])),
+                      flush=True)
         else:
             print("fieldid {f}: No assignment status fileexists ".format(f=fieldid), flush=True)
             status = None
+            status_field = None
+    else:
+        print("fieldid {f}: Not accounting for assignment status".format(f=fieldid), flush=True)
+        status = None
+        status_field = None
 
     print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
 
@@ -104,6 +115,8 @@ def assign_update(indx):
                                 offset_min_skybrightness=offset_min_skybrightness,
                                 nooffset=nooffset)
     f.fieldid = fieldid
+
+    f.set_design_status_from_status_field(status_field=status_field)
 
     icsa = list(f.calibration_order).index('standard_apogee')
     f.required_calibrations_per_zone[icsa + 1] = standard_apogee_nperzone_min
