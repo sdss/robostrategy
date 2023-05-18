@@ -87,7 +87,8 @@ if __name__ == '__main__':
         rstats['fiberType'][1] = 'APOGEE'
 
         for obs in ['apo', 'lco']:
-            fields = fitsio.read('final/rsAllocationFinal-{p}-{o}.fits'.format(p=plan, o=obs))
+            fields = fitsio.read(os.path.join(html_path,
+                                              'rsAllocationFinal-{p}-{o}.fits'.format(p=plan, o=obs)))
             fieldids = np.unique(fields['fieldid'])
             for fieldid in fieldids:
                 targets = fitsio.read('final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid), ext='TARGET')
