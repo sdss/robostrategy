@@ -48,12 +48,13 @@ def get_status(indx):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_file), flush=True)
         return
 
-    status = robostrategy.status.get_status_by_fieldid(plan=fromplan, fieldid=fieldid)
+    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan, fieldid=fieldid)
 
     if(status is not None):
         print("Write status information", flush=True)
         hdr = robostrategy.header.rsheader()
-        fitsio.write(field_status_file, status, header=hdr, clobber=True)
+        fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
+        fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
 
     print("fieldid {f}: Done".format(f=fieldid), flush=True)
     return
