@@ -41,6 +41,12 @@ status_dtype = [('fieldid', np.int32),  # in field
                 ('cadence', np.unicode_, 22), # from carton_to_target, cadence
                 ('fiberType', np.unicode_, 6)]  # from instrument
 
+status_field_dtype = [('fieldid', np.int32),
+                      ('field_pk', np.int64),
+                      ('field_exposure', np.int32),
+                      ('design_id', np.int32),
+                      ('status', str, 20)]
+
 
 def get_status_by_fieldid(plan=None, fieldid=None):
     """Read in cartons
@@ -60,6 +66,8 @@ def get_status_by_fieldid(plan=None, fieldid=None):
     status : ndarray
         array with information on individual statuses for this field
 
+    status_field : ndarray
+        array with information on design_id statuses for this field
 
     Notes
     -----
@@ -67,6 +75,10 @@ def get_status_by_fieldid(plan=None, fieldid=None):
     This assumes that all the relevant information for the field is
     correctly associated with the field table entry associated with
     the specified plan.
+
+    status_field has entry for each unique combination of fieldid, field_pk,
+    field_exposure, and design_id. It is considered 'done' if ANY target
+    has the status 'done'.
 """
 
     # Get the field information first
@@ -160,7 +172,7 @@ def get_status_by_fieldid(plan=None, fieldid=None):
     if(len(status_array) == 0):
         print("No status information for fieldid={fid}".format(fid=fieldid),
               flush=True)
-        return(None)
+        return(None, None)
 
     castn = dict()
     for n in status_array.dtype.names:
@@ -189,4 +201,26 @@ def get_status_by_fieldid(plan=None, fieldid=None):
                     if(n not in problems):
                         problems.append(n)
 
-    return(status_array)
+    status_designs_set = set()
+    for s in status_array:
+        thing = (s['fieldid'], s['field_pk'], s['field_exposure'], s['design_id'])
+        status_designs_set.add(thing)
+    status_field = np.zeros(0, dtype=status_field_dtype)
+    for s in status_designs_set:
+        tmp_status_field = np.zeros(1, dtype=status_field_dtype)
+        tmp_status_field['fieldid'] = s[0]
+        tmp_status_field['field_pk'] = s[1]
+        tmp_status_field['field_exposure'] = s[2]
+        tmp_status_field['design_id'] = - 1
+        tmp_status_field['status'] = 'not started'
+        igd = np.where((status_array['fieldid'] == tmp_status_field['fieldid']) &
+                       (status_array['field_pk'] == tmp_status_field['field_pk']) &
+                       (status_array['field_exposure'] == tmp_status_field['field_exposure']) &
+                       (status_array['design_id'] == tmp_status_field['design_id']) &
+                       (status_array['status'] > 0))[0]
+        if(len(igd) > 0):
+            tmp_status_field['status'] = 'done'
+            tmp_status_field['design_id'] = s[3]
+        status_field = np.append(status_field, tmp_status_field)
+
+    return(status_array, status_field)
