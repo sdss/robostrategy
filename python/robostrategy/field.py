@@ -307,7 +307,35 @@ class AssignmentStatus(object):
         self.bright_neighbor_allowed = np.ones(len(self.iexps), dtype=bool)
         self.spare = np.zeros(len(self.iexps), dtype=bool)
         self.spare_colliders = [np.zeros(0, dtype=np.int64)] * len(self.iexps)
+        self.currindx = None
+        self.locked = None
         return
+
+    def __str__(self):
+        template = """Assignment Status: rsid = {rsid} robotID = {robotID}
+  iexps = {iexps}
+  expindx = {expindx}
+  assignable = {assignable}
+  already = {already}
+  collided = {collided}
+  bright_neighbor_allowed = {bright_neighbor_allowed}
+  spare = {spare}
+  spare_colliders = {spare_colliders}
+  currindx = {currindx}
+  locked = {locked}
+  assignable_exposures = {assignable_exposures}
+"""
+        template = template.format(rsid=self.rsid, robotID=self.robotID,
+                                   iexps=self.iexps, expindx=self.expindx,
+                                   assignable=self.assignable,
+                                   already=self.already, collided=self.collided,
+                                   bright_neighbor_allowed=self.bright_neighbor_allowed,
+                                   spare=self.spare,
+                                   spare_colliders=self.spare_colliders,
+                                   currindx=self.currindx, locked=self.locked,
+                                   assignable_exposures=self.assignable_exposures())
+        return(template)
+
 
     def assignable_exposures(self):
         """List of assignable exposures
@@ -606,6 +634,8 @@ class Field(object):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
+        self.flagdict = _flagdict
+        self.expflagdict = _expflagdict
         self.offset_min_skybrightness = offset_min_skybrightness
         self.design_status = None
         self.stage = None
@@ -699,8 +729,6 @@ class Field(object):
                     self.achievable_calibrations[n] = self.required_calibrations[n].copy()
             self.set_field_cadence(field_cadence)
         self._set_radius()
-        self.flagdict = _flagdict
-        self.expflagdict = _expflagdict
         self._competing_targets = None
         self.methods = dict()
         self.methods['assign_epochs'] = 'first'
@@ -1113,8 +1141,6 @@ class Field(object):
             self.collisionBuffer = hdr['CBUFFER']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
             self.nocalib = np.bool(hdr['NOCALIB'])
-        if('EXPLOCK' in hdr):
-            self.exposure_locked = np.array([np.bool(x) for x in hdr['EXPLOCK'].split()])
         if(('OFFMINSKY' in hdr) & (self.offset_min_skybrightness is None)):
             self.offset_min_skybrightness = np.float32(hdr['OFFMINSKY'])
             if(self.offset_min_skybrightness != self.offset_min_skybrightness):
@@ -1210,6 +1236,9 @@ class Field(object):
 
         self.set_field_cadence(field_cadence)
 
+        if('EXPLOCK' in hdr):
+            self.exposure_locked = np.array([np.bool(x == 'True') for x in hdr['EXPLOCK'].split()])
+
         if('status' in f.hdu_map):
             design_status = f['status'].read()
             self.set_design_status(design_status=design_status)
@@ -1244,7 +1273,8 @@ class Field(object):
                                                iexp=0, reset_satisfied=False,
                                                reset_has_spare=False,
                                                reset_count=False,
-                                               set_expflag=False)
+                                               set_expflag=False,
+                                               force=self.exposure_locked[0])
             else:
                 iassigned = np.where(assignments['robotID'] >= 1)
                 for itarget, iexp in zip(iassigned[0], iassigned[1]):
@@ -1254,7 +1284,8 @@ class Field(object):
                                                reset_satisfied=False,
                                                reset_has_spare=False,
                                                reset_count=False,
-                                               set_expflag=False)
+                                               set_expflag=False,
+                                               force=self.exposure_locked[iexp])
 
             hasexpflag = ('expflag' in assignments.dtype.names)
             for assignment, target in zip(assignments, targets):
@@ -4631,25 +4662,29 @@ class Field(object):
             statusDict = dict()
             expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
             nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            nExpAlready = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID, iexps=iexpsall)
                 self.set_assignment_status(status=s)
                 statusDict[robotID] = s
+                nExpAlready[s.already] = 1
                 for iexp in s.assignable_exposures():
                     expRobotIDs[iexp].append(robotID)
                     nExpRobotIDs[iexp] = nExpRobotIDs[iexp] + 1
 
             # if number of exposures with at least one free robot is high
             # enough, go ahead
+            nalready = nExpAlready.sum()
+            nexp_need = nexp_cadence - nalready
             iexps = np.where(nExpRobotIDs > 0)[0]
-            if(len(iexps) >= nexp_cadence):
+            if(len(iexps) >= nexp_need):
                 succeed[cinotsat] = True
 
                 # Do not assign if this is just a test
                 if(test_only):
                     continue
 
-                for iexp in iexps[0:nexp_cadence]:
+                for iexp in iexps[0:nexp_need]:
                     robotID = expRobotIDs[iexp][0]
                     status = statusDict[robotID]
                     self.unassign_assignable(status=status, iexp=iexp,
@@ -4732,11 +4767,13 @@ class Field(object):
             statusDict = dict()
             expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
             nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            nExpAlready = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID,
                                      iexps=iexpsall)
                 self.set_assignment_status(status=s)
                 statusDict[robotID] = s
+                nExpAlready[s.already] = 1
                 for iexp in s.assignable_exposures():
                     expRobotIDs[iexp].append(robotID)
                     nExpRobotIDs[iexp] = nExpRobotIDs[iexp] + 1
@@ -4747,15 +4784,17 @@ class Field(object):
 
             # if number of exposures with at least one free robot is high
             # enough, go ahead
+            nalready = nExpAlready.sum()
+            nexp_need = nexp_cadence - nalready
             iexps = np.where(nExpRobotIDs > 0)[0]
-            if(len(iexps) >= nexp_cadence):
+            if(len(iexps) >= nexp_need):
                 succeed[cinotsat] = True
 
                 # Do not assign if this is just a test
                 if(test_only):
                     continue
 
-                for iexp in iexps[0:nexp_cadence]:
+                for iexp in iexps[0:nexp_need]:
                     robotID = expRobotIDs[iexp][0]
                     status = statusDict[robotID]
                     self.unassign_assignable(status=status, iexp=iexp,
