@@ -94,6 +94,11 @@ def assign_update(indx):
                 print("fieldid {f}:   status found in {e}".format(f=fieldid,
                                                                   e=np.unique(status['field_exposure'][iobs])),
                       flush=True)
+            iobs = np.where(status_field['status'] == 'done')[0]
+            if(len(iobs) > 0):
+                print("fieldid {f}:   exposures done are {e}".format(f=fieldid,
+                                                                     e=iobs),
+                      flush=True)
         else:
             print("fieldid {f}: No assignment status fileexists ".format(f=fieldid), flush=True)
             status = None
