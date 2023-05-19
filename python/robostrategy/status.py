@@ -211,7 +211,7 @@ def get_status_by_fieldid(plan=None, fieldid=None):
         tmp_status_field['fieldid'] = s[0]
         tmp_status_field['field_pk'] = s[1]
         tmp_status_field['field_exposure'] = s[2]
-        tmp_status_field['design_id'] = - 1
+        tmp_status_field['design_id'] = s[3]
         tmp_status_field['status'] = 'not started'
         igd = np.where((status_array['fieldid'] == tmp_status_field['fieldid']) &
                        (status_array['field_pk'] == tmp_status_field['field_pk']) &
@@ -220,7 +220,6 @@ def get_status_by_fieldid(plan=None, fieldid=None):
                        (status_array['status'] > 0))[0]
         if(len(igd) > 0):
             tmp_status_field['status'] = 'done'
-            tmp_status_field['design_id'] = s[3]
         status_field = np.append(status_field, tmp_status_field)
 
     return(status_array, status_field)
