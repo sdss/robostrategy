@@ -89,7 +89,7 @@ if __name__ == '__main__':
         html_file = os.path.join(html_path, 'rs-stats.html')
         stats_file = os.path.join(html_path, 'rsStats-{p}.fits'.format(p=plan))
 
-    stats_dtype = [('carton', np.dtype('a40')),
+    stats_dtype = [('carton', np.dtype('a60')),
                    ('ntarget', np.int32),
                    ('ngot', np.int32),
                    ('fgot', np.float32),
