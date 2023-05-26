@@ -75,7 +75,7 @@ def assign_update(indx):
                                        plan=plan, observatory=observatory,
                                        fieldid=fieldid)
     field_status_file = field_status_file.replace('targets/rsFieldTargets',
-                                                  'final/rsFieldStatus')
+                                                  'final/rsFieldStatusMatch')
 
     if(test):
         field_assignments_file = field_assignments_file.replace('Final', 'Test')
@@ -100,7 +100,7 @@ def assign_update(indx):
                                                                      e=iobs),
                       flush=True)
         else:
-            print("fieldid {f}: No assignment status fileexists ".format(f=fieldid), flush=True)
+            print("fieldid {f}: No assignment status file exists ".format(f=fieldid), flush=True)
             status = None
             status_field = None
     else:
@@ -139,7 +139,7 @@ def assign_update(indx):
         f.clear_assignments()
 
         # Account for observed exposures
-        if((noassignmentstatus is False) | (status is None)):
+        if((noassignmentstatus is False) & (status is not None)):
             print("fieldid {fid}: Apply observed exposures".format(fid=fieldid), flush=True)
             f.apply_observed_status(observed_status=status)
 
@@ -180,19 +180,39 @@ def assign_update(indx):
                 scfunc(stage='srd')
 
         print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
-        f.assign_science_and_calibs(stage='srd')
+        try:
+            f.assign_science_and_calibs(stage='srd')
+        except:
+            print("fieldid {fid}: Error in assign_science_and_calibs()".format(fid=fieldid))
+            raise
 
         print("fieldid {fid}: Reassignments".format(fid=fieldid), flush=True)
-        f.assign_spares(stage='reassign')
+        try:
+            f.assign_spares(stage='reassign')
+        except:
+            print("fieldid {fid}: Error in assign_spares()".format(fid=fieldid))
+            raise
 
         print("fieldid {fid}: Assign open targets".format(fid=fieldid), flush=True)
-        f.assign_science(stage='open')
+        try:
+            f.assign_science(stage='open')
+        except:
+            print("fieldid {fid}: Error in assign_science(stage='open')".format(fid=fieldid))
+            raise
 
         print("fieldid {fid}: Assign filler targets".format(fid=fieldid), flush=True)
-        f.assign_science(stage='filler')
+        try:
+            f.assign_science(stage='filler')
+        except:
+            print("fieldid {fid}: Error in assign_science(stage='filler')".format(fid=fieldid))
+            raise
 
         print("fieldid {f}: Running completion".format(f=fieldid), flush=True)
-        f.complete()
+        try:
+            f.complete()
+        except:
+            print("fieldid {fid}: Error in complete()".format(fid=fieldid))
+            raise
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
