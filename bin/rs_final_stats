@@ -116,7 +116,7 @@ if __name__ == '__main__':
 
         fitsio.write(stats_file, rstats, clobber=True, extname='ROBOTS')
 
-        stats_dtype = [('carton', np.unicode_, 40)]
+        stats_dtype = [('carton', np.unicode_, 60)]
         for obs in ['', '_apo', '_lco']:
             for quant in ['ntarget', 'nsatisfied', 'ncovered', 'nallowed',
                           'nincadence', 'nextra', 'fsatisfied', 'nepochs']:
