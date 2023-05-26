@@ -86,7 +86,8 @@ _offsetdict = {'TOO_FAINT':1,
                'NO_CAN_OFFSET':16,
                'TOO_BRIGHT':32}
 
-__all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus']
+__all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus',
+           'read_bright_stars', 'write_bright_stars']
 
 
 """Field module class.
@@ -226,6 +227,86 @@ def read_field(plan=None, observatory=None, fieldid=None,
 
     return(f)
 
+
+def read_bright_stars(fits=None, include_extname=False):
+    """Read in bright stars from FITS file
+
+    Parameters
+    ----------
+
+    fits : fitsio.FITS object
+        FITS file object for reading from
+
+    include_extname : bool
+        if True, include extname as part of the key
+
+    Returns
+    -------
+
+    bsDict : OrderedDict of ndarrays
+        dictionary containing arrays of bright stars as values
+
+    Notes
+    -----
+
+    Structure of dictionary is that it has keys which are tuples
+    (design_mode, fiberType, extname), and whose values are the 
+    ndarray.
+
+    If no_extname is set, then the keys are (design_mode, fiberType)
+"""
+    bsDict = collections.OrderedDict()
+    nbs = 0
+    while('bs{n}'.format(n=nbs) in fits.hdu_map):
+        nbs = nbs + 1
+    for ibs in range(nbs):
+        extname = 'BS{ibs}'.format(ibs=ibs)
+        bshdr = fits[extname].read_header()
+        bs = fits[extname].read()
+        design_mode = bshdr['DESMODE']
+        fiberType = bshdr['FIBERTY']
+        if(include_extname):
+            key = (design_mode, fiberType, extname)
+        else:
+            key = (design_mode, fiberType)
+        bsDict[key] = bs
+    return(bsDict)
+
+
+def write_bright_stars(filename=None, bright_stars=None, clobber=False):
+    """Write out bright stars
+
+    Parameters
+    ----------
+
+    filename : str
+        name of output file
+
+    bright_stars : Dict of ndarrays
+        dictionary with (design_mode, fiberType) keys and bright star array values
+    
+    clobber : bool
+        whether to clobber file or add HDU
+"""
+    nbs = 0
+    doclobber = clobber
+    for design_mode, fiberType in bright_stars.keys():
+        hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'DESMODE',
+                    'value':design_mode,
+                    'comment':'Bright stars for this design mode'})
+        hdr.append({'name':'FIBERTY',
+                    'value':fiberType,
+                    'comment':'Bright stars for this fiber type'})
+        fitsio.write(filename, bright_stars[(design_mode, fiberType)],
+                     header=hdr,
+                     extname='BS{n}'.format(n=nbs),
+                     clobber=doclobber)
+        doclobber = False
+        nbs = nbs + 1
+    return
+
+
 class AssignmentStatus(object):
     """Status of a prospective assignment for a set of exposures
 
@@ -245,23 +326,23 @@ class AssignmentStatus(object):
     ----------
 
     already : ndarray of bool
-        does the rsid already have an equivalent observation this exposure?
+        [len(iexps)] does the rsid already have an equivalent observation this exposure?
 
     assignable : ndarray of bool
-        is the fiber free to assign and uncollided in exposure? 
+        [len(iexps)] is the fiber free to assign and uncollided in exposure? 
         (initialized to True)
 
     bright_neighbor_allowed : ndarray of bool
-        is this free of a bright neighbor (initialized to True)
+        [len(iexps)] is this free of a bright neighbor (initialized to True)
 
     collided : ndarray of bool
-        is the fiber collided in exposure? (initialized to False)
+        [len(iexps)] is the fiber collided in exposure? (initialized to False)
 
     expindx : ndarray of np.int32
         mapping of iexp (exposure within field cadence) to index of iexps array
 
     iexps : ndarray of np.int32
-        prospective exposure numbers
+        [len(iexps)] prospective exposure numbers
 
     robotID : np.int32
         prospective robotID
@@ -270,11 +351,11 @@ class AssignmentStatus(object):
         prospective target
 
     spare : ndarray of bool
-        is fiber already assigned a spare calibration target in exposure?
+        [len(iexps)] is fiber already assigned a spare calibration target in exposure?
         (initialized to False)
 
     spare_colliders : list of ndarrays of np.int32
-        array of spare calibration targets that assignment collides with
+        [len(iexps)] list of arrays of spare calibration targets that assignment collides with
         (initialized to list of empty arrays)
 
     Notes
@@ -1221,15 +1302,9 @@ class Field(object):
                 self.designModeDict = mugatu.designmode.allDesignModes(default_dm_file)
 
         if((self.reset_bright is False) & (self.bright_neighbors is True)):
-            nbs = 0
-            while('bs{n}'.format(n=nbs) in f.hdu_map):
-                nbs = nbs + 1
-            for ibs in range(nbs):
-                key = 'BS{ibs}'.format(ibs=ibs)
-                bshdr = f[key].read_header()
-                bs = f[key].read()
-                design_mode = bshdr['DESMODE']
-                fiberType = bshdr['FIBERTY']
+            bsDict = read_bright_stars(fits=f)
+            for design_mode, fiberType in bsDict:
+                bs = bsDict[design_mode, fiberType]
                 self.set_bright_stars(design_mode=design_mode,
                                       fiberType=fiberType,
                                       bright_stars=bs)
@@ -2704,21 +2779,8 @@ class Field(object):
 
         if(self.bright_neighbors):
             if(len(self.bright_stars) > 0):
-                nbs = 0
-                for design_mode, fiberType in self.bright_stars.keys():
-                    hdr = robostrategy.header.rsheader()
-                    hdr.append({'name':'DESMODE',
-                                'value':design_mode,
-                                'comment':'Bright stars for this design mode'})
-                    hdr.append({'name':'FIBERTY',
-                                'value':fiberType,
-                                'comment':'Bright stars for this fiber type'})
-                    fitsio.write(filename, self.bright_stars[(design_mode,
-                                                              fiberType)],
-                                 header=hdr,
-                                 extname='BS{n}'.format(n=nbs),
-                                 clobber=False)
-                    nbs = nbs + 1
+                write_bright_stars(filename=filename, bright_stars=self.bright_stars,
+                                   clobber=False)
 
         if(self.design_status is not None):
             fitsio.write(filename, self.design_status, extname='STATUS',
@@ -4737,7 +4799,6 @@ class Field(object):
         the standard count in the end.
 """
         rsids = self.targets['rsid'][indxs]
-        iexpsall = np.arange(self.field_cadence.nexp_total, dtype=np.int32)
         ok, epochs_list = clist.cadence_consistency('_field_dark_single_1x1', self.field_cadence.name)
         iexpsall = np.array([self.field_cadence.epoch_indx[x[0]] +
                              np.arange(self.field_cadence.nexp[x[0]],
@@ -4765,15 +4826,15 @@ class Field(object):
             robotindx = None
 
             statusDict = dict()
-            expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
-            nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
-            nExpAlready = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            expRobotIDs = [[] for _ in range(len(iexpsall))]
+            nExpRobotIDs = np.zeros(len(iexpsall), dtype=np.int32)
+            nExpAlready = np.zeros(len(iexpsall), dtype=np.int32)
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID,
                                      iexps=iexpsall)
                 self.set_assignment_status(status=s)
                 statusDict[robotID] = s
-                nExpAlready[s.already] = 1
+                nExpAlready[iexpsall[s.already]] = 1
                 for iexp in s.assignable_exposures():
                     expRobotIDs[iexp].append(robotID)
                     nExpRobotIDs[iexp] = nExpRobotIDs[iexp] + 1
@@ -4786,7 +4847,7 @@ class Field(object):
             # enough, go ahead
             nalready = nExpAlready.sum()
             nexp_need = nexp_cadence - nalready
-            iexps = np.where(nExpRobotIDs > 0)[0]
+            iexps = iexpsall[np.where(nExpRobotIDs > 0)[0]]
             if(len(iexps) >= nexp_need):
                 succeed[cinotsat] = True
 
