@@ -17,7 +17,6 @@ import multiprocessing
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
-import robostrategy.status
 import robostrategy.allocate
 import robostrategy.header
 import sdss_access.path
@@ -34,6 +33,8 @@ fromplan = None
 
 
 def get_status(indx):
+    import robostrategy.status
+
     fieldid = allocate.field_array['fieldid'][indx]
     
     print("fieldid {fid}: Get status".format(fid=fieldid), flush=True)
@@ -114,7 +115,7 @@ if __name__ == '__main__':
         for i in ikeep:
             get_status(i)
     else:
-        with multiprocessing.Pool(8) as pool:
+        with multiprocessing.Pool(4) as pool:
             ikeep = list(ikeep)
             ikeep_distributed = []
             icurr = 0
@@ -125,5 +126,5 @@ if __name__ == '__main__':
                     icurr = (icurr + int(pool._processes)) % len(ikeep)
             pool.map(get_status, ikeep_distributed)
 
-    print('DONE: rs_get_status')
-    print(time.ctime(time.time()))
+    print('DONE: rs_get_status', flush=True)
+    print(time.ctime(time.time()), flush=True)
