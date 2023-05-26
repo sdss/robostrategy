@@ -138,6 +138,8 @@ if __name__ == '__main__':
     make_maps(completeness_file, 'BRIGHT', 'Bright')
     make_maps(completeness_file, 'DARK', 'Dark')
     
+    c = 'manual_mwm_halo_distant_kgiant_dark'
+    make_maps(completeness_file, c, c)
     for carton in cartons:
         print(carton[0])
         try:
@@ -149,4 +151,37 @@ if __name__ == '__main__':
                 make_maps(completeness_file, c, c)
             if(carton[0] == 'bhm_spiders_clusters_efeds_str'):
                 c = 'bhm_spiders_clusters_efeds_stragglers'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_crosscalib_yso_apog'):
+                c = 'manual_mwm_crosscalib_yso_apogee'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_halo_distant_kgiant'):
+                c = 'manual_mwm_halo_distant_kgiant_dark'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_magcloud_massive_ap'):
+                c = 'manual_mwm_magcloud_massive_apogee'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_magcloud_massive_bo'):
+                c = 'manual_mwm_magcloud_massive_boss'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_planet_gaia_astrome'):
+                c = 'manual_mwm_planet_gaia_astrometry_v1'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_validation_cool_apo'):
+                c = 'manual_mwm_validation_cool_apogee'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_validation_cool_bos'):
+                c = 'manual_mwm_validation_cool_boss'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_validation_hot_apog'):
+                c = 'manual_mwm_validation_hot_apogee'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'mwm_yso_pms_apogee_sagitta_edr'):
+                c = 'mwm_yso_pms_apogee_sagitta_edr3'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_planet_transiting_b'):
+                c = 'manual_mwm_planet_transiting_bd_v1'
+                make_maps(completeness_file, c, c)
+            if(carton[0] == 'manual_mwm_magcloud_symbiotic_'):
+                c = 'manual_mwm_magcloud_symbiotic_apogee'
                 make_maps(completeness_file, c, c)
