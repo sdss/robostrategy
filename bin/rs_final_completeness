@@ -34,7 +34,7 @@ lite_dtype = [('rsid', np.int64), # set equal to carton_to_target_pk
               ('dec', np.float64),
               ('catalogid', np.int64),
               ('target_pk', np.int64),
-              ('carton', np.unicode_, 50), # from carton
+              ('carton', np.unicode_, 60), # from carton
               ('program', np.unicode_, 15), 
               ('category', np.unicode_, 15), # from category
               ('cadence', np.unicode_, 22), # from cadence
