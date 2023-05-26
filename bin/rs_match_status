@@ -1,0 +1,173 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_get_status
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.allocate
+import robostrategy.header
+import sdss_access.path
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+cadencelist = cadence.CadenceList(skybrightness_only=True)
+
+clobber = False
+offset_min_skybrightness = None
+plan = None
+
+
+def match_to_old(indx):
+    import robostrategy.targets
+
+    fieldid = allocate.field_array['fieldid'][indx]
+    rs_fieldid = allocate.field_array['rs_fieldid'][indx]
+    
+    print("fieldid {fid}: Matching starting".format(fid=fieldid), flush=True)
+
+    field_status_file = sdss_path.full('rsFieldTargets',
+                                        plan=plan, observatory=observatory,
+                                        fieldid=fieldid)
+    field_status_file = field_status_file.replace('targets/rsFieldTargets',
+                                                  'final/rsFieldStatus')
+    field_status_v1_file = field_status_file.replace('rsFieldStatus',
+                                                     'rsFieldStatusMatch')
+
+    field_targets_file = sdss_path.full('rsFieldTargets',
+                                        plan=plan, observatory=observatory,
+                                        fieldid=rs_fieldid)
+
+    if((clobber is False) & os.path.isfile(field_status_file)):
+        print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_file), flush=True)
+        return
+
+    print("fieldid {fid}: Reading in data".format(fid=fieldid), flush=True)
+    targets = fitsio.read(field_targets_file)
+
+    try:
+        status = fitsio.read(field_status_file, ext='TARGET')
+        status_field = fitsio.read(field_status_file, ext='FIELD')
+    except:
+        print("fieldid {fid}: No status information".format(fid=fieldid), flush=True)
+        return
+
+    print("fieldid {fid}: Matching ids".format(fid=fieldid), flush=True)
+    catalogids_v1, catalogids_v0p5 = robostrategy.targets.match_v1_to_v0p5(catalogids_v1=targets['catalogid'])
+
+    iexps = np.unique(status['field_exposure'])
+
+    print("fieldid {fid}: Building match dict".format(fid=fieldid), flush=True)
+    v0p5_for_v1 = dict()
+    for catalogid in targets['catalogid']:
+        v0p5_for_v1[catalogid] = np.zeros(0, dtype=np.int64)
+    for catalogid_v1, catalogid_v0p5 in zip(catalogids_v1, catalogids_v0p5):
+        v0p5_for_v1[catalogid_v1] = np.append(v0p5_for_v1[catalogid_v1], catalogid_v0p5)
+
+    print("fieldid {fid}: Building status dict".format(fid=fieldid), flush=True)
+    istatus_for_v0p5 = dict()
+    for i, s in enumerate(status):
+        istatus_for_v0p5[s['catalogid'], s['fiberType'], s['field_exposure']] = i
+
+    print("fieldid {fid}: Processing ids".format(fid=fieldid), flush=True)
+    istatus_all = np.zeros(0, dtype=np.int32)
+    itarget_all = np.zeros(0, dtype=np.int32)
+    for itarget, target in enumerate(targets): 
+        curr_catalogids_v0p5 = v0p5_for_v1[target['catalogid']]
+        for iexp in iexps:
+            istatus = np.zeros(0, dtype=np.int32)
+            for catalogid_v0p5 in curr_catalogids_v0p5:
+                key = (catalogid_v0p5, target['fiberType'], iexp)
+                if(key in istatus_for_v0p5):
+                    tmp_istatus = istatus_for_v0p5.pop(key)
+                    istatus = np.append(istatus, tmp_istatus)
+            if(len(istatus) > 0):
+                istatus_best = istatus[np.argmax(status['status'][istatus])]
+                istatus_all = np.append(istatus_all, np.array([istatus_best], dtype=np.int32))
+                itarget_all = np.append(itarget_all, np.array([itarget], dtype=np.int32))
+
+    status_v0p5 = status[istatus_all]
+    status_v1 = status[istatus_all]
+    for n in status_v1.dtype.names:
+        if(n in targets.dtype.names):
+            status_v1[n] = targets[n][itarget_all]
+
+    print("fieldid {fid}: Writing results".format(fid=fieldid), flush=True)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(field_status_v1_file, status_v1, header=hdr, extname='TARGET', clobber=True)
+    fitsio.write(field_status_v1_file, status_field, extname='FIELD', clobber=False)
+    fitsio.write(field_status_v1_file, status_v0p5, extname='ORIGTARGET', clobber=False)
+
+    print("fieldid {f}: Done".format(f=fieldid), flush=True)
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Extract current status information')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
+    parser.add_argument('-c', '--clobber', dest='clobber',
+                        help='clobber', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
+                        help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    start = args.start
+    end = args.end
+    clobber = args.clobber
+    nomultiprocess = args.nomultiprocess
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate_file = allocate_file.replace('rsAllocation',
+                                          'final/rsAllocationFinal')
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+                               return_index=True)
+
+    if(end < 0):
+        end = fieldids.max()
+    ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
+    ikeep = indx[ikeep]
+
+    if(nomultiprocess):
+        for i in ikeep:
+            match_to_old(i)
+    else:
+        with multiprocessing.Pool(4) as pool:
+            pool.map(match_to_old, ikeep)
+
+    print('DONE: rs_match_status')
+    print(time.ctime(time.time()))
