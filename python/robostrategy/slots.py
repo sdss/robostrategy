@@ -32,8 +32,8 @@ class Slots(object):
     observatory : str
         observatory to calculate slots for, 'apo' or 'lco' (default 'apo')
 
-    exptime : float, np.float32
-        duration of a single nominal exposure, in hours (default 15. / 60.)
+    exptimes : ndarray of np.float32
+        duration of a single nominal exposure, in hours (2-element array in dark, bright order) (defaults 15. / 60.)
 
     exposure_overhead : float, np.float32
         overhead of a single exposure, in hours (default 3. / 60.)
@@ -63,8 +63,8 @@ class Slots(object):
     observatory : str
         observatory to calculate slots for, 'apo' or 'lco'
 
-    exptime : float, np.float32
-        duration of a single nominal exposure, in hours
+    exptimes : ndarray of np.float32
+        durations of a single nominal exposure, in hours, in dark and bright
 
     exposure_overhead : float, np.float32
         overhead of a single exposure, in hours
@@ -76,8 +76,8 @@ class Slots(object):
         fraction of clear time; note this does not change the numbers in the
         slots array
 
-    duration : float, np.float32
-        duration of a single nominal exposure plus overhead, in hours
+    durations : ndarray np.float32
+        duration of a single nominal exposure plus overhead, in hours, in dark and bright
 
     slots : ndarray of np.float32
         number of available hours in LST, sky brightness slots
@@ -91,7 +91,8 @@ class Slots(object):
     code to consult.
 """
     def __init__(self, nlst=24, skybrightness=[0., 0.35, 1.],
-                 observatory='apo', exptime=15. / 60.,
+                 observatory='apo',
+                 exptimes=np.array([15., 15.], dtype=np.float32) / 60.,
                  exposure_overhead=3. / 60.,
                  schedule='normal', fclear=None):
         self.nlst = nlst
@@ -109,8 +110,8 @@ class Slots(object):
         else:
             self.fclear = fclear
         self.exposure_overhead = exposure_overhead
-        self.exptime = exptime
-        self.duration = self.exposure_overhead + self.exptime
+        self.exptimes = exptimes
+        self.durations = self.exposure_overhead + self.exptimes
         return
 
     def fill(self):
@@ -147,8 +148,8 @@ class Slots(object):
                 self.slots[ilst,
                            iskybrightness] = (self.slots[ilst,
                                                          iskybrightness] +
-                                              self.duration)
-                curr_mjd = curr_mjd + self.duration / 24.
+                                              self.durations[iskybrightness])
+                curr_mjd = curr_mjd + self.durations[iskybrightness] / 24.
         return
 
     def tofits(self, filename=None, clobber=True):
@@ -177,9 +178,11 @@ class Slots(object):
         hdr['STRATVER'] = robostrategy.__version__
         hdr['SCHEDVER'] = roboscheduler.__version__
         hdr['NLST'] = self.nlst
-        hdr['DURATION'] = self.duration
+        hdr['DURATION_DARK'] = self.durations[0]
+        hdr['DURATION_BRIGHT'] = self.durations[1]
         hdr['EXPOVER'] = self.exposure_overhead
-        hdr['EXPTIME'] = self.exptime
+        hdr['EXPTIME_DARK'] = self.exptimes[0]
+        hdr['EXPTIME_BRIGHT'] = self.exptimes[1]
         hdr['FCLEAR'] = self.fclear
         hdr['OBSERVAT'] = self.observatory
         hdr['NSB'] = self.nskybrightness
@@ -205,9 +208,24 @@ class Slots(object):
 """
         self.slots, hdr = fitsio.read(filename, ext=ext, header=True)
         self.nlst = np.int32(hdr['NLST'])
-        self.duration = np.float32(hdr['DURATION'])
+        if('DURATION' in hdr):
+            self.durations = np.array([np.float32(hdr['DURATION']),
+                                      np.float32(hdr['DURATION'])],
+                                     dtype=np.float32)
+        if(('DURATION_DARK' in hdr) &
+           ('DURATION_BRIGHT' in hdr)):
+            self.durations = np.array([np.float32(hdr['DURATION_DARK']),
+                                       np.float32(hdr['DURATION_BRIGHT'])],
+                                      dtype=np.float32)
         if('EXPTIME' in hdr):
-            self.exptime = np.float32(hdr['EXPTIME'])
+            self.exptimes = np.array([np.float32(hdr['EXPTIME']),
+                                      np.float32(hdr['EXPTIME'])],
+                                     dtype=np.float32)
+        if(('EXPTIME_DARK' in hdr) &
+           ('EXPTIME_BRIGHT' in hdr)):
+            self.exptimes = np.array([np.float32(hdr['EXPTIME_DARK']),
+                                      np.float32(hdr['EXPTIME_BRIGHT'])],
+                                     dtype=np.float32)
         if('EXPOVER' in hdr):
             self.exposure_overhead = np.float32(hdr['EXPOVER'])
         self.fclear = np.float32(hdr['FCLEAR'])

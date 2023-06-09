@@ -740,7 +740,6 @@ class Field(object):
             self.bright_stars_coords = collections.OrderedDict()
             self.bright_stars_rmax = collections.OrderedDict()
             self.bright_neighbor_cache = dict()
-        if(self.bright_neighbors):
             self.fmagloss = coordio.utils.Moffat2dInterp()
         else:
             self.fmagloss = None
@@ -2314,6 +2313,8 @@ class Field(object):
         # we don't want to take an unnecessarily large offset when an
         # epoch will allow it to be smaller; (c) this makes life much
         # simpler.
+        if(self.verbose):
+            print("fieldid {fieldid}: Calculating offsets".format(fieldid=self.fieldid), flush=True)
         delta_ra_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
         delta_dec_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
         offset_flag_all = np.zeros((len(umode), len(targets)), dtype=np.int32)
@@ -2344,20 +2345,9 @@ class Field(object):
             assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
             assignments['offset_flag'][:, epoch] = offset_flag[mode]
 
-        # Following are accounted for in object_offset() now
-        # Totally disallow for epochs with skybrightness < offset_min_skybrightness
-        #if(self.offset_min_skybrightness is not None):
-            #for epoch, sb in enumerate(self.field_cadence.skybrightness):
-                #toodark = (sb <= self.offset_min_skybrightness)
-                #if(toodark):
-                    #assignments['offset_allowed'][:, epoch] = False
-                    #assignments['offset_flag'][:, epoch] = assignments['offset_flag'][:, epoch] | _offsetdict['TOO_DARK']
-
-        # Do not offset if can_offset is False for the target
-        #icantoffset = np.where(targets['can_offset'] == False)[0]
-        #assignments['offset_allowed'][icantoffset, :] = False
-        #assignments['offset_flag'][icantoffset, :] = assignments['offset_flag'][icantoffset, :] | _offsetdict['NO_CAN_OFFSET']
-
+        # Assign positions
+        if(self.verbose):
+            print("fieldid {fieldid}: Setting coords".format(fieldid=self.fieldid), flush=True)
         (assignments['x'],
          assignments['y'],
          assignments['z']) = self.radec2xyz(ra=targets['ra'],
@@ -2376,6 +2366,8 @@ class Field(object):
                                                    fiberType=targets['fiberType'])
 
         # Check for each mode whether each target is allowed
+        if(self.verbose):
+            print("fieldid {fieldid}: Checking allowed".format(fieldid=self.fieldid), flush=True)
         mags_allowed = dict()
         bright_allowed = dict()
         for mode in umode:
@@ -3333,7 +3325,7 @@ class Field(object):
         # Only try to assign if you can. You should count on it being
         # assignable if any exposure in the epoch can be observed.
         iexpst = self.field_cadence.epoch_indx[epoch]
-        if(rsid not in self.robotgrids[iexpst].robotDict[robotID].validTargetIDs):
+        if(rsid not in self.mastergrid.robotDict[robotID].validTargetIDs):
             return False
 
         # Get list of available exposures in the epoch
@@ -4391,7 +4383,9 @@ class Field(object):
     def _unsatisfied(self, indxs):
         # Return which are unsatisfied, and include ones which are
         # satisfied but only because of a calibration target
+        print("fieldid {fid}: Setting satisfied".format(fid=self.fieldid), flush=True)
         self._set_satisfied(rsids=self.targets['rsid'][indxs], science=True)
+        print("fieldid {fid}: Done setting satisfied".format(fid=self.fieldid), flush=True)
         unsatisfied = ((self.assignments['satisfied'][indxs] == 0) |
                        ((self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]) &
                         (self.targets['category'][indxs] == 'science')))
@@ -4474,6 +4468,10 @@ class Field(object):
         # Sort by priority
         priorities = np.unique(self.targets['priority'][indxs])
         for priority in priorities:
+            ipriority = np.where(self.targets['priority'][indxs] == priority)[0]
+            cindxs = indxs[ipriority]
+            crsids = rsids[ipriority]
+
             if(self.verbose):
                 print("fieldid {fid}: Assigning priority {p}".format(p=priority, fid=self.fieldid), flush=True)
             iormore = np.where((self.targets['priority'][indxs] >= priority) &
@@ -4481,11 +4479,10 @@ class Field(object):
             self._set_competing_targets(rsids[iormore])
 
             # Choose the ones to assign 1-by-1
-            iassign = np.where((singlebright[indxs] == False) &
-                               (multibright[indxs] == False) &
-                               (multidark[indxs] == False) &
-                               (self._unsatisfied(indxs=indxs)) &
-                               (self.targets['priority'][indxs] == priority))[0]
+            iassign = np.where((singlebright[cindxs] == False) &
+                               (multibright[cindxs] == False) &
+                               (multidark[cindxs] == False) &
+                               (self._unsatisfied(indxs=cindxs)))[0]
 
             # If we have already assigned some locked exposures, prioritize
             # those.
@@ -4499,17 +4496,16 @@ class Field(object):
                 iassign = iassign[isort]
 
             if(self.verbose):
-                iall = np.where((self.assignments['satisfied'][indxs] == 0) &
-                               (self.targets['priority'][indxs] == priority))[0]
+                iall = np.where(self.assignments['satisfied'][cindxs] == 0)[0]
 
                 outstr = "fieldid {fid}: Includes cadences ".format(fid=self.fieldid)
-                pcads = np.unique(self.targets['cadence'][indxs[iall]])
+                pcads = np.unique(self.targets['cadence'][cindxs[iall]])
                 for pcad in pcads:
                     outstr = outstr + pcad + " "
                 print(outstr, flush=True)
 
                 outstr = "fieldid {fid}: Includes cartons ".format(fid=self.fieldid)
-                pcarts = np.unique(self.targets['carton'][indxs[iall]])
+                pcarts = np.unique(self.targets['carton'][cindxs[iall]])
                 for pcart in pcarts:
                     outstr = outstr + pcart + " "
                 print(outstr, flush=True)
@@ -4518,7 +4514,7 @@ class Field(object):
                 if(self.verbose):
                     print("fieldid {fid}:  - {n} assigning one-by-one".format(n=len(iassign), fid=self.fieldid), flush=True)
                     
-                success[iassign] = self._assign_one_by_one(rsids=rsids[iassign],
+                success[iassign] = self._assign_one_by_one(rsids=crsids[iassign],
                                                            check_satisfied=check_satisfied,
                                                            test_only=test_only)  
                     
@@ -4532,57 +4528,60 @@ class Field(object):
             # collision situation on the second round. This is a 1% effect.
             # A second cycle might be worth doing for one-by-one cases, but
             # it is more expensive in that case in terms of run-time.
-            for icycle in range(2):
-                isinglebright = np.where(singlebright[indxs] &
-                                         (self._unsatisfied(indxs=indxs)) & 
-                                         (self.targets['priority'][indxs] == priority))[0]
-                if(len(isinglebright) > 0):
-                    if(self.verbose):
-                        print("fieldid {fid}:  - {n} assigning as single bright (cycle {i})".format(n=len(isinglebright), i=icycle, fid=self.fieldid), flush=True)
+            isinglebright = np.where(singlebright[cindxs])[0]
+            if(len(isinglebright) > 0):
+                for icycle in range(2):
+                    isinglebright = np.where(singlebright[cindxs] &
+                                             (self._unsatisfied(indxs=cindxs)))[0]
+                    if(len(isinglebright) > 0):
+                        if(self.verbose):
+                            print("fieldid {fid}:  - {n} assigning as single bright (cycle {i})".format(n=len(isinglebright), i=icycle, fid=self.fieldid), flush=True)
                             
-                    tmp_success = self._assign_singlebright(indxs=indxs[isinglebright],
+                    tmp_success = self._assign_singlebright(indxs=cindxs[isinglebright],
                                                             test_only=test_only)
                     if(test_only):
                         success[isinglebright] = tmp_success
                     else:
-                        success[isinglebright] = (self._unsatisfied(indxs=indxs[isinglebright]) == False)
+                        success[isinglebright] = (self._unsatisfied(indxs=cindxs[isinglebright]) == False)
 
-                    if(self.verbose):
-                        print("fieldid {fid}:    (assigned {n})".format(n=success[isinglebright].sum(), fid=self.fieldid), flush=True)
+                        if(self.verbose):
+                            print("fieldid {fid}:    (assigned {n})".format(n=success[isinglebright].sum(), fid=self.fieldid), flush=True)
 
             # Assign multi-bright cases (one cycle)
-            for icycle in range(1):
-                imultibright = np.where(multibright[indxs] &
-                                        (self._unsatisfied(indxs=indxs)) &
-                                        (self.targets['priority'][indxs] == priority))[0]
-                if(len(imultibright) > 0):
-                    if(self.verbose):
-                        print("fieldid {fid}:  - {n} assigning as multi bright (cycle {i})".format(n=len(imultibright), i=icycle, fid=self.fieldid), flush=True)
-                    tmp_success = self._assign_multibright(indxs=indxs[imultibright], test_only=test_only)
-                    if(test_only):
-                        success[imultibright] = tmp_success
-                    else:
-                        success[imultibright] = (self._unsatisfied(indxs=indxs[imultibright]) == False)
+            imultibright = np.where(multibright[cindxs])[0]
+            if(len(imultibright) > 0):
+                for icycle in range(1):
+                    imultibright = np.where(multibright[cindxs] &
+                                            (self._unsatisfied(indxs=cindxs)))[0]
+                    if(len(imultibright) > 0):
+                        if(self.verbose):
+                            print("fieldid {fid}:  - {n} assigning as multi bright (cycle {i})".format(n=len(imultibright), i=icycle, fid=self.fieldid), flush=True)
+                            tmp_success = self._assign_multibright(indxs=cindxs[imultibright], test_only=test_only)
+                        if(test_only):
+                            success[imultibright] = tmp_success
+                        else:
+                            success[imultibright] = (self._unsatisfied(indxs=cindxs[imultibright]) == False)
 
-                    if(self.verbose):
-                        print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
+                        if(self.verbose):
+                            print("fieldid {fid}:    (assigned {n})".format(n=success[imultibright].sum(), fid=self.fieldid), flush=True)
 
             # Assign multi-dark cases (one cycle)
-            for icycle in range(2):
-                imultidark = np.where(multidark[indxs] &
-                                      (self._unsatisfied(indxs=indxs)) &
-                                      (self.targets['priority'][indxs] == priority))[0]
-                if(len(imultidark) > 0):
-                    if(self.verbose):
-                        print("fieldid {fid}:  - {n} assigning as multi dark (cycle {i})".format(n=len(imultidark), i=icycle, fid=self.fieldid), flush=True)
-                    tmp_success = self._assign_multidark(indxs=indxs[imultidark], test_only=test_only)
-                    if(test_only):
-                        success[imultidark] = tmp_success
-                    else:
-                        success[imultidark] = (self._unsatisfied(indxs=indxs[imultidark]) == False)
+            imultidark = np.where(multidark[cindxs])[0]
+            if(len(imultidark) > 0):
+                for icycle in range(2):
+                    imultidark = np.where(multidark[cindxs] &
+                                          (self._unsatisfied(indxs=cindxs)))[0]
+                    if(len(imultidark) > 0):
+                        if(self.verbose):
+                            print("fieldid {fid}:  - {n} assigning as multi dark (cycle {i})".format(n=len(imultidark), i=icycle, fid=self.fieldid), flush=True)
+                        tmp_success = self._assign_multidark(indxs=cindxs[imultidark], test_only=test_only)
+                        if(test_only):
+                            success[imultidark] = tmp_success
+                        else:
+                            success[imultidark] = (self._unsatisfied(indxs=cindxs[imultidark]) == False)
 
-                    if(self.verbose):
-                        print("fieldid {fid}:    (assigned {n})".format(n=success[imultidark].sum(), fid=self.fieldid), flush=True)
+                        if(self.verbose):
+                            print("fieldid {fid}:    (assigned {n})".format(n=success[imultidark].sum(), fid=self.fieldid), flush=True)
 
             self._competing_targets = None
 
@@ -6985,7 +6984,10 @@ class FieldSpeedy(Field):
                          collisionBuffer=collisionBuffer, fieldid=fieldid,
                          verbose=verbose, bright_neighbors=False,
                          nocalib=True, nocollide=True, allgrids=False)
-
+        self.bright_neighbors = False
+        self.nocalib = True
+        self.nocollide = True
+        self.allgrids = False
         return
 
 

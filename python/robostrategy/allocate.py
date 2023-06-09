@@ -203,13 +203,37 @@ class AllocateLST(object):
         self.dark_prefer = dark_prefer
         return
 
-    def duration_scale(self, cadence=None):
+    def duration_scale(self, cadence=None, skybrightness=None):
+        """Scale duration appropriately given multiexposure epochs
+        
+        Parameters
+        ----------
+
+        cadence : Cadence object
+            object for appropriate cadence
+
+        skybrightness : np.float32
+            sky brightness to assume
+
+        Notes
+        -----
+
+        Assumes hard-coded dark time of skybrightness < 0.35.
+
+        Allows for different exposure time in dark and bright time.
+
+        The math here is a bit roundabout because the structure of the code.
+"""
         scale = 1.
-        exptime = self.slots.exptime
+        if(skybrightness < 0.35):
+            isky = 0
+        else:
+            isky = 1
+        exptime = self.slots.exptimes[1]
         total = ((self.epoch_overhead * cadence.nepochs) +
                  (self.slots.exposure_overhead + exptime) *
                   cadence.nexp_total)
-        scale = total / (self.slots.duration * cadence.nexp_total)
+        scale = total / (self.slots.durations[isky] * cadence.nexp_total)
         return(scale)
 
     def xfactor(self, racen=None, deccen=None, skybrightness=None,
@@ -255,7 +279,8 @@ class AllocateLST(object):
                                               lat=self.observer.latitude)
         airmass = self.observer.alt2airmass(alt=alt)
         xfactor = airmass**2
-        xfactor = xfactor * self.duration_scale(cadence=cadence)
+        xfactor = xfactor * self.duration_scale(cadence=cadence,
+                                                skybrightness=skybrightness)
         return(xfactor)
 
     def construct(self, fix_cadence=False):
@@ -358,7 +383,9 @@ class AllocateLST(object):
                 else:
                     field_minimum_float[cfieldid] = 0.
 
-        total = self.slots.slots / self.slots.duration * self.slots.fclear
+        total = self.slots.slots * self.slots.fclear
+        total[:, 0] = total[:, 0] / self.slots.durations[0]
+        total[:, 1] = total[:, 1] / self.slots.durations[0]
 
         solver = pywraplp.Solver("allocate_lst",
                                  pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
@@ -586,7 +613,7 @@ class AllocateLST(object):
                                                    cadence=fcadence,
                                                    skybrightness=skybrightness,
                                                    lst=lst)
-                            field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.duration
+                            field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.durations[isb]
                             field['xfactor'][ilst, isb] = xfactor
 
         self.field_array = field_array
@@ -684,7 +711,7 @@ class AllocateLST(object):
             if(nsky > 0):
                 avgx = ((field['xfactor'] * field['slots_time']).sum() /
                         field['slots_time'].sum())
-                skytime = nsky * self.slots.duration * avgx
+                skytime = nsky * self.slots.durations[iskybrightness] * avgx
                 curr_used = field['slots_time'][:, iskybrightness]
                 curr_used = skytime * curr_used / curr_used.sum()
                 used = used + curr_used

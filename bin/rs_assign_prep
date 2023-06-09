@@ -24,7 +24,6 @@ import roboscheduler.cadence as cadence
 import robostrategy.params as params
 import sdss_access.path
 import fitsio
-import coordio
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -62,16 +61,17 @@ def prep_field(indx):
                                     plan=bright_stars_cache,
                                     observatory=observatory,
                                     fieldid=fieldid)
-        cache_file = field_target_file.replace('rsFieldTargets',
-                                               'rsBrightStars')
-        f = fitsio.FITS(cache_file)
-        f[0].read_header()
-        bsDict = field.read_bright_stars(fits=f)
+        cache_file = cache_file.replace('rsFieldTargets',
+                                        'rsBrightStars')
+        cache = fitsio.FITS(cache_file)
+        cache[0].read_header()
+        bsDict = field.read_bright_stars(fits=cache)
         for design_mode, fiberType in bsDict:
             bs = bsDict[design_mode, fiberType]
             f.set_bright_stars(design_mode=design_mode,
                                fiberType=fiberType,
                                bright_stars=bs)
+        cache.close()
 
     print("fieldid {f}: Set field cadence".format(f=fieldid), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
@@ -147,5 +147,9 @@ if __name__ == '__main__':
         for i in ikeep:
             prep_field(i)
     else:
-        with multiprocessing.Pool(8) as pool:
-            pool.map(prep_field, ikeep)
+        if(bright_stars_cache is None):
+            with multiprocessing.Pool(8) as pool:
+                pool.map(prep_field, ikeep)
+        else:
+            with multiprocessing.Pool() as pool:
+                pool.map(prep_field, ikeep)
