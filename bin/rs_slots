@@ -48,9 +48,17 @@ if __name__ == '__main__':
         fclear = rsParams.cfg.get('Allocation', 'fClearLCO')
 
     if('ExposureTime' in rsParams.cfg['Allocation']):
-        exptime = np.float32(rsParams.cfg.get('Allocation', 'ExposureTime'))
+        exposure_times = rsParams.cfg.get('Allocation', 'ExposureTime').split()
+        if(len(exposure_times) > 0):
+            exptime_dark = np.float32(exposure_times[0])
+            exptime_bright = np.float32(exposure_times[1])
+        else:
+            exptime_dark = np.float32(exposure_times[0])
+            exptime_bright = exptime_dark
     else:
-        exptime = 15.
+        exptime_dark = 15.
+        exptime_bright = 15.
+    exptimes = np.array([exptime_dark, exptime_bright], dtype=np.float32)
 
     if('ExposureOverhead' in rsParams.cfg['Allocation']):
         exposure_overhead = np.float32(rsParams.cfg.get('Allocation',
@@ -60,7 +68,7 @@ if __name__ == '__main__':
 
     slots = robostrategy.slots.Slots(observatory=observatory,
                                      schedule=schedule, fclear=fclear,
-                                     exptime=exptime / 60.,
+                                     exptimes=exptimes / 60.,
                                      exposure_overhead=exposure_overhead / 60.)
     slots.fill()
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
