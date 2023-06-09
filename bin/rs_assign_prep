@@ -31,6 +31,7 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 noclobber = False
+bright_stars_cache = None
 
 def prep_field(indx):
     import robostrategy.field as field
@@ -55,6 +56,22 @@ def prep_field(indx):
     f = field.Field(filename=field_target_file, verbose=True,
                     fieldid=fieldid, collisionBuffer=collisionBuffer,
                     bright_neighbors=True, allgrids=False)
+
+    if(bright_stars_cache is not None):
+        cache_file = sdss_path.full('rsFieldTargets',
+                                    plan=bright_stars_cache,
+                                    observatory=observatory,
+                                    fieldid=fieldid)
+        cache_file = field_target_file.replace('rsFieldTargets',
+                                               'rsBrightStars')
+        f = fitsio.FITS(cache_file)
+        f[0].read_header()
+        bsDict = field.read_bright_stars(fits=f)
+        for design_mode, fiberType in bsDict:
+            bs = bsDict[design_mode, fiberType]
+            f.set_bright_stars(design_mode=design_mode,
+                               fiberType=fiberType,
+                               bright_stars=bs)
 
     print("fieldid {f}: Set field cadence".format(f=fieldid), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
@@ -106,6 +123,10 @@ if __name__ == '__main__':
     if('Assignment' in rsParams.cfg):
         if('collisionBuffer' in rsParams.cfg['Assignment']):
             collisionBuffer = np.float32(rsParams.cfg['Assignment']['collisionBuffer'])
+
+    bright_stars_cache = None
+    if('BrightStarsCache' in rsParams.cfg['Fields']):
+        bright_stars_cache = rsParams.cfg['Fields']['BrightStarsCache']
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
