@@ -85,6 +85,10 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     assign_entry['cadence'] = field_cadence
     nvisit = cadencelist.cadences[field_cadence].nexp_total
     assign_entry['nvisit'] = nvisit
+
+    if(f is None):
+        return(assign_entry[0])
+
     assign_entry['ntargets'] = len(f.targets)
     target_got = np.zeros(len(f.targets), dtype=np.int32)
 
@@ -104,7 +108,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
     else:
         igot = np.where(f.assignments['satisfied'])[0]
     target_got[igot] = 1
-    iok = np.where((f.assignments['incadence']) & (f.assignments['within']))[0]
+    iok = np.where((f.assignments['incadence']) & (f.targets['within']))[0]
     assign_entry['nwithin'] = len(iok)
     assign_entry['ngot'] = target_got.sum()
     assign_entry['valuegot'] = f.targets['value'][igot].sum()
@@ -113,7 +117,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
         utcadence = utcadences[indx]
         ic = np.where((f.targets['cadence'] == utcadence) &
                       (f.assignments['incadence']))[0]
-        assign_entry['nwithin_pcd'][0, indx] = f.assignments['within'][ic].sum()
+        assign_entry['nwithin_pcd'][0, indx] = f.targets['within'][ic].sum()
         assign_entry['ngot_pcd'][0, indx] = target_got[ic].sum()
         icg = np.where((f.targets['cadence'] == utcadence) &
                        (target_got > 0) &
@@ -124,7 +128,7 @@ def make_assign_entry(f, fields_entry, field_cadence, utcadences,
         utcarton = utcartons[indx]
         ip = np.where((f.targets['carton'] == utcarton) &
                       (f.assignments['incadence']))[0]
-        assign_entry['nwithin_pct'][0, indx] = f.assignments['within'][ip].sum()
+        assign_entry['nwithin_pct'][0, indx] = f.targets['within'][ip].sum()
         assign_entry['ngot_pct'][0, indx] = target_got[ip].sum()
         ipg = np.where((f.targets['carton'] == utcarton) &
                        (target_got > 0) &
@@ -153,6 +157,10 @@ def field_options(ifield):
     fieldid = fields_entry['fieldid']
     print("fieldid {f}: Checking options ...".format(f=fieldid), flush=True)
 
+    if((fields_entry['type'] == 'RM') |
+       (fields_entry['type'] == 'RMlite')):
+        print("fieldid {f}: RM field should have only one option".format(f=fieldid))
+
     tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
                               observatory=observatory,
                               fieldid=fieldid)
@@ -173,6 +181,17 @@ def field_options(ifield):
 
     icadences = np.where(cadence_mask[ifield, :] != 0)[0]
     field_cadences = all_cadences[icadences]
+
+    if((len(field_cadences) == 1) &
+       ((field_cadences[0] == 'dark_100x8') |
+        (field_cadences[0] == 'dark_174x8'))):
+        print("fieldid {f}: RM field is guaranteed so we can skip".format(f=fieldid))
+        assign_entry = make_assign_entry(None, fields_entry,
+                                         field_cadences[0],
+                                         utcadences, utcartons,
+                                         assign_dtype)
+        assign_array = np.append(assign_array, assign_entry)
+        field_cadences = []
 
     print("fieldid {f}: Trying cadences: {fc}".format(f=fieldid, fc=field_cadences), flush=True)
 
