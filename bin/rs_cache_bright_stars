@@ -43,6 +43,7 @@ def cache_stars(indx):
                                                 'rsFieldPrep')
 
     f = fitsio.FITS(field_prep_file)
+    hdr = f[0].read_header()
     bsDict = robostrategy.field.read_bright_stars(fits=f)
     f.close()
 
@@ -55,7 +56,6 @@ def cache_stars(indx):
 
     robostrategy.field.write_bright_stars(filename=cache_file, bright_stars=bsDict,
                                           clobber=(noclobber == False))
-    f = fitsio.FITS(field_prep_file)
 
     print("fieldid {f}: Done".format(f=fieldid), flush=True)
     return
@@ -69,6 +69,8 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
+    parser.add_argument('-t', '--to-cache', dest='cachename',
+                        type=str, help='name of cache directory', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
@@ -87,6 +89,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     plan = args.plan
+    cachename = args.cachename
     observatory = args.observatory
     start = args.start
     end = args.end
