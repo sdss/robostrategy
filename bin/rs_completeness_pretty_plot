@@ -139,7 +139,11 @@ if __name__ == '__main__':
     make_maps(completeness_file, 'DARK', 'Dark')
     
     c = 'manual_mwm_halo_distant_kgiant_dark'
-    make_maps(completeness_file, c, c)
+    try:
+        make_maps(completeness_file, c, c)
+    except:
+        pass
+
     for carton in cartons:
         print(carton[0])
         try:
