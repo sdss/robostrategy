@@ -1,0 +1,109 @@
+<html><head>
+<style>
+    table, th, tr, td {border: 1px solid black;
+                       border-collapse: collapse;
+		                   font-size: 20px;
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>{{plan}} at {{observatory}}</h1>
+
+<h2>Time Allocation</h2>
+
+<table>
+	<thead>
+		<tr>
+			<th>All</th>
+			<th>Dark</th>
+			<th>Bright</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td>
+				<a href="rsAllocation-lst-all-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-lst-all-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td>
+				<a href="rsAllocation-lst-dark-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-lst-dark-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td>
+				<a href="rsAllocation-lst-bright-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-lst-bright-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+		</tr>
+	</tbody>
+</table>
+
+<h2>Time Allocation Maps</h2>
+
+<table>
+	<tbody>
+		<tr>
+			<td>
+				<a href="rsAllocation-radec-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-radec-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td>
+				<a href="rsAllocation-radec-dark-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-radec-dark-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td>
+				<a href="rsAllocation-radec-bright-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-radec-bright-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+		</tr>
+	</tbody>
+</table>
+
+<h2>Time Allocation by Cadence</h2>
+
+<table>
+<thead>
+    <tr>
+    <th><b>Cadence</b></th>
+    <th><b>Tried</b></th>
+    <th><b>Allocated</b></th>
+    </tr>
+</thead>
+
+<tbody>
+{% for c in cadences %}
+<tr>
+	<td>{{c}}</td>
+	<td>
+		<a href="rsAllocation-radec-tried-{{c}}-{{plan}}-{{observatory}}.png">
+			<img src="rsAllocation-radec-tried-{{c}}-{{plan}}-{{observatory}}.png"
+					 width=300px></img>
+		</a>
+	</td>
+	<td>
+		<a href="rsAllocation-radec-{{c}}-{{plan}}-{{observatory}}.png">
+			<img src="rsAllocation-radec-{{c}}-{{plan}}-{{observatory}}.png"
+					 width=300px></img>
+		</a>
+	</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+</body>
+</html>

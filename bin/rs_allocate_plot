@@ -142,3 +142,15 @@ if __name__ == '__main__':
         plt.title(field_cadence_base)
         plt.savefig(png_file)
         plt.clf()
+
+        name = 'radec-tried-{field_cadence_base}'.format(
+            field_cadence_base=field_cadence_base)
+        png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                  observatory=observatory, name=name)
+        indx = np.where(cadence_mask[:, icad] > 0)[0]
+        print(len(indx))
+        matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+        allocate.plot_fields(indx=indx)
+        plt.title(field_cadence_base)
+        plt.savefig(png_file)
+        plt.clf()
