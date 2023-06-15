@@ -798,7 +798,7 @@ class AllocateLST(object):
         # draw parallels and meridians.
         m.drawparallels(np.arange(-90., 120., 30.),
                         linewidth=0.5,
-                        labels=[1, 0, 0, 0],
+                        labels=[0, 0, 0, 0],
                         labelstyle='+/-')
         m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
         m.drawmapboundary()
@@ -824,7 +824,12 @@ class AllocateLST(object):
         if(label is False):
             (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
                                            self.field_array['deccen'][ii])
-            plt.scatter(xx, yy, s=4, c=nfilled_value, **kwargs)
+            if(len(ii) > 0):
+                vmax = nfilled_value.max()
+            else:
+                vmax=1.
+            plt.scatter(xx, yy, s=4, c=nfilled_value, cmap='Blues', vmin=0.,
+                        vmax=vmax, **kwargs)
             if(colorbar):
                 cb = plt.colorbar()
                 cb.set_label(colorbar_label)
@@ -837,7 +842,7 @@ class AllocateLST(object):
                 (xx, yy) = self._convert_radec(m,
                                                self.field_array['racen'][jj],
                                                self.field_array['deccen'][jj])
-                plt.scatter(xx, yy, s=4, label=ucadence)
+                plt.scatter(xx, yy, s=4, cmap='Blues', label=ucadence)
 
             plt.legend(loc='lower center', fontsize=8, ncol=2)
 
