@@ -357,6 +357,34 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                         print(f'   {ict} stars - {iex} extra epochs')
                     print(extra_rsids)
                     print(nsuccess)
+
+        # Find NOT-gotten OB core stars and try to get some epochs
+        iextra = np.where((self.targets['carton'] == 'mwm_ob_core') &
+                          (self.assignments['satisfied'] == 0))[0]
+
+        if len(iextra) > 0:
+            ucad = np.unique(self.targets['cadence'][iextra])
+
+            for icad in ucad:
+                subset = np.where(self.targets['cadence'][iextra] == icad)[0]
+                nexps = clist.cadences[icad].nexp[0] #This is an array of length nepoch, but assign_extra expects int
+                nepochs = clist.cadences[icad].nepochs
+                extra_rsids = self.targets['rsid'][iextra[subset]]
+                nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=nepochs, nexps=nexps)
+                if len(nsuccess[nsuccess > 0]) > 0:
+                    any_extra = True
+                uextra,ctextra = np.unique(nsuccess, return_counts=True)
+
+                if make_report:
+                    print(f'\nPartial Epochs (OB Stars): {icad}')
+                    print('--------------------')
+                    print('Number attempted: {}'.format(len(subset)))
+                    print('Number successful: ')
+                    for iex,ict in zip(uextra,ctextra):
+                        print(f'   {ict} stars - {iex} extra epochs')
+                    print(extra_rsids)
+                    print(nsuccess)
+
         return any_extra
 
     def assign_bright_extra(self, make_report=False):
