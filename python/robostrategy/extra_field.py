@@ -182,7 +182,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             return any_extra
 
         # Find gotten WDs and try to get extra epochs
-        iextra = np.where((self.targets['carton'] == 'mwm_wd_core') &
+        iextra = np.where((self.targets['carton'] == 'mwm_wd_pwd') &
                           (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
@@ -198,7 +198,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         # Next find gotten SNC and try to get extra epochs
         iextra = np.where(((self.targets['carton'] == 'mwm_snc_100pc_boss') |
-                           (self.targets['carton'] == 'mwm_snc_250pc_boss')) &
+                           (self.targets['carton'] == 'mwm_snc_ext_boss')) &
                            (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
@@ -212,8 +212,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
         # Next find compact binaries and get extra epochs
-        iextra = np.where(((self.targets['carton'] == 'mwm_cb_300pc_boss') |
-                           (self.targets['carton'] == 'mwm_cb_gaiagalex_boss') |
+        iextra = np.where(((self.targets['carton'] == 'mwm_cb_galex_vol') |
+                           (self.targets['carton'] == 'mwm_cb_galex_mag') |
                            (self.targets['carton'] == 'mwm_cb_cvcandidates_boss')) &
                            (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
@@ -244,10 +244,11 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         # Find gotten RVs and see try to get extra epochs - take any in the RV
         # program that was satisfied. Additionally, take any mwm_rv_long that
         # is UNSATISFIED and do those first
-        iextra1 = np.where((self.targets['carton'] == 'mwm_rv_long_fps') &
+        iextra1 = np.where((self.targets['carton'] == 'mwm_bin_rv_long') &
                            (self.assignments['satisfied'] == 0))[0]
-        iextra2 = np.where((self.targets['program'] == 'mwm_rv') &
-                           (self.assignments['satisfied'] > 0))[0]
+        iextra2 = np.where(((self.targets['carton'] == 'mwm_bin_rv_long') | 
+                            (self.targets['carton'] == 'mwm_bin_rv_short')) &
+                            (self.assignments['satisfied'] > 0))[0]
         iextra = np.append(iextra1,iextra2)
 
         if len(iextra) > 0:
@@ -275,7 +276,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
     def assign_partial(self, make_report=False):
         '''
         Code for assigning MWM targets with secondary science goals achievable
-        if < than the full cadence is obtained: mwm_tess_planet, as a stop gap
+        if < than the full cadence is obtained: mwm_tess_2min, as a stop gap
         for fixing "flexible cadence" implementation; then YSOs.
 
         Parameters:
@@ -287,7 +288,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         any_extra = False
 
         # Find NOT-gotten mwm_tess_planet and swap cadence from 1xN to Nx1
-        iextra = np.where((self.targets['carton'] == 'mwm_tess_planet') &
+        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min') &
                           (self.assignments['satisfied'] == 0))[0]
 
         if len(iextra) > 0:
@@ -407,7 +408,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         # Find TESS planet targets that are 'satisfied' or that previously got
         # extra, since extra was originally capped at N epochs but at this
         # later stage they are now eligible for extra epochs
-        iextra = np.where((self.targets['program'] == 'mwm_planet') &
+        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min') &
                          ((self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0)))[0]
 
         if len(iextra) > 0:
@@ -422,7 +423,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
         # Find gotten OB stars and try to get extra epochs. Do whole program
-        iextra = np.where((self.targets['program'] == 'mwm_ob') &
+        iextra = np.where((self.targets['carton'] == 'mwm_ob_core') &
                           (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
@@ -442,7 +443,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         '''
         Code for assigning partial and extra exposures to BHM targets. For partial
         completion, original cadence details are ignored and just to get the total
-        requested nxm request.
+        requested nxm request. Last, magcloud cartons can get extra exposures.
 
         Parameters:
         ----------
@@ -512,9 +513,11 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                             (self.assignments['satisfied'] > 0))[0]
         iextra4 = np.where((self.targets['carton'] == 'bhm_gua_bright') &
                             (self.assignments['satisfied'] > 0))[0]
+        iextra5 = np.where((self.targets['program'] == 'mwm_magcloud') &
+                            (self.assignments['satisfied'] > 0))[0]
 
         #some "new_got" may now also show up as 'satisfied'
-        iextra = np.unique(np.append(iextra1, np.append(iextra2, np.append(iextra3, np.append(iextra4,new_got)))))
+        iextra = np.unique(np.append(iextra1, np.append(iextra2, np.append(iextra3, np.append(iextra4,np.append(iextra5,new_got))))))
 
         # In this situation, only use the cadence groupings to remove dark cadence targets
         # in bright fields
