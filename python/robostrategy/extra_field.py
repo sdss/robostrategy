@@ -6,14 +6,13 @@ import numpy as np
 from robostrategy.field import Field
 import roboscheduler.cadence
 
-
 # Establish access to the CadenceList singleton
 clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
 class extra_Field(Field):  #inherit all Field-defined stuff.
 
-    def assign_spares(self, stage='reassign'):
+    def assign_spares(self, stage='reassign',verbose=False):
         ''' This is the main code that defines all the reassignment that will happen
         in a certain order'''
 
@@ -21,10 +20,10 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         # Make the assignments.
         # Return value is either True if any extra assignments occurred or False if not
-        extra_dark = self.assign_dark_extra()
-        extra_rv = self.assign_rv_extra()
-        extra_partial = self.assign_partial()
-        extra_bright = self.assign_bright_extra()
+        extra_dark = self.assign_dark_extra(make_report=verbose)
+        extra_rv = self.assign_rv_extra(make_report=verbose)
+        extra_partial = self.assign_partial(make_report=verbose)
+        extra_bright = self.assign_bright_extra(make_report=verbose)
         extra_bhm = self.assign_bhm()
 
         self._set_satisfied()
@@ -73,25 +72,23 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             # Assign up to max_extra epochs. availableRobotIds is a list of lists
             # Outer list length is field nepoch? Inner list is len n robots (1 if first = True)
             n_assign = 0
-
-            iassigned = self.assignments['equivRobotID'][self.rsid2indx[rsid]] >= 0
-
-            # If skip_assigned_epochs, then if any exposure in an epoch is assinged,
-            # mark them all as previously assigned. Otherwise, you are assigning
-            # extra exposures, not epochs
             u_nexp = np.unique(self.field_cadence.nexp)
 
             if len(u_nexp) != 1:
                 raise ValueError("More than one nexp found for this cadence. Need to recode logic")
 
-            if skip_assigned_epochs and u_nexp[0] > 1:
-                for iep in np.arange(0,self.field_cadence.nepochs):
-                    inexp = self.field_cadence.nexp[iep]
-                    if np.any(iassigned[iep*u_nexp[0]: iep*u_nexp[0] + u_nexp[0]]):
-                        iassigned[iep*u_nexp[0] : iep*u_nexp[0] + u_nexp[0]] = True
+            # If skip_assigned_epochs, then if any exposure in an epoch is assinged,
+            # mark them all as previously assigned. Otherwise, you are assigning
+            # extra exposures, not epochs
+            iassigned_epoch = np.full(self.field_cadence.nepochs,False)
+            if skip_assigned_epochs:
+                for iexp,rid in enumerate( self.assignments['equivRobotID'][self.rsid2indx[rsid]]):
+                    if rid >= 0:
+                        iassigned_epoch[self.field_cadence.epochs[iexp]] = True
+
 
             for iepoch, per_epoch_available in enumerate(free['availableRobotIDs']):
-                if iassigned[iepoch]:
+                if iassigned_epoch[iepoch]:
                     continue # target already assigned
 
                 if len(per_epoch_available) > 0:
@@ -417,7 +414,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra = True
             if make_report:
-                print('TESS Planet stars')
+                print('\nExtra Epochs (TESS Planet stars)')
                 print('------------')
                 print('Number attempted: {}'.format(len(iextra)))
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
@@ -431,7 +428,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra = True
             if make_report:
-                print('OB stars')
+                print('\nExtra Epochs (OB stars)')
                 print('------------')
                 print('Number attempted: {}'.format(len(iextra)))
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
