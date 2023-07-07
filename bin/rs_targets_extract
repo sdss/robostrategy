@@ -190,12 +190,7 @@ if __name__ == '__main__':
             ii = np.where(targets['cadence'] == c)[0]
             targets['cadence'][ii] = cadence_map[c]
 
-    # FUDGE TESS OB priority
-    if(mwm_tess_ob_priority_fix is not None):
-        ii = np.where(targets['carton'] == 'mwm_tess_ob')[0]
-        targets['priority'][ii] = mwm_tess_ob_priority_fix
-
-    # FUDGE manual validation priority
+    # FUDGE manual validation priority - not used
     if(manual_validation_priority_fix is not None):
         ii = np.where(targets['carton'] == 'manual_validation_apogee')[0]
         targets['priority'][ii] = manual_validation_priority_fix
@@ -206,7 +201,7 @@ if __name__ == '__main__':
         targets['priority'][ii] = manual_validation_priority_fix
         targets['category'][ii] = 'science'
 
-    # Fudge open_fiber into science
+    # Fudge open_fiber into science - not necessary
     iopen = np.where(targets['category'] == 'open_fiber')[0]
     if(len(iopen) > 0):
         print("Recategorizing {n} targets from open_fiber to science".format(n=len(iopen)))
