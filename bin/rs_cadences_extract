@@ -154,9 +154,9 @@ if __name__ == '__main__':
     cadencelist.cadences['dark_flexible_2x2'].delta_min[:] = -1
     cadencelist.cadences['dark_flexible_2x2'].delta_max[:] = -1
 
-    for n in range(2, 7):
+    for n in range(2, 11):
         name = 'bright_flexible_{n}x1'.format(n=n)
-        copy_cadence('bright_{n}x1'.format(n=n), name)
+        copy_cadence('bright_12x1'.format(n=n), name, nepochs=n)
         cadencelist.cadences[name].delta[:] = -1.
         cadencelist.cadences[name].delta_min[:] = -1.
         cadencelist.cadences[name].delta_max[:] = -1.
