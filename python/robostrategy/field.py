@@ -740,9 +740,6 @@ class Field(object):
             self.bright_stars_coords = collections.OrderedDict()
             self.bright_stars_rmax = collections.OrderedDict()
             self.bright_neighbor_cache = dict()
-            self.fmagloss = coordio.utils.Moffat2dInterp()
-        else:
-            self.fmagloss = None
         self.robotHasApogee = None
         self.collisionBuffer = collisionBuffer
         if(self.allgrids is False):
@@ -881,8 +878,8 @@ class Field(object):
                                                                mag_limits,
                                                                lunation,
                                                                fiberType.capitalize(),
-                                                               safety_factor=0.,
-                                                               fmagloss=self.fmagloss)
+                                                               self.observatory.upper(),
+                                                               safety_factor=0.)
             
             bright_stars = np.zeros(len(ras), dtype=bright_stars_dtype)
 
@@ -2005,7 +2002,7 @@ class Field(object):
                                                                                        mag_limits,
                                                                                        lunation,
                                                                                        'Boss',
-                                                                                       fmagloss=self.fmagloss,
+                                                                                       self.observatory.upper(),
                                                                                        can_offset=targets['can_offset'][iboss],
                                                                                        skybrightness=skybrightness,
                                                                                        offset_min_skybrightness=self.offset_min_skybrightness)
@@ -2020,7 +2017,7 @@ class Field(object):
                                                                                        mag_limits,
                                                                                        lunation,
                                                                                        'Apogee',
-                                                                                       fmagloss=self.fmagloss,
+                                                                                       self.observatory.upper(),
                                                                                        can_offset=targets['can_offset'][iapogee],
                                                                                        skybrightness=skybrightness,
                                                                                        offset_min_skybrightness=self.offset_min_skybrightness)
