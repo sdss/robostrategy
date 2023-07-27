@@ -102,7 +102,7 @@ if __name__ == '__main__':
                               observatory=observatory, name='radec-dark')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_fields(darkorbright='dark')
-    plt.title("All cadences")
+    plt.title("Cadences in dark time")
     plt.savefig(png_file)
     plt.clf()
 
@@ -110,7 +110,7 @@ if __name__ == '__main__':
                               observatory=observatory, name='radec-bright')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_fields(darkorbright='bright')
-    plt.title("All cadences")
+    plt.title("Cadences in bright time")
     plt.savefig(png_file)
     plt.clf()
 
