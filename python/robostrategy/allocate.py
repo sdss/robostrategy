@@ -209,8 +209,8 @@ class AllocateLST(object):
         Parameters
         ----------
 
-        cadence : Cadence object
-            object for appropriate cadence
+        cadence : Cadence name
+            appropriate cadence
 
         skybrightness : np.float32
             sky brightness to assume
@@ -224,16 +224,18 @@ class AllocateLST(object):
 
         The math here is a bit roundabout because the structure of the code.
 """
+        cobj = self.cadencelist.cadences[cadence]
+        
         scale = 1.
         if(skybrightness < 0.35):
             isky = 0
         else:
             isky = 1
-        exptime = self.slots.exptimes[1]
-        total = ((self.epoch_overhead * cadence.nepochs) +
+        exptime = self.slots.exptimes[isky]
+        total = ((self.epoch_overhead * cobj.nepochs) +
                  (self.slots.exposure_overhead + exptime) *
-                  cadence.nexp_total)
-        scale = total / (self.slots.durations[isky] * cadence.nexp_total)
+                  cobj.nexp_total)
+        scale = total / (self.slots.durations[isky] * cobj.nexp_total)
         return(scale)
 
     def xfactor(self, racen=None, deccen=None, skybrightness=None,
@@ -385,7 +387,7 @@ class AllocateLST(object):
 
         total = self.slots.slots * self.slots.fclear
         total[:, 0] = total[:, 0] / self.slots.durations[0]
-        total[:, 1] = total[:, 1] / self.slots.durations[0]
+        total[:, 1] = total[:, 1] / self.slots.durations[1]
 
         solver = pywraplp.Solver("allocate_lst",
                                  pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
@@ -902,6 +904,8 @@ class AllocateLSTCostA(AllocateLST):
         if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
             exponent = 2.0
         xfactor = airmass**exponent
+        xfactor = xfactor * self.duration_scale(cadence=cadence,
+                                                skybrightness=skybrightness)
         return(xfactor)
 
 
@@ -955,6 +959,8 @@ class AllocateLSTCostB(AllocateLST):
         if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
             exponent = 2.0
         xfactor = airmass**exponent
+        xfactor = xfactor * self.duration_scale(cadence=cadence,
+                                                skybrightness=skybrightness)
         return(xfactor)
 
 
@@ -1008,6 +1014,8 @@ class AllocateLSTCostC(AllocateLST):
         if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
             exponent = 1.0
         xfactor = airmass**exponent
+        xfactor = xfactor * self.duration_scale(cadence=cadence,
+                                                skybrightness=skybrightness)
         return(xfactor)
 
 
@@ -1062,6 +1070,8 @@ class AllocateLSTCostD(AllocateLST):
         if(self.cadencelist.cadences[cadence].skybrightness.min() < 0.4):
             exponent = 1.0
         xfactor = airmass**exponent
+        xfactor = xfactor * self.duration_scale(cadence=cadence,
+                                                skybrightness=skybrightness)
         return(xfactor)
 
 
@@ -1098,7 +1108,7 @@ class AllocateLSTCostE(AllocateLST):
         -------
 
         xfactor : np.float64
-            length of exposure relative to nominal
+            length of exposure relative to nominal for this skybrightness
 
         Notes
         -----
@@ -1117,8 +1127,13 @@ class AllocateLSTCostE(AllocateLST):
         exponent_dark = 1.0
         idark = np.where(self.cadencelist.cadences[cadence].skybrightness < 0.4)[0]
         fdark = np.float32(len(idark)) / np.float32(self.cadencelist.cadences[cadence].nepochs)
-        xfactor = (fdark * airmass**exponent_dark +
-                   (1 - fdark) * airmass**exponent_bright)
+        xfactor_dark = (fdark) * (airmass**exponent_dark)
+        xfactor_dark = xfactor_dark * self.duration_scale(cadence=cadence,
+                                                          skybrightness=0.)
+        xfactor_bright = (1 - fdark) * (airmass**exponent_bright)
+        xfactor_bright = xfactor_bright * self.duration_scale(cadence=cadence,
+                                                              skybrightness=1.)
+        xfactor = xfactor_dark + xfactor_bright
         return(xfactor)
 
 
@@ -1177,4 +1192,6 @@ class AllocateLSTCostF(AllocateLST):
                    (1 - fdark) * airmass**exponent_bright)
         if(cadence == 'dark_1x3'):
             xfactor = xfactor * 4. / 3.
+        xfactor = xfactor * self.duration_scale(cadence=cadence,
+                                                skybrightness=skybrightness)
         return(xfactor)
