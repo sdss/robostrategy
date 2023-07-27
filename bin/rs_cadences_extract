@@ -133,33 +133,8 @@ if __name__ == '__main__':
     copy_cadence('mixed2_single_99x1', 'mixed2_single_nx1')
     copy_cadence('bright_single_99x1', 'bright_single_nx1')
     copy_cadence('bright_1x1', 'bright_single_1x1')
-    copy_cadence('bright_2x1', 'bright_single_2x1')
-    copy_cadence('bright_single_4x1', 'dark_single_4x1')
-    cadencelist.cadences['dark_single_4x1'].delta[:] = -1
-    cadencelist.cadences['dark_single_4x1'].delta_min[:] = -1
-    cadencelist.cadences['dark_single_4x1'].delta_max[:] = -1
-    cadencelist.cadences['dark_single_4x1'].max_length[:] = 10000.
-    cadencelist.cadences['dark_single_4x1'].skybrightness[:] = cadencelist.cadences['dark_1x4'].skybrightness
-    cadencelist.cadences['dark_single_4x1'].min_moon_sep[:] = cadencelist.cadences['dark_1x4'].min_moon_sep
-    cadencelist.cadences['dark_single_4x1'].min_deltav_ks91[:] = cadencelist.cadences['dark_1x4'].min_deltav_ks91
-    cadencelist.cadences['dark_single_4x1'].min_twilight_ang[:] = cadencelist.cadences['dark_1x4'].min_twilight_ang
-    cadencelist.cadences['dark_single_4x1'].max_airmass[:] = cadencelist.cadences['dark_1x4'].max_airmass
-    cadencelist.cadences['dark_single_4x1'].obsmode_pk[:] = cadencelist.cadences['dark_1x4'].obsmode_pk
     if(schedule_prefix == 'minimal'):
         copy_cadence('dark_174x8', 'dark_138x8', nepochs=138)
-    copy_cadence('mixed2_single_3x1', 'mixed2_single_2x1', nepochs=2)
-
-    copy_cadence('dark_2x2', 'dark_flexible_2x2')
-    cadencelist.cadences['dark_flexible_2x2'].delta[:] = -1
-    cadencelist.cadences['dark_flexible_2x2'].delta_min[:] = -1
-    cadencelist.cadences['dark_flexible_2x2'].delta_max[:] = -1
-
-    for n in range(2, 11):
-        name = 'bright_flexible_{n}x1'.format(n=n)
-        copy_cadence('bright_12x1'.format(n=n), name, nepochs=n)
-        cadencelist.cadences[name].delta[:] = -1.
-        cadencelist.cadences[name].delta_min[:] = -1.
-        cadencelist.cadences[name].delta_max[:] = -1.
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
