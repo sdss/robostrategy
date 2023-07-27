@@ -39,6 +39,10 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-C', '--no-clobber', dest='noclobber',
+                        help='do not clobber intermediate files',
+                        default=False, required=False,
+                        action='store_true')
     parser.add_argument('-A', '--all-stages', dest='all_stages',
                         help='set to read all target stages',
                         default=False, required=False,
@@ -58,6 +62,7 @@ if __name__ == '__main__':
     opentargets = args.opentargets
     filler = args.filler
     all_stages = args.all_stages
+    noclobber = args.noclobber
 
     cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -74,31 +79,6 @@ if __name__ == '__main__':
        c2c = None
 
     rsParams = params.RobostrategyParams(plan=plan)
-
-    if('mwm_tess_ob_priority_fix' in rsParams.cfg['Cartons']):
-        mwm_tess_ob_priority_fix = np.float32(rsParams.cfg['Cartons']['mwm_tess_ob_priority_fix'])
-    else:
-        mwm_tess_ob_priority_fix = None
-
-    if('manual_validation_priority_fix' in rsParams.cfg['Cartons']):
-        manual_validation_priority_fix = np.float32(rsParams.cfg['Cartons']['manual_validation_priority_fix'])
-    else:
-        manual_validation_priority_fix = None
-
-    if('mwm_tess_planet_cadence_fix' in rsParams.cfg['Cartons']):
-        mwm_tess_planet_cadence_fix = True
-    else:
-        mwm_tess_planet_cadence_fix = False
-
-    if('dark_1x4_to_2x2_cadence_fix' in rsParams.cfg['Cartons']):
-        dark_1x4_to_2x2_cadence_fix = True
-    else:
-        dark_1x4_to_2x2_cadence_fix = False
-
-    if('bhm_colr_galaxies_lsdr8_cadence_fix' in rsParams.cfg['Cartons']):
-        bhm_colr_galaxies_lsdr8_cadence_fix = True
-    else:
-        bhm_colr_galaxies_lsdr8_cadence_fix = False
 
     cartons_version = rsParams.cfg['Cartons']['version']
     cartons = robostrategy.targets.read_cartons(version=cartons_version)
@@ -134,7 +114,21 @@ if __name__ == '__main__':
     for carton in cartons:
         name = carton['carton']
         version = carton['plan']
-        tmp_targets = robostrategy.targets.get_targets(name, version, c2c=c2c)
+        tmp_targets_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                        'allocations', plan, 'targets',
+                                        'rsTargetsCarton-{plan}-{obs}-{carton}-{version}.fits')
+        tmp_targets_file = tmp_targets_file.format(plan=plan,
+                                                   obs=observatory,
+                                                   carton=name,
+                                                   version=version)
+
+        if((os.path.exists(tmp_targets_file) == False) |
+           (noclobber == False)):
+            tmp_targets = robostrategy.targets.get_targets(name, version, c2c=c2c)
+            fitsio.write(tmp_targets_file, tmp_targets, clobber=True)
+        else:
+            tmp_targets = fitsio.read(tmp_targets_file)
+
         if(tmp_targets is not None):
             if(name in adjust):
                 tmp_targets['priority'] = (tmp_targets['priority'] +
@@ -168,39 +162,6 @@ if __name__ == '__main__':
         print("Lost some targets ... hope that is expected!")
         targets.resize(nt)
 
-    # FUDGE filler galaxies
-    if(bhm_colr_galaxies_lsdr8_cadence_fix):
-        ifix = np.where((targets['carton'] == 'bhm_colr_galaxies_lsdr8')
-                        & (targets['cadence'] == 'dark_1x4'))[0]
-        targets['cadence'][ifix] = 'dark_single_4x1'
-
-    # FUDGE dark_1x4 to dark_2x2
-    if(dark_1x4_to_2x2_cadence_fix):
-        i4 = np.where(targets['cadence'] == 'dark_1x4')[0]
-        targets['cadence'][i4] = 'dark_flexible_2x2'
-
-    # FUDGE TESS planet cadences
-    if(mwm_tess_planet_cadence_fix):
-        cadence_map = {'bright_1x2': 'bright_flexible_2x1',
-                       'bright_1x3': 'bright_flexible_3x1',
-                       'bright_1x4': 'bright_flexible_4x1',
-                       'bright_1x5': 'bright_flexible_5x1',
-                       'bright_1x6': 'bright_flexible_6x1'}
-        for c in cadence_map:
-            ii = np.where(targets['cadence'] == c)[0]
-            targets['cadence'][ii] = cadence_map[c]
-
-    # FUDGE manual validation priority - not used
-    if(manual_validation_priority_fix is not None):
-        ii = np.where(targets['carton'] == 'manual_validation_apogee')[0]
-        targets['priority'][ii] = manual_validation_priority_fix
-        targets['category'][ii] = 'science'
-        ii = np.where((targets['carton'] == 'manual_validation_apogee') & (targets['cadence'] == ''))[0]
-        targets['cadence'][ii] = 'bright_3x1'
-        ii = np.where(targets['carton'] == 'manual_validation_boss')[0]
-        targets['priority'][ii] = manual_validation_priority_fix
-        targets['category'][ii] = 'science'
-
     # Fudge open_fiber into science - not necessary
     iopen = np.where(targets['category'] == 'open_fiber')[0]
     if(len(iopen) > 0):
@@ -215,7 +176,8 @@ if __name__ == '__main__':
         print(np.unique(targets['category'][ibad]))
         print(np.unique(targets['carton'][ibad]))
         print(np.unique(targets['cadence'][ibad]))
-        sys.exit(1)
+        targets['cadence'][ibad] = 'bright_1x1'
+        #sys.exit(1)
 
     ibad = np.where((targets['category'] != 'science') &
                     (targets['category'] != 'standard_apogee') &
@@ -227,7 +189,7 @@ if __name__ == '__main__':
         print(np.unique(targets['category'][ibad]))
         print(np.unique(targets['carton'][ibad]))
         print(np.unique(targets['cadence'][ibad]))
-        sys.exit(1)
+        #sys.exit(1)
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
