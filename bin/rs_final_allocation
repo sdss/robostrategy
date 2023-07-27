@@ -61,12 +61,19 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--reset', dest='reset',
                         type=str, help='reset (specific "db" or number)',
                         required=True)
-
-    observatories = ['apo', 'lco']
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='name of observatory', required=False,
+                        choices=['lco', 'apo', 'both'], default='both')
 
     args = parser.parse_args()
     plan = args.plan
     reset = args.reset
+    observatory = args.observatory
+    
+    if(observatory == 'both'):
+        observatories = ['apo', 'lco']
+    else:
+        observatories = [observatory]
 
     rsParams = params.RobostrategyParams(plan=plan)
 
