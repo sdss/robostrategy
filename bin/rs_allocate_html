@@ -1,0 +1,96 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_allocate_html
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import robostrategy.allocate
+import roboscheduler.cadence
+import sdss_access.path
+import jinja2
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Package allocation plots in html')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument("-o", "--observatory", dest="observatory", type=str,
+                        required=True, help="observatory",
+                        choices=['apo', 'lco'])
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file)
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    field_cadence_file = sdss_path.full('rsFieldCadences',
+                                        plan=plan, observatory=observatory)
+    cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
+
+    cadences = [c.strip() for c in allocate.field_array['cadence']]
+    base_cadences = []
+    for c in cadences:
+        last = c.split('_')[-2]
+        if(last == 'single'):
+            base_cadence = "_".join(c.split('_')[0:-1])
+        else:
+            base_cadence = c
+        base_cadences.append(base_cadence)
+    base_cadences = np.array(base_cadences)
+
+    alloc_dict = dict()
+    alloc_dict['plan'] = plan
+    alloc_dict['observatory'] = observatory
+
+    ncad = np.int32(hdr['NCAD'])
+    cadences = []
+    for icad in np.arange(ncad):
+        field_cadence = hdr['CAD{icad}'.format(icad=icad)]
+        last = field_cadence.split('_')[-1]
+        if(last[0] == 'n'):
+            field_cadence_base = "_".join(field_cadence.split('_')[0:-1])
+        else:
+            field_cadence_base = field_cadence
+        cadences.append(field_cadence_base)
+    cadences.sort()
+    alloc_dict['cadences'] = cadences
+        
+    env = jinja2.Environment(
+        loader=jinja2.PackageLoader("robostrategy"),
+        autoescape=jinja2.select_autoescape()
+    )
+        
+    template = env.get_template('rs-allocate-template.html')
+    page = template.render(alloc_dict)
+
+    html_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                             'allocations', plan, 'rs-allocate-{o}.html')
+    html_file = html_file.format(o=observatory)
+    fp = open(html_file, 'w')
+    fp.write(page)
+    fp.close()
+
+        
