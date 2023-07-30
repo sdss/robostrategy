@@ -77,6 +77,29 @@ if __name__ == '__main__':
         cadences.append(field_cadence_base)
     cadences.sort()
     alloc_dict['cadences'] = cadences
+
+    ndesign_all = 0
+    ndesign_dark = 0
+    ndesign_bright = 0
+    nepoch_all = 0
+    nepoch_dark = 0
+    nepoch_bright = 0
+    for cadence in allocate.field_array['cadence']:
+        c = cadencelist.cadences[cadence]
+        ndesign_all = ndesign_all + c.nexp_total
+        nepoch_all = nepoch_all + c.nepochs
+        ibright = np.where(c.skybrightness > 0.5)[0]
+        ndesign_bright = ndesign_bright + c.nexp[ibright].sum()
+        nepoch_bright = nepoch_bright + len(ibright)
+        idark = np.where(c.skybrightness < 0.5)[0]
+        ndesign_dark = ndesign_dark + c.nexp[idark].sum()
+        nepoch_dark = nepoch_dark + len(idark)
+    alloc_dict['ndesign_all'] = ndesign_all
+    alloc_dict['ndesign_dark'] = ndesign_dark
+    alloc_dict['ndesign_bright'] = ndesign_bright
+    alloc_dict['nepoch_all'] = nepoch_all
+    alloc_dict['nepoch_dark'] = nepoch_dark
+    alloc_dict['nepoch_bright'] = nepoch_bright
         
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("robostrategy"),
