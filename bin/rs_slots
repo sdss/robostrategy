@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     if('ExposureTime' in rsParams.cfg['Allocation']):
         exposure_times = rsParams.cfg.get('Allocation', 'ExposureTime').split()
-        if(len(exposure_times) > 0):
+        if(len(exposure_times) > 1):
             exptime_dark = np.float32(exposure_times[0])
             exptime_bright = np.float32(exposure_times[1])
         else:
