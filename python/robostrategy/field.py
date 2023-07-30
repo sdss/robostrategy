@@ -740,6 +740,10 @@ class Field(object):
             self.bright_stars_coords = collections.OrderedDict()
             self.bright_stars_rmax = collections.OrderedDict()
             self.bright_neighbor_cache = dict()
+        if(self.bright_neighbors):
+            self.fmagloss = coordio.utils.Moffat2dInterp()
+        else:
+            self.fmagloss = None
         self.robotHasApogee = None
         self.collisionBuffer = collisionBuffer
         if(self.allgrids is False):
@@ -879,7 +883,8 @@ class Field(object):
                                                                lunation,
                                                                fiberType.capitalize(),
                                                                self.observatory.upper(),
-                                                               safety_factor=0.)
+                                                               safety_factor=0.,
+                                                               fmagloss=self.fmagloss)
             
             bright_stars = np.zeros(len(ras), dtype=bright_stars_dtype)
 
@@ -2003,6 +2008,7 @@ class Field(object):
                                                                                        lunation,
                                                                                        'Boss',
                                                                                        self.observatory.upper(),
+                                                                                       fmagloss=self.fmagloss,
                                                                                        can_offset=targets['can_offset'][iboss],
                                                                                        skybrightness=skybrightness,
                                                                                        offset_min_skybrightness=self.offset_min_skybrightness)
@@ -2018,6 +2024,7 @@ class Field(object):
                                                                                        lunation,
                                                                                        'Apogee',
                                                                                        self.observatory.upper(),
+                                                                                       fmagloss=self.fmagloss,
                                                                                        can_offset=targets['can_offset'][iapogee],
                                                                                        skybrightness=skybrightness,
                                                                                        offset_min_skybrightness=self.offset_min_skybrightness)
