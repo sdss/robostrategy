@@ -179,7 +179,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             return any_extra
 
         # Find gotten WDs and try to get extra epochs
-        iextra = np.where((self.targets['carton'] == 'mwm_wd_pwd') &
+        iextra = np.where((self.targets['carton'] == 'mwm_wd_pwd_boss') &
                           (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
@@ -195,7 +195,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         # Next find gotten SNC and try to get extra epochs
         iextra = np.where(((self.targets['carton'] == 'mwm_snc_100pc_boss') |
-                           (self.targets['carton'] == 'mwm_snc_ext_boss')) &
+                           (self.targets['carton'] == 'mwm_snc_ext_main_boss')) &
                            (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
@@ -209,8 +209,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
         # Next find compact binaries and get extra epochs
-        iextra = np.where(((self.targets['carton'] == 'mwm_cb_galex_vol') |
-                           (self.targets['carton'] == 'mwm_cb_galex_mag') |
+        iextra = np.where(((self.targets['carton'] == 'mwm_cb_galex_vol_boss') |
+                           (self.targets['carton'] == 'mwm_cb_galex_mag_boss') |
                            (self.targets['carton'] == 'mwm_cb_cvcandidates_boss')) &
                            (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
@@ -239,14 +239,12 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         any_extra = False
 
         # Find gotten RVs and see try to get extra epochs - take any in the RV
-        # program that was satisfied. Additionally, take any mwm_rv_long that
-        # is UNSATISFIED and do those first
-        iextra1 = np.where((self.targets['carton'] == 'mwm_bin_rv_long') &
+        # bin cartons that were satisfied. Additionally, take any mwm_rv_long that
+        # are UNSATISFIED and do those first
+        iextra1 = np.where((self.targets['carton'] == 'mwm_bin_rv_long_apogee') &
                            (self.assignments['satisfied'] == 0))[0]
-        rv_cartons = ['mwm_bin_rv_long','mwm_bin_rv_short','mwm_bin_rv_short_giant',
-                      'mwm_bin_rv_short_subgiant','mwm_bin_rv_short_mdwarf']
-        iextra2 = np.where((np.isin(self.targets['carton'],rv_cartons)) &
-                            (self.assignments['satisfied'] > 0))[0]
+        isrv_carton = ['bin_rv' in carton for carton in self.targets['carton']]
+        iextra2 = np.where((isrv_carton) & (self.assignments['satisfied'] > 0))[0]
         iextra = np.append(iextra1,iextra2)
 
         if len(iextra) > 0:
@@ -286,7 +284,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         any_extra = False
 
         # Find NOT-gotten mwm_tess_planet and swap cadence from 1xN to Nx1
-        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min') &
+        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min_apogee') &
                           (self.assignments['satisfied'] == 0))[0]
 
         if len(iextra) > 0:
@@ -358,7 +356,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     print(nsuccess)
 
         # Find NOT-gotten OB core stars and try to get some epochs
-        iextra = np.where((self.targets['carton'] == 'mwm_ob_core') &
+        # Note: Do not need to do this on mwm_ob_core_boss_single, which are same targets
+        iextra = np.where((self.targets['carton'] == 'mwm_ob_core_boss') &
                           (self.assignments['satisfied'] == 0))[0]
 
         if len(iextra) > 0:
@@ -406,7 +405,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         # Find TESS planet targets that are 'satisfied' or that previously got
         # extra, since extra was originally capped at N epochs but at this
         # later stage they are now eligible for extra epochs
-        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min') &
+        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min_apogee') &
                          ((self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0)))[0]
 
         if len(iextra) > 0:
@@ -420,8 +419,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number attempted: {}'.format(len(iextra)))
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
-        # Find gotten OB stars and try to get extra epochs. Do whole program
-        iextra = np.where((self.targets['carton'] == 'mwm_ob_core') &
+        # Find gotten OB stars and try to get extra epochs. 
+        iextra = np.where((self.targets['carton'] == 'mwm_ob_core_boss') &
                           (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
