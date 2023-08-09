@@ -32,7 +32,7 @@ target_dtype = [('stage', np.unicode_, 6),
                 ('program', np.unicode_, 15), 
                 ('mapper', np.unicode_, 3), # from mapper
                 ('category', np.unicode_, 15), # from category
-                ('cadence', np.unicode_, 22), # from cadence
+                ('cadence', np.unicode_, 26), # from cadence
                 ('fiberType', np.unicode_, 6),  # from instrument
                 ('plan', np.unicode_, 8),  # from version
                 ('tag', np.unicode_, 8)]

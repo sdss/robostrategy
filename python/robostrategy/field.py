@@ -2398,7 +2398,9 @@ class Field(object):
             if(self.verbose):
                 print("fieldid {fieldid}: Setup all grids".format(fieldid=self.fieldid), flush=True)
 
+            ng = len(self.robotgrids)
             for iexp, rg in enumerate(self.robotgrids):
+                print("fieldid {fid}:   grid {i}/{n}".format(fid=self.fieldid, i=iexp, n=ng), flush=True)
                 epoch = self.field_cadence.epochs[iexp]
                 self._targets_to_robotgrid(targets=targets,
                                            assignments=assignments,
@@ -2457,7 +2459,7 @@ class Field(object):
                     continue
                 targets[n] = target_array[n]
 
-        # Deal with unusual use case where we need to reference a cadence version
+        # Deal with use case where we need to reference a cadence version
         if(self._untrim_cadence_version is not None):
             for itarget, tc in enumerate(targets['cadence']):
                 if(tc.split('_')[-1] != self._untrim_cadence_version):
@@ -2524,6 +2526,9 @@ class Field(object):
             _is_good_calibration[inotsci] = True
             _calibration_index[inotsci] = 1
 
+        if(self.verbose):
+            print("fieldid {f}: Connect rsid and index".format(f=self.fieldid), flush=True)
+
         # Connect rsid with index of list
         for itarget, t in enumerate(targets):
             if(t['rsid'] in self.rsid2indx.keys()):
@@ -2542,6 +2547,9 @@ class Field(object):
             assignments = None
 
         target_duplicated = np.zeros(len(targets), dtype=np.int32)
+
+        if(self.verbose):
+            print("fieldid {f}: Setup calibration tracking".format(f=self.fieldid), flush=True)
 
         self.targets = np.append(self.targets, targets)
         self.target_duplicated = np.append(self.target_duplicated,
@@ -2562,6 +2570,8 @@ class Field(object):
         # that for each target we can look up all of the other targets
         # whose catalog, fiberType, lambda_eff, delta_ra, delta_dec 
         # are the same
+        if(self.verbose):
+            print("fieldid {f}: Setup equiv dictionaries".format(f=self.fieldid), flush=True)
         self._equivindx = collections.OrderedDict()
         self._equivindx_science = collections.OrderedDict()
         self._equivkey = collections.OrderedDict()
@@ -2582,11 +2592,15 @@ class Field(object):
                                                                    dtype=int))
 
         if(assignments is not None):
+            if(self.verbose):
+                print("fieldid {f}: Add assignments, set satisifed".format(f=self.fieldid), flush=True)
             self.assignments = np.append(self.assignments, assignments, axis=0)
             self._set_satisfied()
             self._set_satisfied(science=True)
             self._set_count(reset_equiv=False)
 
+        if(self.verbose):
+            print("fieldid {f}: Setup mastergrid".format(f=self.fieldid), flush=True)
         self._set_masterGrid()
 
         return
@@ -4387,9 +4401,7 @@ class Field(object):
     def _unsatisfied(self, indxs):
         # Return which are unsatisfied, and include ones which are
         # satisfied but only because of a calibration target
-        print("fieldid {fid}: Setting satisfied".format(fid=self.fieldid), flush=True)
         self._set_satisfied(rsids=self.targets['rsid'][indxs], science=True)
-        print("fieldid {fid}: Done setting satisfied".format(fid=self.fieldid), flush=True)
         unsatisfied = ((self.assignments['satisfied'][indxs] == 0) |
                        ((self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]) &
                         (self.targets['category'][indxs] == 'science')))
@@ -5234,6 +5246,7 @@ class Field(object):
             # Or else let us lower thresholds of goodness in under performing zones
             # If we have run out of targets in all zones ... we are finished.
             finished = True
+            print("fieldid {fid}: Lowering goodness threshold!".format(fid=self.fieldid), flush=True)
             for zone in zones:
                 izone = np.where(self.targets['zone'][icalib] == zone)[0]
                 if(len(izone) == 0):
@@ -5357,10 +5370,10 @@ class Field(object):
         self.decollide_unassigned()
         nproblems = self.validate()
         if(nproblems == 0):
-            print("fieldid {f}: No problems".format(f=self.fieldid))
+            print("fieldid {f}: No problems".format(f=self.fieldid), flush=True)
         else:
             print("fieldid {f}: {n} problems!!!".format(f=self.fieldid,
-                                                        n=nproblems))
+                                                        n=nproblems), flush=True)
 
         self._set_satisfied(rsids=self.targets['rsid'][iscience])
         self._set_count(reset_equiv=False)
@@ -5438,10 +5451,10 @@ class Field(object):
 
         nproblems = self.validate()
         if(nproblems == 0):
-            print("fieldid {f}: No problems".format(f=self.fieldid))
+            print("fieldid {f}: No problems".format(f=self.fieldid), flush=True)
         else:
             print("fieldid {f}: {n} problems!!!".format(f=self.fieldid,
-                                                        n=nproblems))
+                                                        n=nproblems), flush=True)
         if(self.verbose):
             print("fieldid {fid}:   (done assigning science with CP)".format(fid=self.fieldid), flush=True)
 
@@ -5867,7 +5880,7 @@ class Field(object):
                 inotdone = np.where(self.assignments['robotID'][i, iexps_assign] == -1)[0]
                 if(len(inotdone) > 0):
                     self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps_assign[inotdone],
-                                          reset_satisfied=False)
+                                          reset_satisfied=False, set_expflag=False)
 
         icalib = self._select_calibs(self.targets['category'] != 'science')
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
