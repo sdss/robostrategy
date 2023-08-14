@@ -32,46 +32,6 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
 
-def assign_update(indx):
-
-    field_assignments_file = sdss_path.full('rsFieldTargets',
-                                            plan=plan, observatory=observatory,
-                                            fieldid=fieldid)
-    field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
-                                                            'final/rsFieldAssignmentsFinal')
-
-    if((clobber is False) & os.path.isfile(field_assignments_file)):
-        print("Fieldid {f} exists already in {file}".format(f=fieldid, file=field_assignments_file))
-        return
-
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-    f = field.Field(filename=field_target_file, verbose=True,
-                    fieldid=fieldid, bright_neighbors=True,
-                    untrim_cadence_version=cadence_version)
-    f.fieldid = fieldid
-
-    if(f.field_cadence is None):
-        print("fieldid {fid}: no field cadence to assign! Skipping".format(fid=fieldid), flush=True)
-        return
-
-    rmcadences = ['dark_174x8', 'dark_100x8']
-    if(f.field_cadence.name in rmcadences):
-        print("fieldid {fid}: Not reassigning RM field, just copying".format(fid=fieldid), flush=True)
-    else:
-        print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
-        f.clear_assignments()
-
-        print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
-        f.assign_science_and_calibs(stage='srd')
-
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-
-    print("Write assignments", flush=True)
-    f.tofits(field_assignments_file)
-
-    print("fieldid {f}: Done".format(f=fieldid), flush=True)
-    return
-
 
 if __name__ == '__main__':
 
