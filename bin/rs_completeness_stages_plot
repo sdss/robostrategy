@@ -1,0 +1,127 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Aug 3, 2018
+# @Filename: rs_completeness_plot
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import argparse
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+import healpy
+import fitsio
+import sdss_access.path
+import matplotlib
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def clean_minmax(n):
+    vmin = np.floor(10. * np.nanmin(n)) / 10.
+    vmax = np.ceil(10. * np.nanmax(n)) / 10.
+    return(vmin, vmax)
+
+
+def make_map(hdr, tmap, perarea=True, log=True):
+    if('NSIDE' in hdr):
+        nside = np.int32(hdr['NSIDE'])
+    else:
+        nside = 32
+    area = healpy.pixelfunc.nside2pixarea(nside, degrees=True)
+
+    if(perarea):
+        tmap = tmap / area
+    if(log):
+        nzero = tmap > 0
+        zero = tmap <= 0
+        tmap[nzero] = np.log10(tmap[nzero])
+        tmap[zero] = np.nan
+
+    return(tmap)
+
+
+def plot_map(hdr, tmap, name=None, title=None, vmin=None, vmax=None,
+             perarea=True, log=True):
+
+    tmap = make_map(hdr, tmap, perarea=perarea, log=log)
+
+    print(np.nanmax(tmap))
+
+    healpy.mollview(
+        tmap,
+        title=title,
+        cmap='Blues',
+        badcolor='#d0d0d0',
+        rot=(270., 0., 0.),
+        max=vmax, min=vmin)
+
+    healpy.visufunc.graticule()
+
+    outfile = sdss_path.full(
+        'rsAssignmentsPng', name=name,
+        plan=plan, observatory=observatory)
+    outfile = outfile.replace('rsAssignments', 'final/rsCompletenessStages')
+    if(directory is not None):
+        outfile = os.path.join(directory, os.path.basename(outfile))
+
+    plt.savefig(outfile)
+    plt.clf()
+
+    return
+
+
+def make_maps(completeness_file, stage, vmin=None, vmax=None):
+    nexps, hdr = fitsio.read(completeness_file, header=True, ext=stage)
+    print(nexps.max())
+
+    tmp_nexps = make_map(hdr, nexps)
+    tmp_vmin, tmp_vmax = clean_minmax(tmp_nexps)
+    if(vmin is None):
+        vmin = tmp_vmin
+    if(vmax is None):
+        vmax = tmp_vmax
+
+    title = '$\log_{10}$ Exposure Density (deg$^{-2}$) ' + '(' + stage.lower() + '; total is {t:,d})'.format(t=np.int32(nexps.sum()))
+    plot_map(hdr, nexps, name=stage.lower(),
+             title=title, vmin=vmin, vmax=vmax)
+
+    return
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Plot exposure densities')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-d', '--directory', dest='directory',
+                        type=str, help='output dir', required=False)
+                        
+    args = parser.parse_args()
+    plan = args.plan
+    directory = args.directory
+    observatory = 'both'
+
+    matplotlib.rcParams['font.size'] = 16
+
+    completeness_file = sdss_path.full('rsCompleteness', plan=plan,
+                                       observatory=observatory)
+    completeness_file = completeness_file.replace('rsCompleteness',
+                                                  'final/rsCompletenessStagesFinal')
+
+    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE']
+    for stage in stages:
+        vmax = None
+        make_maps(completeness_file, stage, vmax=vmax)
+    
