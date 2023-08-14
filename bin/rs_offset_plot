@@ -1,0 +1,145 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import matplotlib.pyplot as plt
+import numpy as np
+import mugatu.designmode
+import coordio.utils
+import sdss_access.path
+import matplotlib
+
+
+matplotlib.rcParams['font.size'] = 18
+
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pretty plot of the robostrategy offsets')
+
+    args = parser.parse_args()
+
+    fmagloss = coordio.utils.Moffat2dInterp()
+
+    designModeDict = mugatu.designmode.allDesignModes() 
+
+    #(offset_bright_limit is G = 6 for Boss bright time and
+    #               G = 13 for Boss dark time, and
+    #               H = 1 for Apogee).
+
+    mags = np.outer(6. + np.arange(20000) / 1000., np.ones(10))
+    dm = designModeDict['bright_time']
+    mag_limits = dm.bright_limit_targets['BOSS'][:, 0]
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'bright',
+                                                       'Boss',
+                                                       'APO',
+                                                       safety_factor=0.5,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=3, label='BOSS at APO bright_time',
+             color='red')
+
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'bright',
+                                                       'Boss',
+                                                       'LCO',
+                                                       safety_factor=0.5,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=2, label='BOSS at LCO bright_time',
+             color='pink')
+
+    mags = np.outer(13. + np.arange(20000) / 1000., np.ones(10))
+    dm = designModeDict['dark_plane']
+    mag_limits = dm.bright_limit_targets['BOSS'][:, 0]
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'dark',
+                                                       'Boss',
+                                                       'APO',
+                                                       safety_factor=1.,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=3, label='BOSS at APO, dark_plane',
+             color='black')
+
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'dark',
+                                                       'Boss',
+                                                       'LCO',
+                                                       safety_factor=1.,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=2, label='BOSS at LCO, dark_plane',
+             color='grey')
+
+    mags = np.outer(13. + np.arange(20000) / 1000., np.ones(10))
+    dm = designModeDict['dark_monit']
+    mag_limits = dm.bright_limit_targets['BOSS'][:, 0]
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'dark',
+                                                       'Boss',
+                                                       'APO',
+                                                       safety_factor=1.,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=3, label='BOSS at APO, other dark',
+             color='blue')
+
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'dark',
+                                                       'Boss',
+                                                       'LCO',
+                                                       safety_factor=1.,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=2, label='BOSS at LCO, other dark',
+             color='lightblue')
+
+    mags = np.outer(1. + np.arange(20000) / 1000., np.ones(10))
+    dm = designModeDict['bright_time']
+    mag_limits = dm.bright_limit_targets['APOGEE'][:, 0]
+    print(mag_limits)
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'bright',
+                                                       'Apogee',
+                                                       'APO',
+                                                       safety_factor=0.5,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=3, label='APOGEE at APO',
+             color='green')
+
+    r_exclude, dummy = coordio.utils.offset_definition(mags,
+                                                       mag_limits,
+                                                       'bright',
+                                                       'Apogee',
+                                                       'LCO',
+                                                       safety_factor=0.5,
+                                                       fmagloss=fmagloss)
+
+    plt.plot(mags[:, 0], r_exclude, linewidth=2, label='APOGEE at LCO',
+             color='lightgreen')
+
+    plt.xlabel('Magnitude')
+    plt.ylabel('Offset (arcsec)')
+
+    plt.xlim([0.5, 18.8])
+
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    plt.savefig('offset_definition.png')
