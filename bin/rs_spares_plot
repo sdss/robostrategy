@@ -20,7 +20,10 @@ import numpy as np
 import sdss_access.path
 import fitsio
 import matplotlib.pyplot as plt
+import matplotlib
 import mpl_toolkits.basemap as basemap
+
+matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
@@ -37,8 +40,8 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
-                        type=str, help='apo or lco',
-                        choices=['apo', 'lco'], required=True)
+                        type=str, help='apo or lco or both',
+                        choices=['apo', 'lco', 'both'], required=True)
     parser.add_argument('-O', '--open', dest='opentargets',
                         help='set to read open target results',
                         default=False, required=False,
@@ -69,6 +72,11 @@ if __name__ == '__main__':
     reassign = args.reassign
     final = args.final
 
+    if(observatory == 'both'):
+        observatories = ['apo', 'lco']
+    else:
+        observatories = [observatory]
+
     if(int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
         print("Only one of -O, -R, -F, -K can be set!")
         sys.exit()
@@ -84,8 +92,29 @@ if __name__ == '__main__':
         base = 'rsSparesReassign'
     if(final):
         base = 'final/rsSparesFinal'
-    infile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
-    spares = fitsio.read(infile)
+
+
+    spares = None
+    fields = None
+    for obs in observatories:
+        infile = '{base}-{p}-{o}.fits'.format(o=obs, p=plan, base=base)
+        tmp_spares = fitsio.read(infile)
+        fields_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                   'allocations', plan,
+                                   'rsFieldsRotated-{p}-{o}.fits'.format(o=obs, p=plan))
+        tmp_fields = fitsio.read(fields_file)
+        if(spares is None):
+            spares = tmp_spares
+            fields = tmp_fields
+        else:
+            spares = np.append(spares, tmp_spares)
+            fields = np.append(fields, tmp_fields)
+
+    ### BUG BECAUSE SPARE WRONG LENGTH??
+    types = np.array([t[0:2] for t in fields['type']])
+    ikeep = np.where(types != 'RM')[0]
+    fields = fields[ikeep]
+    spares = spares[ikeep]
 
     for fiberType in ['boss', 'apogee']:
 
@@ -103,17 +132,18 @@ if __name__ == '__main__':
         # draw parallels and meridians.
         m.drawparallels(np.arange(-90., 120., 30.),
                         linewidth=0.5,
-                        labels=[1, 0, 0, 0],
+                        labels=[0, 0, 0, 0],
                         labelstyle='+/-')
         m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
-        m.drawmapboundary()
+        m.drawmapboundary(fill_color='#d0d0d0')
 
         name = 'n{ft}_spare'.format(ft=fiberType)
         spval = np.float32(spares[name])
         iz = np.where(spval == 0)[0]
         spval[iz] = 0.1
         spval = np.log10(spval)
-        plt.scatter(xx, yy, s=3, c=spval, vmin=-1., vmax=3.99)
+        plt.scatter(xx, yy, s=3, c=spval, vmin=-1.,
+                    vmax=3.99, cmap='Blues')
         title = 'Spare {ft} (after science allocation)'
         if(opentargets):
             title = 'Spare {ft} (after open fiber allocation)'
@@ -124,8 +154,9 @@ if __name__ == '__main__':
         if(reassign):
             title = 'Spare {ft} (after reassignment)'
         if(final):
-            title = 'Spare {ft} (final)'
-        title = title.format(ft=fiberType.upper())
+            title = 'Spare {ft} (total of {t:,d})'
+        title = title.format(ft=fiberType.upper(),
+                             t=np.int32(spares[name].sum()))
         plt.title(title)
 
         colorbar_label = '$log_{10} N$'
@@ -140,17 +171,17 @@ if __name__ == '__main__':
         # draw parallels and meridians.
         m.drawparallels(np.arange(-90., 120., 30.),
                         linewidth=0.5,
-                        labels=[1, 0, 0, 0],
+                        labels=[0, 0, 0, 0],
                         labelstyle='+/-')
         m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
-        m.drawmapboundary()
+        m.drawmapboundary(fill_color='#d0d0d0')
 
         name = 'n{ft}_unused'.format(ft=fiberType)
         spval = np.float32(spares[name])
         iz = np.where(spval == 0)[0]
         spval[iz] = 0.1
         spval = np.log10(spval)
-        plt.scatter(xx, yy, s=3, c=spval, vmin=-1., vmax=3.99)
+        plt.scatter(xx, yy, s=3, c=spval, vmin=-1., vmax=3.99, cmap='Blues')
         title = 'Unused {ft} (after science allocation)'
         if(opentargets):
             title = 'Unused {ft} (after open fiber allocation)'
@@ -161,8 +192,9 @@ if __name__ == '__main__':
         if(reassign):
             title = 'Unused {ft} (after reassignment)'
         if(final):
-            title = 'Unused {ft} (final)'
-        title = title.format(ft=fiberType.upper())
+            title = 'Unused {ft} (total of {t:,d})'
+        title = title.format(ft=fiberType.upper(),
+                             t=np.int32(spares[name].sum()))
         plt.title(title)
 
         colorbar_label = '$log_{10} N$'
