@@ -718,7 +718,7 @@ class AllocateLST(object):
 
         return(used)
 
-    def plot_full(self, iskybrightness=None, title=None):
+    def plot_full(self, iskybrightness=None, title=None, loc=2):
         """Plot the LST distributions for the allocations
 
         Parameters
@@ -763,9 +763,9 @@ class AllocateLST(object):
 
         plt.xlabel('LST or RA (hours)')
         plt.ylabel('Exposure hours')
-        plt.ylim(np.array([-0.05, 1.2]) * np.array([got.max(), used.max(),
+        plt.ylim(np.array([-0.05, 1.5]) * np.array([got.max(), used.max(),
                                                     available.max()]).max())
-        plt.legend(loc=1)
+        plt.legend(loc=loc, fontsize=12)
         if(title is not None):
             plt.title(title)
 
@@ -798,13 +798,20 @@ class AllocateLST(object):
         # draw parallels and meridians.
         m.drawparallels(np.arange(-90., 120., 30.),
                         linewidth=0.5,
-                        labels=[1, 0, 0, 0],
+                        labels=[0, 0, 0, 0],
                         labelstyle='+/-')
         m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
-        m.drawmapboundary()
+        m.drawmapboundary(fill_color='#f0f0f0')
 
         ii = np.where(self.field_array['nfilled'][indx] > 0)[0]
         ii = indx[ii]
+
+        nfilled_max = 1
+        if(len(ii) > 0):
+            isrm = np.array([('x8' in c) for c in self.field_array['cadence'][ii]], dtype=bool)
+            ilimit = np.where(isrm == False)[0]
+            if(len(ilimit) > 0):
+                nfilled_max = self.field_array['nfilled'][ii[ilimit]].max()
 
         if(darkorbright is not None):
             if(darkorbright == 'dark'):
@@ -816,15 +823,18 @@ class AllocateLST(object):
 
         if(linear is False):
             nfilled_value = np.log10(nfilled)
+            nfilled_value_max = np.log10(nfilled_max)
             colorbar_label = '$\log_{10} N$'
         else:
             nfilled_value = nfilled
+            nfilled_value_max = nfilled_max
             colorbar_label = '$N$'
 
         if(label is False):
             (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
                                            self.field_array['deccen'][ii])
-            plt.scatter(xx, yy, s=4, c=nfilled_value, **kwargs)
+            plt.scatter(xx, yy, s=4, c=nfilled_value, vmax=nfilled_value_max,
+                        cmap='Blues', **kwargs)
             if(colorbar):
                 cb = plt.colorbar()
                 cb.set_label(colorbar_label)
