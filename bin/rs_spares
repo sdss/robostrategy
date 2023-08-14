@@ -92,7 +92,7 @@ def count_spares(indx):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldReassignments')
 
-    f = field.Field(filename=field_target_file, allgrids=False)
+    f = field.Field(filename=field_target_file, verbose=True, allgrids=False)
 
     spares_dtype = [('fieldid', np.int32),
                     ('racen', np.float64),
@@ -243,7 +243,7 @@ if __name__ == '__main__':
                         ('nboss_science', np.int32),
                         ('napogee_science', np.int32)]
 
-    with multiprocessing.Pool() as pool:
+    with multiprocessing.Pool(32) as pool:
         pool.map(count_spares, ikeep)
 
     spares = np.zeros(len(allocate.field_array), dtype=spares_dtype)
