@@ -246,7 +246,7 @@ if __name__ == '__main__':
     with multiprocessing.Pool(32) as pool:
         pool.map(count_spares, ikeep)
 
-    spares = np.zeros(len(allocate.field_array), dtype=spares_dtype)
+    spares = np.zeros(len(ikeep), dtype=spares_dtype)
     spares_exp = np.zeros(allocate.field_array['nfilled'].sum(),
                           dtype=spares_exp_dtype)
 
