@@ -18,11 +18,9 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 import argparse
 import sys
-import datetime
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
-import robostrategy.field as field
 import robostrategy.allocate
 import sdss_access.path
 
@@ -60,26 +58,42 @@ if __name__ == '__main__':
 
     target_file = sdss_path.full('rsTargets', plan=plan,
                                  observatory=observatory)
-    target_file = target_file.replace('rsTargets', 'final/rsTargetsFinal')
-    targets = fitsio.read(target_file)
+    target_file = target_file.replace('rsTargets', 'rsTargetCadences')
+    target_cartons = fitsio.read(target_file, ext='CARTONS')
 
     summary_dtype = [('fieldid', np.int32),
                      ('racen', np.float64),
                      ('deccen', np.float64),
                      ('cadence', np.unicode_, 30)]
 
-    cartons = np.unique(targets['carton'])
+    cartons = np.unique(target_cartons['carton'])
     for carton in cartons:
         summary_dtype.append((carton + '_nwithin', np.int32))
         summary_dtype.append((carton + '_ngot', np.int32))
         summary_dtype.append((carton + '_fgot', np.float32))
 
+    exp_summary_dtype = [('fieldid', np.int32),
+                         ('iexp', np.int32),
+                         ('racen', np.float64),
+                         ('deccen', np.float64),
+                         ('cadence', np.unicode_, 30)]
+
+    categories = ['science', 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee']
+    for category in categories:
+        exp_summary_dtype.append((category + '_ngot', np.int32))
+
+    cartons = np.unique(target_cartons['carton'])
+    for carton in cartons:
+        exp_summary_dtype.append((carton + '_ngot', np.int32))
+
     summary_dtype = np.dtype(summary_dtype)
+    exp_summary_dtype = np.dtype(exp_summary_dtype)
 
     summary = np.zeros(len(fieldids), dtype=summary_dtype)
+    exp_summary = None
 
     for i, fieldid in enumerate(fieldids):
-        print("fieldid {fid}: Reading file".format(fid=fieldid), flush=True)
+        print("fieldid {fid}: Processing field".format(fid=fieldid), flush=True)
 
         field_target_file = sdss_path.full('rsFieldTargets',
                                            plan=plan, observatory=observatory,
@@ -87,6 +101,7 @@ if __name__ == '__main__':
         field_target_file = field_target_file.replace('targets/rsFieldTargets',
                                                       'final/rsFieldAssignmentsFinal')
 
+        print(" ... reading file", flush=True)
         hdr = fitsio.read_header(field_target_file, ext=0)
         targets = fitsio.read(field_target_file, ext='TARGET')
         assignments = fitsio.read(field_target_file, ext='ASSIGN')
@@ -95,21 +110,44 @@ if __name__ == '__main__':
         summary['racen'][i] = np.float64(hdr['RACEN'])
         summary['deccen'][i] = np.float64(hdr['DECCEN'])
         summary['cadence'][i] = hdr['FCADENCE']
+        nexps = hdr['NEXP']
+        gotrobot = (assignments['robotID'].reshape(len(assignments), nexps) >= 0)
 
+        tmp_exp_summary = np.zeros(nexps, dtype=exp_summary_dtype)
+        tmp_exp_summary['fieldid'] = fieldid
+        tmp_exp_summary['iexp'] = np.arange(nexps, dtype=np.int32)
+        tmp_exp_summary['racen'] = np.float64(hdr['RACEN'])
+        tmp_exp_summary['deccen'] = np.float64(hdr['DECCEN'])
+        tmp_exp_summary['cadence'] = hdr['FCADENCE']
+
+        print(" ... processing cartons", flush=True)
         for carton in cartons:
-            iwithin = np.where((targets['carton'] == carton) &
-                               (targets['within'] > 0))[0]
-            igot = np.where((targets['carton'] == carton) &
-                            (assignments['satisfied'] > 0))[0]
-            if(len(iwithin) > 0):
-                fgot = np.float32(len(igot)) / np.float32(len(iwithin))
+            incarton = (targets['carton'] == carton)
+            within = (incarton & (targets['within'] > 0))
+            got = (incarton & (assignments['satisfied'] > 0))
+            if(within.sum() > 0):
+                fgot = np.float32(got.sum()) / np.float32(within.sum())
             else:
                 fgot = - 1.0
         
-            summary[carton + '_nwithin'][i] = len(iwithin)
-            summary[carton + '_ngot'][i] = len(igot)
+            summary[carton + '_nwithin'][i] = within.sum()
+            summary[carton + '_ngot'][i] = got.sum()
             summary[carton + '_fgot'][i] = fgot
 
-    fieldsummary_file = target_file.replace('final/rsTargetsFinal',
+            tmp_exp_summary[carton + '_ngot'] = gotrobot[incarton, :].sum(axis=0)
+
+        print(" ... processing categories", flush=True)
+        for category in categories:
+            incategory = (targets['category'] == category)
+            tmp_exp_summary[category + '_ngot'] = gotrobot[incategory, :].sum(axis=0)
+                                    
+        print("   ... adding to exp_summary", flush=True)
+        if(exp_summary is None):
+            exp_summary = tmp_exp_summary
+        else:
+            exp_summary = np.append(exp_summary, tmp_exp_summary)
+
+    fieldsummary_file = target_file.replace('rsTargetCadences',
                                             'final/rsFieldSummaryFinal')
-    fitsio.write(fieldsummary_file, summary, clobber=True)
+    fitsio.write(fieldsummary_file, summary, extname='SATISFIED', clobber=True)
+    fitsio.write(fieldsummary_file, exp_summary, extname='EXPOSURE', clobber=False)
