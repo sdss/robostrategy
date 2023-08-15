@@ -96,8 +96,8 @@ def assign_update(indx):
                       flush=True)
             iobs = np.where(status_field['status'] == 'done')[0]
             if(len(iobs) > 0):
-                print("fieldid {f}:   exposures done are {e}".format(f=fieldid,
-                                                                     e=iobs),
+                print("fieldid {f}:   designs marked done are {e}".format(f=fieldid,
+                                                                          e=iobs),
                       flush=True)
         else:
             print("fieldid {f}: No assignment status file exists ".format(f=fieldid), flush=True)
