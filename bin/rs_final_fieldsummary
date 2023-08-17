@@ -42,10 +42,14 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-i', '--incomplete', dest='incomplete',
+                        help='skip fields which do not exist', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    incomplete = args.incomplete
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
@@ -100,6 +104,10 @@ if __name__ == '__main__':
                                            fieldid=fieldid)
         field_target_file = field_target_file.replace('targets/rsFieldTargets',
                                                       'final/rsFieldAssignmentsFinal')
+
+        if((os.path.exists(field_target_file) is False) & incomplete):
+            print(" ... not done, skipping!", flush=True)
+            continue
 
         print(" ... reading file", flush=True)
         hdr = fitsio.read_header(field_target_file, ext=0)
