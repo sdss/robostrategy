@@ -370,14 +370,7 @@ if __name__ == '__main__':
     else:
         with multiprocessing.Pool(limit_pool) as pool:
             ikeep = list(ikeep)
-            ikeep_distributed = []
-            icurr = 0
-            while(len(ikeep) > 0):
-                ikeep_distributed.append(ikeep[icurr])
-                ikeep.remove(ikeep[icurr])
-                if(len(ikeep) > 0):
-                    icurr = (icurr + int(pool._processes)) % len(ikeep)
-            pool.map(assign_update, ikeep_distributed)
+            pool.map(assign_update, ikeep, 1)
 
     print('DONE: rs_assign_update')
     print(time.ctime(time.time()))
