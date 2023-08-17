@@ -2788,6 +2788,21 @@ class Field(object):
 
             fitsio.write(filename, robots, extname='ROBOTS', clobber=False)
 
+        r2t_dtype = [('robotID', np.int32),
+                     ('holeID', np.dtype("|U15")),
+                     ('rsid', np.int64)]
+        r2t = np.zeros(0, dtype=r2t_dtype)
+        for indx, robotID in enumerate(self.robotIDs):
+            valid = self.mastergrid.robotDict[robotID].validTargetIDs
+            if(len(valid) == 0):
+                continue
+            tmp_r2t = np.zeros(len(valid), dtype=r2t_dtype)
+            tmp_r2t['robotID'] = robotID
+            tmp_r2t['holeID'] = self.mastergrid.robotDict[robotID].holeID
+            tmp_r2t['rsid'] = valid
+            r2t = np.append(r2t, tmp_r2t)
+        fitsio.write(filename, r2t, extname='VALIDTARGETS', clobber=False)
+
         if(self.bright_neighbors):
             if(len(self.bright_stars) > 0):
                 write_bright_stars(filename=filename, bright_stars=self.bright_stars,
