@@ -23,9 +23,9 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         extra_dark = self.assign_dark_extra(make_report=verbose)
         extra_rv = self.assign_rv_extra(make_report=verbose)
         extra_partial = self.assign_partial(make_report=verbose)
-        extra_bhm1 = self.assign_bhm_partial()
+        extra_bhm1 = self.assign_bhm_partial(make_report=verbose)
         extra_bright = self.assign_bright_extra(make_report=verbose)
-        extra_bhm2 = self.assign_bhm_extra()
+        extra_bhm2 = self.assign_bhm_extra(make_report=verbose)
 
         self._set_satisfied()
         self._set_satisfied(science=True)
@@ -573,7 +573,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             iextra = iextra[kp]
             isort = np.argsort(self.targets['priority'][iextra])
             extra_rsids = self.targets['rsid'][iextra[isort]]
-            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra_maglcoud)
+            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra_magcloud)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra=True
 
