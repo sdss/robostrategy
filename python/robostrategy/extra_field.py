@@ -558,8 +558,10 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print(nsuccess)
 
         # repeat for magellanic cloud
-        iextra = np.where((self.targets['program'] == 'mwm_magcloud') &
-                            (self.assignments['satisfied'] > 0))[0]
+        iextra = np.where(((self.targets['program'] == 'mwm_magcloud') |
+                           (self.targets['program'] == 'mwm_magcloud_agb') |
+                           (self.targets['program'] == 'mwm_magcloud_rgb')) &
+                          (self.assignments['satisfied'] > 0))[0]
 
         if len(iextra > 0):
             ucad = np.unique(self.targets['cadence'][iextra])
