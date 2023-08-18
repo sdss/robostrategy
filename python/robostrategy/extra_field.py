@@ -229,7 +229,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
     def assign_rv_extra(self, make_report=False):
         '''
-        Code for assigning extra epochs to RV targets. The more the merrier for these stars!
+        Code for assigning extra epochs to RV targets.
 
         Parameters
         ----------
@@ -395,8 +395,6 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
            over N requested at the partial completion stage)
          * Previously "satisfied" objects in the OB carton.
 
-        Then assign first partial then extra EXPOSURES for BHM
-
         Parameters:
         ----------
         make_report: bool
@@ -442,9 +440,9 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
     def assign_bhm_partial(self,make_report=False):
         '''
-        Code for assigning partial and extra exposures to BHM targets. For partial
+        Code for assigning partial exposures to BHM targets. For partial
         completion, original cadence details are ignored and just to get the total
-        requested nxm request. Last, magcloud cartons can get extra exposures.
+        requested nxm request. 
 
         Parameters:
         ----------
@@ -501,7 +499,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
     def assign_bhm_extra(self,make_report=False):
         '''
-        Code for assigning extra exposures to BHM targets and magcloud
+        Code for assigning extra exposures to BHM targets and magcloud targets
 
         Parameters:
         ----------
