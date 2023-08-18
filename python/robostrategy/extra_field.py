@@ -510,9 +510,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         '''
 
         any_extra = False # initialize
-        max_extra = 8
-        #max_extra_bhm = X ; if this ends up at 8, then don't need to break it down into 2 options
-        max_extra_maggloud = 8
+        max_extra_bhm = 4
+        max_extra_magcloud = 8
 
         # Is this a dark field?
         is_dark_field = clist.cadence_consistency('_field_dark_single_1x1', self.field_cadence.name,
@@ -521,8 +520,6 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         # Find all eligible targets for extra completion: Those with extra assignments
         # from assign_bhm_partial + previouly satisfied
-        new_got = iextra[np.where(self.assignments['extra'][iextra] > 0)]
-
         iextra1 = np.where((self.targets['program'] == 'bhm_spiders') &
                             (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
         iextra2 = np.where((self.targets['program'] == 'bhm_csc') &
@@ -531,11 +528,9 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                             (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
         iextra4 = np.where((self.targets['carton'] == 'bhm_gua_bright') &
                             (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
-        iextra5 = np.where((self.targets['program'] == 'mwm_magcloud') &
-                            (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
 
         #some "new_got" may now also show up as 'satisfied'
-        iextra = np.unique(np.append(iextra1, np.append(iextra2, np.append(iextra3, np.append(iextra4,np.append(iextra5,new_got))))))
+        iextra = np.unique(np.append(iextra1, np.append(iextra2, np.append(iextra3,iextra4))))
 
         # In this situation, only use the cadence groupings to remove dark cadence targets
         # in bright fields
@@ -549,12 +544,41 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             iextra = iextra[kp]
             isort = np.argsort(self.targets['priority'][iextra])
             extra_rsids = self.targets['rsid'][iextra[isort]]
-            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra)
+            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra_bhm)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra=True
 
             if make_report:
                 print(f'\nExtra Exposures for BHM:')
+                print('--------------------------------')
+                print("Number attempted: {}".format(len(iextra)))
+                print('Number successful: ')
+                uextra,ctextra = np.unique(nsuccess, return_counts=True)
+                for iex,ict in zip(uextra,ctextra):
+                    print(f'    {ict} stars - {iex} extra exposures')
+                print(extra_rsids)
+                print(nsuccess)
+
+        # repeat for magellanic cloud
+        iextra = np.where((self.targets['program'] == 'mwm_magcloud') &
+                            (self.assignments['satisfied'] > 0))[0]
+
+        if len(iextra > 0):
+            ucad = np.unique(self.targets['cadence'][iextra])
+            kp = np.full(len(iextra), True)
+            for icad in ucad:
+                if 'dark' in icad and not is_dark_field: #skip dark targets if not in dark field
+                    subset = np.where(self.targets['cadence'][iextra] == icad)[0]
+                    kp[subset] = False
+            iextra = iextra[kp]
+            isort = np.argsort(self.targets['priority'][iextra])
+            extra_rsids = self.targets['rsid'][iextra[isort]]
+            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra_maglcoud)
+            if len(nsuccess[nsuccess > 0]) > 0:
+                any_extra=True
+
+            if make_report:
+                print(f'\nExtra Exposures for Mag Cloud:')
                 print('--------------------------------')
                 print("Number attempted: {}".format(len(iextra)))
                 print('Number successful: ')
