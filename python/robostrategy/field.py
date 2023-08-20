@@ -6118,7 +6118,7 @@ class Field(object):
                 infield_and_done = ((rsids >= 0) & (observed_status['status'][iobs] > 0))
 
                 if(infield_and_done.max() > 0):
-                    if(self.design_status['status'] != 'done'):
+                    if(self.design_status['status'][iexp] != 'done'):
                         raise ValueError("Assignments marked done for exposure that is not done!")
 
                 self.assign_done_exposure(iexp=iexp, rsids=rsids[infield_and_done],
