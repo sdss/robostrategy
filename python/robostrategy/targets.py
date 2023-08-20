@@ -279,7 +279,7 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
                np.zeros(0, dtype=np.int64))
     
     # Construct query
-    sql_template = """SELECT lowest_catalogid, highest_catalogid FROM sandbox.catalog_ver25_to_ver31_full_unique JOIN (VALUES {v}) AS ver31(catalogid) ON sandbox.catalog_ver25_to_ver31_full_unique.highest_catalogid = ver31.catalogid;
+    sql_template = """SELECT catalogid1, catalogid2 FROM catalogdb.catalog_ver25_to_ver31_full_unique JOIN (VALUES {v}) AS ver31(catalogid) ON catalogdb.catalog_ver25_to_ver31_full_unique.catalogid2 = ver31.catalogid;
 """
     values = ""
     ucatalogids_v1 = np.unique(catalogids_v1)
@@ -361,7 +361,6 @@ JOIN (VALUES {v}) AS input(catalogid) ON targetdb.target.catalogid = input.catal
     cursor = database.execute_sql(sql_command)
     for row in cursor.fetchall():
         catalogid = row[0]
-        print(catalogid)
         istarget[indxs[catalogid]] = True
 
     return(istarget)
