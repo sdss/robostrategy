@@ -127,7 +127,7 @@ if __name__ == '__main__':
         for i in ikeep:
             get_status(i)
     else:
-        with multiprocessing.Pool(4) as pool:
+        with multiprocessing.Pool(8) as pool:
             pool.map(get_status, ikeep, 1)
 
     print('DONE: rs_get_status', flush=True)
