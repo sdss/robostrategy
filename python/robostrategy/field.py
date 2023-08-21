@@ -5677,6 +5677,9 @@ class Field(object):
                 self._assign_permanent_calibs(shortfalls=shortfalls,
                                               permanent_exposure_calib=permanent_exposure_calib) 
 
+                # Make sure any temporary calibrations are unassigned
+                self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
+
                 # Reassign the science
                 self.assign_cadences(rsids=self.targets['rsid'][ipriority])
 
@@ -5763,8 +5766,7 @@ class Field(object):
 
     def _assign_permanent_calibs(self, shortfalls=None,
                                  permanent_exposure_calib=None,
-                                 report=True,
-                                 all_exposures=False):
+                                 report=True):
         """Assign permanent calibrations for category and exposure, converting science to calib"""
         if(self.verbose):
             print("fieldid {fid}: Assigning calibs permanently in shortfall exposures, converting science targets".format(fid=self.fieldid), flush=True)
@@ -5772,22 +5774,25 @@ class Field(object):
         # Go through assignment again; notice that we have 
         # left the original assignments in place.
         for c in self.calibration_order:
-            print("   ... {c}".format(c=c), flush=True)
+            print("fieldid {fid}:  ... {c}".format(fid=self.fieldid, c=c), flush=True)
 
             iexps = np.array(list(shortfalls[c]), dtype=int)
-            if(len(iexps) == 0):
+            exps_temp = np.ones(self.field_cadence.nexp_total, dtype=bool)
+            exps_temp[iexps] = False
+            iexps_temp = np.where(exps_temp)[0]
+
+            if(len(iexps_temp) > 0):
                 # If this is not a category with a short fall, assign temporary
                 # to stake claims; otherwise move on to permanent assignment in
                 # affected exposures
                 self._assign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib,
-                                              category=c)
+                                              category=c, iexps=iexps_temp)
+
+            if(len(iexps) == 0):
                 continue
 
-            if(all_exposures):
-                iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
-
             if(self.verbose):
-                print("fieldid {fid}:   ... assigning {c} permanently in exposures {iexps}".format(c=c, iexps=iexps, fid=self.fieldid))
+                print("fieldid {fid}:  ... assigning {c} permanently in exposures {iexps}".format(c=c, iexps=iexps, fid=self.fieldid))
             icalib = self._select_calibs(self.targets['category'] == c)
             isort = np.argsort(self.targets['priority'][icalib],
                                kind='stable')
@@ -5888,7 +5893,7 @@ class Field(object):
             if((category is not None) & (c != category)):
                 continue
             if(self.verbose):
-                print("fieldid {fid}:   ... {c}".format(fid=self.fieldid, c=c), flush=True)
+                print("fieldid {fid}:  ... assigning temporarily {c}".format(fid=self.fieldid, c=c), flush=True)
 
             if(iexps is None):
                 iexps_assign = np.where(permanent_exposure_calib[c] == False)[0]
