@@ -5673,7 +5673,9 @@ class Field(object):
                 # Make sure any temporary calibrations are unassigned
                 self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
 
-                # Then assign the shortfall cases permanently
+                # Then assign the shortfall cases permanently (this also assigns
+                # temporary calibs along the way to make sure everything stays as
+                # before).
                 self._assign_permanent_calibs(shortfalls=shortfalls,
                                               permanent_exposure_calib=permanent_exposure_calib) 
 
