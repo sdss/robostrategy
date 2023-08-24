@@ -30,6 +30,7 @@ clobber = False
 offset_min_skybrightness = None
 plan = None
 fromplan = None
+fieldid_shift = 0
 
 
 def get_status(indx):
@@ -49,7 +50,8 @@ def get_status(indx):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_file), flush=True)
         return
 
-    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan, fieldid=fieldid)
+    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
+                                                                     fieldid=fieldid - fieldid_shift)
 
     if(status is not None):
         print("Write status information", flush=True)
@@ -83,6 +85,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-d', '--fieldid-shift', dest='fieldid_shift',
+                        help='shift in field id to apply', required=False,
+                        type=np.int32, default=0)
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
@@ -95,6 +100,7 @@ if __name__ == '__main__':
     end = args.end
     clobber = args.clobber
     nomultiprocess = args.nomultiprocess
+    fieldid_shift = args.fieldid_shift
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
