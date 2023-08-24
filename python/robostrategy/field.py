@@ -5722,6 +5722,11 @@ class Field(object):
             # UNLESS this is the last priority.
             if(priority != priorities[-1]):
                 self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
+
+            ii = np.where((self.targets['category'] == 'sky_apogee') &
+                          (self.assignments['robotID'][:, 0] >= 0))[0]    
+            print(len(ii))
+            print(self.assignments['expflag'][ii, 0])
                             
         if(self.verbose):
             print("fieldid {fid}: Decolliding unassigned".format(fid=self.fieldid), flush=True)
@@ -5778,6 +5783,9 @@ class Field(object):
         for c in self.calibration_order:
             print("fieldid {fid}:  ... {c}".format(fid=self.fieldid, c=c), flush=True)
 
+            # If it is a shortfall skip the temporary assignment
+            # (note that this DOES do the temporary assignment
+            # for permanent cases)
             iexps = np.array(list(shortfalls[c]), dtype=int)
             exps_temp = np.ones(self.field_cadence.nexp_total, dtype=bool)
             exps_temp[iexps] = False
@@ -5826,7 +5834,7 @@ class Field(object):
 
             self._set_satisfied(rsids=self.targets['rsid'][icalib])
             self._set_has_spare_calib()
-            
+
             # Then set any others
             for i in icalib:
                 notgot = self.assignments['robotID'][i, iexps] < 0
@@ -5839,7 +5847,6 @@ class Field(object):
 
             if(report):
                 for iexp in iexps:
-                    # TODO check zones
                     if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
                         print("fieldid {fid}:   still short in {c}, exposure {iexp}; {nc}/{nac}".format(fid=self.fieldid, c=c, iexp=iexp, nc=self.calibrations[c][iexp], nac=self.achievable_calibrations[c][iexp]), flush=True)
 
@@ -5912,7 +5919,7 @@ class Field(object):
                 inotdone = np.where(self.assignments['robotID'][i, iexps_assign] == -1)[0]
                 if(len(inotdone) > 0):
                     self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps_assign[inotdone],
-                                          reset_satisfied=False, set_expflag=False)
+                                          reset_satisfied=False, set_expflag=True)
 
         icalib = self._select_calibs(self.targets['category'] != 'science')
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
