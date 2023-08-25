@@ -4839,6 +4839,10 @@ class Field(object):
 
         inotsat = np.where(self._unsatisfied(indxs) == True)[0]
         succeed = np.zeros(len(rsids), dtype=bool)
+
+        if(len(iexpsall) == 0):
+            return(succeed)
+
         for cinotsat in inotsat:
             rsid = rsids[cinotsat]
             indx = self.rsid2indx[rsid]
@@ -5723,11 +5727,6 @@ class Field(object):
             if(priority != priorities[-1]):
                 self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
 
-            ii = np.where((self.targets['category'] == 'sky_apogee') &
-                          (self.assignments['robotID'][:, 0] >= 0))[0]    
-            print(len(ii))
-            print(self.assignments['expflag'][ii, 0])
-                            
         if(self.verbose):
             print("fieldid {fid}: Decolliding unassigned".format(fid=self.fieldid), flush=True)
         self.decollide_unassigned()
@@ -6153,9 +6152,10 @@ class Field(object):
 
         # For SRD targets that are NOT satisfied, that DID get one good observation,
         # check if they are satisfiable AT ALL any more; if not, assign the missing MJDs
-        # to do the best we can
+        # to do the best we can; but only if they are in the cadence
         isci = np.where((self.assignments['satisfied'] == 0) & (gotone) &
-                        (self.targets['stage'] == 'srd'))[0]
+                        (self.targets['stage'] == 'srd') &
+                        (self.assignments['incadence'] > 0))[0]
         for indx, target in enumerate(self.targets[isci]):
             success = self.assign_cadences(rsids=np.array([target['rsid']]),
                                            test_only=True)
