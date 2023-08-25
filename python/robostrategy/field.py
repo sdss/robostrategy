@@ -1740,8 +1740,7 @@ class Field(object):
         design_status = np.zeros(self.field_cadence.nexp_total, dtype=design_status_dtype)
         design_status['fieldid'] = self.fieldid
         for field_exposure in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
-            icurr = np.where((status_field['fieldid'] == self.fieldid) &
-                             (status_field['field_exposure'] == field_exposure) &
+            icurr = np.where((status_field['field_exposure'] == field_exposure) &
                              (status_field['status'] == 'done'))[0]
             if(len(icurr) > 0):
                 designid = status_field['design_id'][icurr].min()
@@ -6132,7 +6131,9 @@ class Field(object):
 
                 if(infield_and_done.max() > 0):
                     if(self.design_status['status'][iexp] != 'done'):
-                        raise ValueError("Assignments marked done for exposure that is not done!")
+                        raise ValueError("""fieldid {fid}: Assignments marked done for exposure {e}, which is not done!
+   {f}
+""".format(fid=self.fieldid, f=self.design_status, e=iexp))
 
                 self.assign_done_exposure(iexp=iexp, rsids=rsids[infield_and_done],
                                           holeIDs=observed_status['holeid'][iobs[infield_and_done]],
