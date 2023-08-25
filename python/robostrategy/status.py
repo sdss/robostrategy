@@ -100,8 +100,6 @@ def get_status_by_fieldid(plan=None, fieldid=None):
     for f in field_info:
         field_cadence_dict[f['field_pk']] = f['cadence']
 
-    # First look at all targets in this carton/version
-
     if(False):
         q_status = (targetdb.AssignmentStatus.select(targetdb.AssignmentStatus.pk.alias('assignment_status_pk'),
                                                      targetdb.AssignmentStatus.status,
@@ -164,7 +162,6 @@ def get_status_by_fieldid(plan=None, fieldid=None):
                     .where((targetdb.Field.field_id == fieldid) &
                            (targetdb.Version.plan == plan)))
     else:
-        # First look at all targets in this carton/version
         q_status = (targetdb.AssignmentStatus.select(targetdb.AssignmentStatus.pk.alias('assignment_status_pk'),
                                                      targetdb.AssignmentStatus.status,
                                                      targetdb.AssignmentStatus.mjd,

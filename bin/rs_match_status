@@ -166,7 +166,7 @@ if __name__ == '__main__':
         for i in ikeep:
             match_to_old(i)
     else:
-        with multiprocessing.Pool(4) as pool:
+        with multiprocessing.Pool(8) as pool:
             pool.map(match_to_old, ikeep)
 
     print('DONE: rs_match_status')
