@@ -2,7 +2,6 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Date: Sept 26, 2018
 # @Filename: rs_get_status
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
@@ -54,6 +53,19 @@ def get_status(indx):
                                                                      fieldid=fieldid - fieldid_shift)
 
     if(status is not None):
+        print("Verifying consistency of status and status_field", flush=True)
+        idone = np.where(status['status'] > 0)[0]
+        field_exposures = np.unique(status['field_exposure'][idone])
+        for field_exposure in field_exposures:
+            istatus_field = np.where(status_field['field_exposure'] == field_exposure)[0]
+            if(len(istatus_field) == 0):
+                raise ValueError("field_exposure appears not at all in status_field")
+            if(len(istatus_field) > 1):
+                raise ValueError("field_exposure appears twice in status_field")
+            istatus_field = istatus_field[0] 
+            if(status_field['status'][istatus_field] != 'done'):
+                raise ValueError("assignments are marked done in a non-done exposure")
+        
         print("Write status information", flush=True)
         hdr = robostrategy.header.rsheader()
         fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
@@ -121,16 +133,8 @@ if __name__ == '__main__':
         for i in ikeep:
             get_status(i)
     else:
-        with multiprocessing.Pool(4) as pool:
-            ikeep = list(ikeep)
-            ikeep_distributed = []
-            icurr = 0
-            while(len(ikeep) > 0):
-                ikeep_distributed.append(ikeep[icurr])
-                ikeep.remove(ikeep[icurr])
-                if(len(ikeep) > 0):
-                    icurr = (icurr + int(pool._processes)) % len(ikeep)
-            pool.map(get_status, ikeep_distributed)
+        with multiprocessing.Pool(8) as pool:
+            pool.map(get_status, ikeep, 1)
 
     print('DONE: rs_get_status', flush=True)
     print(time.ctime(time.time()), flush=True)
