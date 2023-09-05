@@ -41,6 +41,8 @@ mags_allowed_brighttime = []
 mags_allowed_darktime = []
 dmodes = None
 test = False
+catchup = False
+catchup_version = None
 offset_min_skybrightness = None
 noassignmentstatus = False
 nooffset = False
@@ -76,6 +78,14 @@ def assign_update(indx):
                                        fieldid=fieldid)
     field_status_file = field_status_file.replace('targets/rsFieldTargets',
                                                   'final/rsFieldStatusMatch')
+
+    if(catchup):
+        field_assignments_file = field_assignments_file.replace('final', 'catchup')
+        field_assignments_file = field_assignments_file.replace('Final',
+                                                                'Catchup{v}'.format(v=catchup_version.upper()))
+        field_status_file = field_status_file.replace('final', 'catchup')
+        field_status_file = field_status_file.replace('Match',
+                                                      'MatchCatchup{v}'.format(v=catchup_version.upper()))
 
     if(test):
         field_assignments_file = field_assignments_file.replace('Final', 'Test')
@@ -276,6 +286,9 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--limit-pool', dest='limit_pool',
                         help='upper limit on thread pool size', required=False,
                         default=None, type=np.int32)
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='catchup version', required=False,
+                        default=None, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -290,6 +303,10 @@ if __name__ == '__main__':
     nooffset = args.nooffset
     reset_bright = args.reset_bright
     limit_pool = args.limit_pool
+    catchup_version = args.catchup_version
+
+    if(catchup_version is not None):
+        catchup = True
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -328,6 +345,10 @@ if __name__ == '__main__':
                                    observatory=observatory)
     allocate_file = allocate_file.replace('rsAllocation',
                                           'final/rsAllocationFinal')
+    if(catchup):
+        allocate_file = allocate_file.replace('final', 'catchup')
+        allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
+
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
@@ -352,6 +373,11 @@ if __name__ == '__main__':
                                                     fieldid=fieldid)
             field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
                                                                     'final/rsFieldAssignmentsFinal')
+
+            if(catchup):
+                field_assignments_file = field_assignments_file.replace('final', 'catchup')
+                field_assignments_file = field_assignments_file.replace('Final',
+                                                                        'Catchup{v}'.format(v=catchup_version.upper()))
 
             if(os.path.isfile(field_assignments_file)):
                 print("fieldid {f}: Exists already in {file}, going to skip".format(f=fieldid, file=field_assignments_file), flush=True)
