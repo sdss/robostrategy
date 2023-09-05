@@ -29,6 +29,8 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 clobber = False
 offset_min_skybrightness = None
 plan = None
+catchup = False
+catchup_version = None
 
 
 def match_to_old(indx):
@@ -46,6 +48,14 @@ def match_to_old(indx):
                                                   'final/rsFieldStatus')
     field_status_v1_file = field_status_file.replace('rsFieldStatus',
                                                      'rsFieldStatusMatch')
+
+    if(catchup):
+        field_status_file = field_status_file.replace('final', 'catchup')
+        field_status_file = field_status_file.replace('Status',
+                                                      'StatusCatchup{v}'.format(v=catchup_version.upper()))
+        field_status_v1_file = field_status_v1_file.replace('final', 'catchup')
+        field_status_v1_file = field_status_v1_file.replace('Match',
+                                                            'MatchCatchup{v}'.format(v=catchup_version.upper()))
 
     field_targets_file = sdss_path.full('rsFieldTargets',
                                         plan=plan, observatory=observatory,
@@ -138,6 +148,9 @@ if __name__ == '__main__':
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='catchup version', required=False,
+                        default=None, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -146,11 +159,19 @@ if __name__ == '__main__':
     end = args.end
     clobber = args.clobber
     nomultiprocess = args.nomultiprocess
+    catchup_version = args.catchup_version
+
+    if(catchup_version is not None):
+        catchup = True
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
     allocate_file = allocate_file.replace('rsAllocation',
                                           'final/rsAllocationFinal')
+    if(catchup):
+        allocate_file = allocate_file.replace('final', 'catchup')
+        allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
+
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
