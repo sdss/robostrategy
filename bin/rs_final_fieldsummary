@@ -2,7 +2,6 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Date: Sept 26, 2018
 # @Filename: rs_final_fieldsummary
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
@@ -84,10 +83,12 @@ if __name__ == '__main__':
 
     categories = ['science', 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee']
     for category in categories:
+        exp_summary_dtype.append((category + '_nassigned', np.int32))
         exp_summary_dtype.append((category + '_ngot', np.int32))
 
     cartons = np.unique(target_cartons['carton'])
     for carton in cartons:
+        exp_summary_dtype.append((carton + '_nassigned', np.int32))
         exp_summary_dtype.append((carton + '_ngot', np.int32))
 
     summary_dtype = np.dtype(summary_dtype)
@@ -119,7 +120,8 @@ if __name__ == '__main__':
         summary['deccen'][i] = np.float64(hdr['DECCEN'])
         summary['cadence'][i] = hdr['FCADENCE']
         nexps = hdr['NEXP']
-        gotrobot = (assignments['robotID'].reshape(len(assignments), nexps) >= 0)
+        assignedrobot = (assignments['robotID'].reshape(len(assignments), nexps) >= 0)
+        equivrobot = (assignments['equivRobotID'].reshape(len(assignments), nexps) >= 0)
 
         tmp_exp_summary = np.zeros(nexps, dtype=exp_summary_dtype)
         tmp_exp_summary['fieldid'] = fieldid
@@ -142,12 +144,29 @@ if __name__ == '__main__':
             summary[carton + '_ngot'][i] = got.sum()
             summary[carton + '_fgot'][i] = fgot
 
-            tmp_exp_summary[carton + '_ngot'] = gotrobot[incarton, :].sum(axis=0)
+            tmp_exp_summary[carton + '_nassigned'] = assignedrobot[incarton, :].sum(axis=0)
+            tmp_exp_summary[carton + '_ngot'] = equivrobot[incarton, :].sum(axis=0)
 
         print(" ... processing categories", flush=True)
         for category in categories:
             incategory = (targets['category'] == category)
-            tmp_exp_summary[category + '_ngot'] = gotrobot[incategory, :].sum(axis=0)
+            tmp_exp_summary[category + '_nassigned'] = assignedrobot[incategory, :].sum(axis=0)
+            tmp_exp_summary[category + '_ngot'] = equivrobot[incategory, :].sum(axis=0)
+            for iexp in np.arange(nexps, dtype=np.int32):
+                iequiv = np.where((incategory > 0) &
+                                  (equivrobot[:, iexp] > 0))[0]
+                nunique = len(np.unique(targets['catalogid'][iequiv]))
+                idisagree = np.where((incategory > 0) &
+                                     (equivrobot[:, iexp] > 0) &
+                                     (assignedrobot[:, iexp] == 0))[0]
+                if(category == 'standard_apogee'):
+                    print("{c} : {na} vs {ng} vs {nu}".format(c=category,
+                                                              na=tmp_exp_summary[category + '_nassigned'][iexp],
+                                                              ng=tmp_exp_summary[category + '_ngot'][iexp],
+                                                              nu=nunique))
+                    print(targets['carton'][idisagree])
+                    print(targets['category'][idisagree])
+                    print(assignments['expflag'][idisagree, iexp])
                                     
         print("   ... adding to exp_summary", flush=True)
         if(exp_summary is None):
