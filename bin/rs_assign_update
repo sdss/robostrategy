@@ -89,6 +89,7 @@ def assign_update(indx):
 
     if(test):
         field_assignments_file = field_assignments_file.replace('Final', 'Test')
+        field_assignments_file = field_assignments_file.replace('Catchup', 'Test')
 
     if((clobber is False) & os.path.isfile(field_assignments_file)):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_assignments_file), flush=True)
