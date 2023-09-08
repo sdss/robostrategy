@@ -63,6 +63,9 @@ if __name__ == '__main__':
                         help='set to read final results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='update to these catchup versions (comma separated list)',
+                        default=None, required=False, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -72,6 +75,13 @@ if __name__ == '__main__':
     complete = args.complete
     reassign = args.reassign
     final = args.final
+    catchup_version = args.catchup_version
+    if(catchup_version is not None):
+        catchup = True
+        catchup_versions = catchup_version.split(',')
+    else:
+        catchup = False
+        catchup_versions = []
 
     if(observatory == 'both'):
         observatories = ['apo', 'lco']
@@ -93,7 +103,8 @@ if __name__ == '__main__':
         base = 'rsSparesReassign'
     if(final):
         base = 'final/rsSparesFinal'
-
+    if(catchup):
+        base = 'catchup/rsSparesCatchup{v}'.format(v=catchup_versions[-1].upper())
 
     spares = None
     fields = None

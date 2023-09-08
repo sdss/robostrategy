@@ -44,6 +44,10 @@ def spares_file_name(fieldid=None):
         base = 'rsFieldSparesFinal'
     if(reassign):
         base = 'rsFieldSparesReassign'
+    if(catchup):
+        if(fieldid in replacements):
+            tdir = 'catchup'
+            base = 'rsFieldSparesCatchup{v}'.format(v=replacements[fieldid])
     spares_file = '{tdir}/{base}-{plan}-{obs}-{fieldid}.fits'.format(plan=plan, obs=observatory, fieldid=fieldid, base=base, tdir=tdir)
     return(spares_file)
 
@@ -91,6 +95,10 @@ def count_spares(indx):
     if(reassign):
         field_target_file = field_target_file.replace('rsFieldAssignments',
                                                       'rsFieldReassignments')
+    if(catchup):
+        if(fieldid in replacements):
+            field_target_file = field_target_file.replace('final/rsFieldAssignmentsFinal',
+                                                          'catchup/rsFieldAssignmentsCatchup{v}'.format(v=replacements[fieldid].upper()))
 
     f = field.Field(filename=field_target_file, verbose=True, allgrids=False)
 
@@ -182,6 +190,9 @@ if __name__ == '__main__':
                         help='set to read final results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='update to these catchup versions (comma separated list)',
+                        default=None, required=False, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -194,6 +205,13 @@ if __name__ == '__main__':
     complete = args.complete
     final = args.final
     noclobber = args.noclobber
+    catchup_version = args.catchup_version
+    if(catchup_version is not None):
+        catchup = True
+        catchup_versions = catchup_version.split(',')
+    else:
+        catchup = False
+        catchup_versions = []
 
     if(int(opentargets) + int(filler) + int(complete) + int(reassign) + int(final) > 1):
         print("Only one of -O, -R, -F, -K, -X can be set!")
@@ -213,6 +231,15 @@ if __name__ == '__main__':
         allocate_file = allocate_file.replace('rsAllocation', 'final/rsAllocationFinal')
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
+
+    replacements = dict()
+    for catchup_version in catchup_versions:
+        allocate_file_catchup = allocate_file.replace('final/rsAllocationFinal',
+                                                      'catchup/rsAllocationCatchup{v}'.format(v=catchup_version.upper()))
+        allocate_catchup = robostrategy.allocate.AllocateLST(filename=allocate_file_catchup,
+                                                             observatory=observatory)
+        for fieldid in np.unique(allocate_catchup.fields['fieldid']):
+            replacements[fieldid] = catchup_version
 
     fieldids = np.unique(allocate.field_array['fieldid'])
 
@@ -294,6 +321,8 @@ if __name__ == '__main__':
         base = 'rsSparesReassign'
     if(final):
         base = 'final/rsSparesFinal'
+    if(catchup):
+        base = 'catchup/rsSparesCatchup{v}'.format(v=catchup_versions[-1].upper())
     outfile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     hdr = robostrategy.header.rsheader()
     fitsio.write(outfile, spares, header=hdr, clobber=True)
@@ -309,6 +338,8 @@ if __name__ == '__main__':
         base = 'rsSparesExpReassign'
     if(final):
         base = 'final/rsSparesExpFinal'
+    if(catchup):
+        base = 'catchup/rsSparesExpCatchup{v}'.format(v=catchup_versions[-1].upper())
     outfile = '{base}-{p}-{o}.fits'.format(o=observatory, p=plan, base=base)
     hdr = robostrategy.header.rsheader()
     fitsio.write(outfile, spares_exp, header=hdr, clobber=True)
