@@ -6100,7 +6100,6 @@ class Field(object):
             c2t_to_rsid[t['carton_to_target_pk']] = t['rsid']
 
         rsid_obs_to_istatus = dict()
-        gotone = np.zeros(len(self.targets), dtype=bool)
 
         # Find observed cases in each exposure. Track down rsid for each observation.
         # If there is an rsid appropriate, and the observed status is done, then
@@ -6116,16 +6115,21 @@ class Field(object):
                     print("fieldid {fid}: Accounting for exposure={iexp} completion".format(fid=self.fieldid, iexp=iexp), flush=True)
                 rsids = np.zeros(len(iobs), dtype=np.int64) - 1
                 for indx, cstatus in enumerate(observed_status[iobs]):
+                    tmp_rsids = self.equiv_target(cstatus)
                     if(cstatus['carton_to_target_pk'] in c2t_to_rsid):
+                        # If this carton_to_target is explicitly in status table,
+                        # assign that rsid
                         rsids[indx] = c2t_to_rsid[cstatus['carton_to_target_pk']]
                     else:
-                        tmp_rsids = self.equiv_target(cstatus)
+                        # Else take an equivalent based on catalogid/fiberType
                         if(len(tmp_rsids) > 0):
                             rsids[indx] = tmp_rsids[0]
-                    if(rsids[indx] >= 0):
-                        rsid_obs_to_istatus[iexp, rsids[indx]] = iobs[indx]
-                        if(cstatus['status'] > 0):
-                            gotone[self.rsid2indx[rsids[indx]]] = True
+                    # Associate the status with ANY equivalent target for step below
+                    # "completing" cadences with bad observations; this relies on
+                    # the observed_status only existing for one equivalent rsid
+                    # per exposure, which really ought to be true
+                    for tmp_rsid in tmp_rsids:
+                        rsid_obs_to_istatus[iexp, tmp_rsid] = iobs[indx]
 
                 infield_and_done = ((rsids >= 0) & (observed_status['status'][iobs] > 0))
 
@@ -6154,6 +6158,7 @@ class Field(object):
         # For SRD targets that are NOT satisfied, that DID get one good observation,
         # check if they are satisfiable AT ALL any more; if not, assign the missing MJDs
         # to do the best we can; but only if they are in the cadence
+        gotone = ((self.assignments['equivRobotID'] >= 0).sum(axis=1) > 0)
         isci = np.where((self.assignments['satisfied'] == 0) & (gotone) &
                         (self.targets['stage'] == 'srd') &
                         (self.assignments['incadence'] > 0))[0]
@@ -6163,6 +6168,10 @@ class Field(object):
             if(success == False) :
                 for iexp in iexps:
                     if((iexp, target['rsid']) in rsid_obs_to_istatus):
+                        # Bail if this assignment was equivalently done already
+                        # earlier in this loop
+                        if(self.assignments['equivRobotID'][indx, iexp] >= 0):
+                            continue
                         istatus = rsid_obs_to_istatus[iexp, target['rsid']]
                         if(observed_status['status'][istatus] == 0):
                             self.assign_done_exposure(iexp=iexp, rsids=np.array([target['rsid']]),
