@@ -54,6 +54,9 @@ if __name__ == '__main__':
                         help='set to read final target results',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='update to these catchup versions (comma separated list)',
+                        default=None, required=False, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -63,6 +66,13 @@ if __name__ == '__main__':
     complete = args.complete
     reassign = args.reassign
     final = args.final
+    catchup_version = args.catchup_version
+    if(catchup_version is not None):
+        catchup = True
+        catchup_versions = catchup_version.split(',')
+    else:
+        catchup = False
+        catchup_versions = []
 
     if(int(final) + int(opentargets) + int(filler) + int(complete) + int(reassign) > 1):
         print("Only one of -O, -R, -F, -K, -X can be set!")
@@ -83,6 +93,15 @@ if __name__ == '__main__':
                                               'final/rsAllocationFinal')
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
+
+    replacements = dict()
+    for catchup_version in catchup_versions:
+        allocate_file_catchup = allocate_file.replace('final/rsAllocationFinal',
+                                                      'catchup/rsAllocationCatchup{v}'.format(v=catchup_version.upper()))
+        allocate_catchup = robostrategy.allocate.AllocateLST(filename=allocate_file_catchup,
+                                                             observatory=observatory)
+        for fieldid in np.unique(allocate_catchup.fields['fieldid']):
+            replacements[fieldid] = catchup_version
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                    observatory=observatory)
@@ -161,6 +180,11 @@ if __name__ == '__main__':
         if(final):
             field_assigned_file = field_assigned_file.replace('targets/rsFieldAssignments',
                                                               'final/rsFieldAssignmentsFinal')
+
+        if(fieldid in replacements):
+            field_assigned_file = field_assigned_file.replace('final/rsFieldAssignmentsFinal',
+                                                              'catchup/rsFieldAssignmentsCatchup{v}'.format(v=replacements[fieldid].upper()))
+
         try:
             header = fitsio.read_header(field_assigned_file, ext=0)
             targets = fitsio.read(field_assigned_file, ext='TARGET')
@@ -254,6 +278,10 @@ if __name__ == '__main__':
     if(final):
         satisfied_file = satisfied_file.replace('rsSatisfied',
                                                 'final/rsSatisfiedFinal')
+
+    if(catchup):
+        satisfied_file = satisfied_file.replace('final/rsSatisfiedFinal',
+                                                'catchup/rsSatisfiedCatchup{v}'.format(v=catchup_versions[-1].upper()))
 
     hdr = robostrategy.header.rsheader()
     fitsio.write(satisfied_file, satisfied, header=hdr,
