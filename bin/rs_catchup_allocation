@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_final_allocation
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import unicode_literals
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import numpy as np
+import astropy.io.ascii
+import astropy.io.fits
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Create rsAllocationCatchup file')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='name of observatory', required=False,
+                        choices=['lco', 'apo', 'both'], default='both')
+    parser.add_argument('-v', '--version', dest='catchup_version',
+                        type=str, help='catchup version', required=True)
+    parser.add_argument('-d', '--diff-fieldid', dest='diff_fieldid',
+                        type=int, help='field ID difference in reading catchup list',
+                        default=0, required=False)
+
+    args = parser.parse_args()
+    plan = args.plan
+    diff_fieldid = args.diff_fieldid
+    catchup_version = args.catchup_version
+    observatory = args.observatory
+
+    if(observatory == 'both'):
+        observatories = ['apo', 'lco']
+    else:
+        observatories = [observatory]
+
+    for observatory in observatories:
+        catchup_file = os.path.join(os.getenv('RSCONFIG_DIR'),
+                                    'etc', 'catchup-{plan}-{obs}-{v}.txt')
+        catchup_file = catchup_file.format(plan=plan, obs=observatory, v=catchup_version)
+        catchup = astropy.io.ascii.read(catchup_file)
+
+        allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                       observatory=observatory)
+        allocate_final_file = allocate_file.replace('rsAllocation',
+                                                    'final/rsAllocationFinal')
+        allocate_catchup_file = allocate_file.replace('rsAllocation',
+                                                      'catchup/rsAllocationCatchup{v}'.format(v=catchup_version.upper()))
+
+        allocate_hdus = astropy.io.fits.open(allocate_final_file)
+        final_fields_array = allocate_hdus[1].data
+        final_fields = allocate_hdus[3].data
+
+        keep = np.zeros(len(final_fields_array), dtype=bool)
+        for indx, fieldid in enumerate(final_fields_array['fieldid']):
+            keep[indx] = fieldid in (catchup['field_id'] + diff_fieldid)
+        catchup_fields_array = final_fields_array[keep]
+
+        keep = np.zeros(len(final_fields), dtype=bool)
+        for indx, fieldid in enumerate(final_fields['fieldid']):
+            keep[indx] = fieldid in (catchup['field_id'] + diff_fieldid)
+        catchup_fields = final_fields[keep]
+
+        catchup_fields_array_hdu = astropy.io.fits.BinTableHDU(catchup_fields_array)
+        catchup_fields_hdu = astropy.io.fits.BinTableHDU(catchup_fields)
+        allocate_hdus[1] = catchup_fields_array_hdu
+        allocate_hdus[3] = catchup_fields_hdu
+        allocate_hdus.writeto(allocate_catchup_file, overwrite=False)

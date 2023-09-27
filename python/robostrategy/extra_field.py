@@ -23,15 +23,16 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         extra_dark = self.assign_dark_extra(make_report=verbose)
         extra_rv = self.assign_rv_extra(make_report=verbose)
         extra_partial = self.assign_partial(make_report=verbose)
+        extra_bhm1 = self.assign_bhm_partial(make_report=verbose)
         extra_bright = self.assign_bright_extra(make_report=verbose)
-        extra_bhm = self.assign_bhm()
+        extra_bhm2 = self.assign_bhm_extra(make_report=verbose)
 
         self._set_satisfied()
         self._set_satisfied(science=True)
         self._set_count(reset_equiv=False)
         self.set_stage(stage=None)
 
-        any_success = extra_dark or extra_rv or extra_partial or extra_bright or extra_bhm
+        any_success = extra_dark or extra_rv or extra_partial or extra_bright or extra_bhm1 or extra_bhm2
         return any_success
 
     def assign_extra(self, rsids=None, max_extra=1, nexps=1, skip_assigned_epochs=True):
@@ -163,7 +164,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         Code for assigning extra MWM dark time targets. Does nothing if the field
         is a bright-only field. Otherwise, identify previously "satisfied" objects
         for WDs, SNC (100/250pc boss), and BOSS CB targets (300pc, gaiagalex,
-        cvcandidates). And check for extra epochs.
+        cvcandidates). After eta-2-candidate-0, this switched from "extra epochs"
+        to "extra exposures"
 
         Parameters:
         ----------
@@ -179,11 +181,11 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             return any_extra
 
         # Find gotten WDs and try to get extra epochs
-        iextra = np.where((self.targets['carton'] == 'mwm_wd_pwd') &
+        iextra = np.where((self.targets['carton'] == 'mwm_wd_pwd_boss') &
                           (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
-            nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra)
+            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra = True
             if make_report:
@@ -195,11 +197,11 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         # Next find gotten SNC and try to get extra epochs
         iextra = np.where(((self.targets['carton'] == 'mwm_snc_100pc_boss') |
-                           (self.targets['carton'] == 'mwm_snc_ext_boss')) &
+                           (self.targets['carton'] == 'mwm_snc_ext_main_boss')) &
                            (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
-            nsuccess =  self.assign_extra(rsids=extra_rsids, max_extra=max_extra)
+            nsuccess =  self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra = True
             if make_report:
@@ -209,13 +211,13 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
         # Next find compact binaries and get extra epochs
-        iextra = np.where(((self.targets['carton'] == 'mwm_cb_galex_vol') |
-                           (self.targets['carton'] == 'mwm_cb_galex_mag') |
+        iextra = np.where(((self.targets['carton'] == 'mwm_cb_galex_vol_boss') |
+                           (self.targets['carton'] == 'mwm_cb_galex_mag_boss') |
                            (self.targets['carton'] == 'mwm_cb_cvcandidates_boss')) &
                            (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
-            nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra)
+            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra = True
             if make_report:
@@ -227,7 +229,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
     def assign_rv_extra(self, make_report=False):
         '''
-        Code for assigning extra epochs to RV targets. The more the merrier for these stars!
+        Code for assigning extra epochs to RV targets.
 
         Parameters
         ----------
@@ -237,16 +239,15 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         '''
 
         any_extra = False
+        max_extra = 18
 
         # Find gotten RVs and see try to get extra epochs - take any in the RV
-        # program that was satisfied. Additionally, take any mwm_rv_long that
-        # is UNSATISFIED and do those first
-        iextra1 = np.where((self.targets['carton'] == 'mwm_bin_rv_long') &
+        # bin cartons that were satisfied. Additionally, take any mwm_rv_long that
+        # are UNSATISFIED and do those first
+        iextra1 = np.where((self.targets['carton'] == 'mwm_bin_rv_long_apogee') &
                            (self.assignments['satisfied'] == 0))[0]
-        rv_cartons = ['mwm_bin_rv_long','mwm_bin_rv_short','mwm_bin_rv_short_giant',
-                      'mwm_bin_rv_short_subgiant','mwm_bin_rv_short_mdwarf']
-        iextra2 = np.where((np.isin(self.targets['carton'],rv_cartons)) &
-                            (self.assignments['satisfied'] > 0))[0]
+        isrv_carton = ['bin_rv' in carton for carton in self.targets['carton']]
+        iextra2 = np.where((isrv_carton) & (self.assignments['satisfied'] > 0))[0]
         iextra = np.append(iextra1,iextra2)
 
         if len(iextra) > 0:
@@ -257,7 +258,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 subset = np.where(self.targets['cadence'][iextra] == icad)[0]
                 nexps = clist.cadences[icad].nexp[0]
                 extra_rsids = self.targets['rsid'][iextra[subset]]
-                nsuccess = self.assign_extra(rsids=extra_rsids, max_extra = 99, nexps=nexps)
+                nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra, nexps=nexps)
                 if len(nsuccess[nsuccess > 0]) > 0:
                    any_extra = True
 
@@ -286,7 +287,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         any_extra = False
 
         # Find NOT-gotten mwm_tess_planet and swap cadence from 1xN to Nx1
-        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min') &
+        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min_apogee') &
                           (self.assignments['satisfied'] == 0))[0]
 
         if len(iextra) > 0:
@@ -358,7 +359,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     print(nsuccess)
 
         # Find NOT-gotten OB core stars and try to get some epochs
-        iextra = np.where((self.targets['carton'] == 'mwm_ob_core') &
+        # Note: Do not need to do this on mwm_ob_core_boss_single, which are same targets
+        iextra = np.where((self.targets['carton'] == 'mwm_ob_core_boss') &
                           (self.assignments['satisfied'] == 0))[0]
 
         if len(iextra) > 0:
@@ -393,25 +395,24 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
            over N requested at the partial completion stage)
          * Previously "satisfied" objects in the OB carton.
 
-        Then assign first partial then extra EXPOSURES for BHM
-
         Parameters:
         ----------
         make_report: bool
             if True print out a report of what happened
         '''
-        max_extra = 99 #get as many as you can
+        max_extra_planet = 12
+        max_extra_ob = 3
         any_extra = False # initialize
 
         # Find TESS planet targets that are 'satisfied' or that previously got
         # extra, since extra was originally capped at N epochs but at this
         # later stage they are now eligible for extra epochs
-        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min') &
+        iextra = np.where((self.targets['carton'] == 'mwm_tess_2min_apogee') &
                          ((self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0)))[0]
 
         if len(iextra) > 0:
             extra_rsids = self.targets['rsid'][iextra]
-            nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra)
+            nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra_planet)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra = True
             if make_report:
@@ -420,12 +421,12 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number attempted: {}'.format(len(iextra)))
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
-        # Find gotten OB stars and try to get extra epochs. Do whole program
-        iextra = np.where((self.targets['carton'] == 'mwm_ob_core') &
+        # Find gotten OB stars and try to get extra epochs. 
+        iextra = np.where((self.targets['carton'] == 'mwm_ob_core_boss') &
                           (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
-            nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra)
+            nsuccess = self.assign_extra(rsids=extra_rsids, max_extra=max_extra_ob)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra = True
             if make_report:
@@ -437,11 +438,11 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
 
         return any_extra
 
-    def assign_bhm(self,make_report=False):
+    def assign_bhm_partial(self,make_report=False):
         '''
-        Code for assigning partial and extra exposures to BHM targets. For partial
+        Code for assigning partial exposures to BHM targets. For partial
         completion, original cadence details are ignored and just to get the total
-        requested nxm request. Last, magcloud cartons can get extra exposures.
+        requested nxm request. 
 
         Parameters:
         ----------
@@ -496,26 +497,38 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     print(nsuccess)
 
 
-        # Default max_extra
-        max_extra = 99
+    def assign_bhm_extra(self,make_report=False):
+        '''
+        Code for assigning extra exposures to BHM targets and magcloud targets
+
+        Parameters:
+        ----------
+        make_report: bool
+            if True print out a report of what happened
+        '''
+
+        any_extra = False # initialize
+        max_extra_bhm = 4
+        max_extra_magcloud = 8
+
+        # Is this a dark field?
+        is_dark_field = clist.cadence_consistency('_field_dark_single_1x1', self.field_cadence.name,
+                                                   return_solutions=False)
+
 
         # Find all eligible targets for extra completion: Those with extra assignments
-        # from above + previouly satisfied
-        new_got = iextra[np.where(self.assignments['extra'][iextra] > 0)]
-
+        # from assign_bhm_partial + previouly satisfied
         iextra1 = np.where((self.targets['program'] == 'bhm_spiders') &
-                            (self.assignments['satisfied'] > 0))[0]
+                            (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
         iextra2 = np.where((self.targets['program'] == 'bhm_csc') &
-                            (self.assignments['satisfied'] > 0))[0]
+                            (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
         iextra3 = np.where((self.targets['carton'] == 'bhm_gua_dark') &
-                            (self.assignments['satisfied'] > 0))[0]
+                            (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
         iextra4 = np.where((self.targets['carton'] == 'bhm_gua_bright') &
-                            (self.assignments['satisfied'] > 0))[0]
-        iextra5 = np.where((self.targets['program'] == 'mwm_magcloud') &
-                            (self.assignments['satisfied'] > 0))[0]
+                            (self.assignments['satisfied'] > 0) | (self.assignments['extra'] > 0))[0]
 
         #some "new_got" may now also show up as 'satisfied'
-        iextra = np.unique(np.append(iextra1, np.append(iextra2, np.append(iextra3, np.append(iextra4,np.append(iextra5,new_got))))))
+        iextra = np.unique(np.append(iextra1, np.append(iextra2, np.append(iextra3,iextra4))))
 
         # In this situation, only use the cadence groupings to remove dark cadence targets
         # in bright fields
@@ -529,12 +542,43 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             iextra = iextra[kp]
             isort = np.argsort(self.targets['priority'][iextra])
             extra_rsids = self.targets['rsid'][iextra[isort]]
-            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra)
+            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra_bhm)
             if len(nsuccess[nsuccess > 0]) > 0:
                 any_extra=True
 
             if make_report:
                 print(f'\nExtra Exposures for BHM:')
+                print('--------------------------------')
+                print("Number attempted: {}".format(len(iextra)))
+                print('Number successful: ')
+                uextra,ctextra = np.unique(nsuccess, return_counts=True)
+                for iex,ict in zip(uextra,ctextra):
+                    print(f'    {ict} stars - {iex} extra exposures')
+                print(extra_rsids)
+                print(nsuccess)
+
+        # repeat for magellanic cloud
+        iextra = np.where(((self.targets['program'] == 'mwm_magcloud') |
+                           (self.targets['program'] == 'mwm_magcloud_agb') |
+                           (self.targets['program'] == 'mwm_magcloud_rgb')) &
+                          (self.assignments['satisfied'] > 0))[0]
+
+        if len(iextra > 0):
+            ucad = np.unique(self.targets['cadence'][iextra])
+            kp = np.full(len(iextra), True)
+            for icad in ucad:
+                if 'dark' in icad and not is_dark_field: #skip dark targets if not in dark field
+                    subset = np.where(self.targets['cadence'][iextra] == icad)[0]
+                    kp[subset] = False
+            iextra = iextra[kp]
+            isort = np.argsort(self.targets['priority'][iextra])
+            extra_rsids = self.targets['rsid'][iextra[isort]]
+            nsuccess = self.assign_extra_exps(rsids=extra_rsids, max_extra=max_extra_magcloud)
+            if len(nsuccess[nsuccess > 0]) > 0:
+                any_extra=True
+
+            if make_report:
+                print(f'\nExtra Exposures for Mag Cloud:')
                 print('--------------------------------')
                 print("Number attempted: {}".format(len(iextra)))
                 print('Number successful: ')

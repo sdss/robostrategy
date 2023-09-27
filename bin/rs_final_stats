@@ -375,6 +375,8 @@ if __name__ == '__main__':
         for n in s.dtype.names:
             stats_dict['robots'][fiberType][n] = s[n]
 
+    stats_dict['stages'] = ['srd', 'reassign', 'open', 'filler', 'complete']
+
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("robostrategy"),
         autoescape=jinja2.select_autoescape()

@@ -16,6 +16,7 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import subprocess
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -72,23 +73,34 @@ if __name__ == '__main__':
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-all')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_full(title='Total time')
+    matplotlib.rcParams['font.size'] = 14
+    allocate.plot_full(title='Total time at {o}'.format(o=observatory.upper()))
+    plt.tight_layout()
     plt.savefig(png_file)
     plt.clf()
+    subprocess.run(['convert', png_file, '-trim', png_file])
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-dark')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_full(iskybrightness=0, title='Dark time')
+    if(observatory == 'apo'):
+        loc=1
+    else:
+        loc=2
+    allocate.plot_full(iskybrightness=0, title='Dark time at {o}'.format(o=observatory.upper()), loc=loc)
+    plt.tight_layout()
     plt.savefig(png_file)
     plt.clf()
+    subprocess.run(['convert', png_file, '-trim', png_file])
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-bright')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_full(iskybrightness=1, title='Bright time')
+    allocate.plot_full(iskybrightness=1, title='Bright time at {o}'.format(o=observatory.upper()))
+    plt.tight_layout()
     plt.savefig(png_file)
     plt.clf()
+    subprocess.run(['convert', png_file, '-trim', png_file])
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='radec')
@@ -97,22 +109,25 @@ if __name__ == '__main__':
     plt.title("All cadences")
     plt.savefig(png_file)
     plt.clf()
+    subprocess.run(['convert', png_file, '-trim', png_file])
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='radec-dark')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_fields(darkorbright='dark')
-    plt.title("Cadences in dark time")
+    plt.title("Dark cadences")
     plt.savefig(png_file)
     plt.clf()
+    subprocess.run(['convert', png_file, '-trim', png_file])
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='radec-bright')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_fields(darkorbright='bright')
-    plt.title("Cadences in bright time")
+    plt.title("Bright cadences")
     plt.savefig(png_file)
     plt.clf()
+    subprocess.run(['convert', png_file, '-trim', png_file])
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='radec-labeled')
@@ -121,6 +136,7 @@ if __name__ == '__main__':
     plt.title("All cadences")
     plt.savefig(png_file)
     plt.clf()
+    subprocess.run(['convert', png_file, '-trim', png_file])
 
     ncad = np.int32(hdr['NCAD'])
     for icad in np.arange(ncad):
@@ -142,6 +158,7 @@ if __name__ == '__main__':
         plt.title(field_cadence_base)
         plt.savefig(png_file)
         plt.clf()
+        subprocess.run(['convert', png_file, '-trim', png_file])
 
         name = 'radec-tried-{field_cadence_base}'.format(
             field_cadence_base=field_cadence_base)
@@ -154,3 +171,4 @@ if __name__ == '__main__':
         plt.title(field_cadence_base)
         plt.savefig(png_file)
         plt.clf()
+        subprocess.run(['convert', png_file, '-trim', png_file])

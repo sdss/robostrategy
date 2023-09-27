@@ -1,0 +1,87 @@
+#!/usr/bin/env python
+
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_completeness_stages
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+import argparse
+import os
+import sys
+import numpy as np
+import healpy
+import fitsio
+import sdss_access.path
+import robostrategy
+import robostrategy.header
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def count_map(hpix=None, nexps=None):
+
+    nexps_map = np.bincount(hpix, weights=nexps,
+                            minlength=healpy.nside2npix(nside))
+
+    return(nexps_map)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Count stages')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = 'both'
+    nside = 32
+
+    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'EQUIV']
+    nstages = len(stages)
+
+    completeness_file = sdss_path.full('rsCompleteness', plan=plan,
+                                       observatory=observatory)
+    stage = 'Final'
+    completeness_file = completeness_file.replace('rsCompleteness',
+                                                  'final/rsCompleteness{stage}')
+    completeness_file = completeness_file.format(stage=stage)
+    completeness_stage_file = completeness_file.replace('rsCompleteness',
+                                                        'rsCompletenessStages')
+
+    completeness = fitsio.read(completeness_file)
+
+    hpix = healpy.pixelfunc.ang2pix(nside, completeness['ra'],
+                                    completeness['dec'], lonlat=True)
+
+    iscience = np.where((completeness['cadence'] != "none") &
+                        (completeness['category'] == 'science'))[0]
+    nexps_science_map = count_map(hpix=hpix[iscience],
+                          nexps=completeness['nexps'][iscience])
+
+    hdr = robostrategy.header.rsheader()
+    hdr.append({'name':'NSIDE',
+                'value':nside,
+                'comment':'NSIDE of healpix map'})
+    fitsio.write(completeness_stage_file, nexps_science_map,
+                 header=hdr, extname='SCIENCE', clobber=True)
+
+    icalib = np.where(completeness['category'] != 'science')[0]
+    nexps_calib_map = count_map(hpix=hpix[icalib],
+                                nexps=completeness['nexps'][icalib])
+
+    fitsio.write(completeness_stage_file, nexps_calib_map,
+                 header=hdr, extname='CALIB', clobber=False)
+
+    for stage in stages:
+        col = 'nexps_{s}'.format(s=stage.lower())
+        nexps_map = count_map(hpix=hpix[iscience],
+                              nexps=completeness[col][iscience])
+        fitsio.write(completeness_stage_file, nexps_map,
+                     header=hdr, extname=stage, clobber=False)
+        

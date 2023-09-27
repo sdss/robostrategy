@@ -23,7 +23,7 @@ def apogee_standard_goodness(magnitude=None):
     -----
 
     Goodness is defined based on magnitude and color as:
-        - 40 * ((J-K) - 0.1) - 3 * (H - 11)
+        - 13.33 * ((J-K) - 0.25) - (H - 9)
 
     This definition is based on the mean absolute deviation
     plots of telluric feature models from pipeline compared

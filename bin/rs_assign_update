@@ -41,6 +41,8 @@ mags_allowed_brighttime = []
 mags_allowed_darktime = []
 dmodes = None
 test = False
+catchup = False
+catchup_version = None
 offset_min_skybrightness = None
 noassignmentstatus = False
 nooffset = False
@@ -77,8 +79,17 @@ def assign_update(indx):
     field_status_file = field_status_file.replace('targets/rsFieldTargets',
                                                   'final/rsFieldStatusMatch')
 
+    if(catchup):
+        field_assignments_file = field_assignments_file.replace('final', 'catchup')
+        field_assignments_file = field_assignments_file.replace('Final',
+                                                                'Catchup{v}'.format(v=catchup_version.upper()))
+        field_status_file = field_status_file.replace('final', 'catchup')
+        field_status_file = field_status_file.replace('Match',
+                                                      'MatchCatchup{v}'.format(v=catchup_version.upper()))
+
     if(test):
         field_assignments_file = field_assignments_file.replace('Final', 'Test')
+        field_assignments_file = field_assignments_file.replace('Catchup', 'Test')
 
     if((clobber is False) & os.path.isfile(field_assignments_file)):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_assignments_file), flush=True)
@@ -96,8 +107,8 @@ def assign_update(indx):
                       flush=True)
             iobs = np.where(status_field['status'] == 'done')[0]
             if(len(iobs) > 0):
-                print("fieldid {f}:   exposures done are {e}".format(f=fieldid,
-                                                                     e=iobs),
+                print("fieldid {f}:   designs marked done are {e}".format(f=fieldid,
+                                                                          e=iobs),
                       flush=True)
         else:
             print("fieldid {f}: No assignment status file exists ".format(f=fieldid), flush=True)
@@ -112,29 +123,42 @@ def assign_update(indx):
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
+    rmcadences = ['dark_174x8_v1', 'dark_100x8_v1',
+                  'dark_174x8_v2', 'dark_100x8_v2']
+
+    if(allocate.field_array['cadence'][indx] in rmcadences):
+        print("fieldid {fid}: Not reassigning RM field, do not make grids".format(fid=fieldid), flush=True)
+        allgrids = False
+    else:
+        allgrids = True
+
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
                                 noassign=True, input_design_mode=dmodes,
                                 reset_bright=reset_bright,
                                 offset_min_skybrightness=offset_min_skybrightness,
-                                nooffset=nooffset)
+                                nooffset=nooffset, allgrids=allgrids)
     f.fieldid = fieldid
-
-    f.set_design_status_from_status_field(status_field=status_field)
-
-    icsa = list(f.calibration_order).index('standard_apogee')
-    f.required_calibrations_per_zone[icsa + 1] = standard_apogee_nperzone_min
 
     if(f.field_cadence is None):
         print("fieldid {fid}: no field cadence to assign! Skipping".format(fid=fieldid), flush=True)
         return
 
-    rmcadences = ['dark_174x8_v1', 'dark_100x8_v1']
+    print("fieldid {fid}: Assigning field cadence {c}".format(fid=fieldid,
+                                                              c=f.field_cadence.name), flush=True)
+
     field_cadence_name = f.field_cadence.name
     if(field_cadence_name in rmcadences):
         print("fieldid {fid}: Not reassigning RM field, just copying".format(fid=fieldid), flush=True)
     else:
+
+        print("fieldid {fid}: Set design status".format(fid=fieldid), flush=True)
+        f.set_design_status_from_status_field(status_field=status_field)
+
+        icsa = list(f.calibration_order).index('standard_apogee')
+        f.required_calibrations_per_zone[icsa + 1] = standard_apogee_nperzone_min
+
         print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
         f.clear_assignments()
 
@@ -260,6 +284,12 @@ if __name__ == '__main__':
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-l', '--limit-pool', dest='limit_pool',
+                        help='upper limit on thread pool size', required=False,
+                        default=None, type=np.int32)
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='catchup version', required=False,
+                        default=None, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -273,6 +303,11 @@ if __name__ == '__main__':
     noassignmentstatus = args.noassignmentstatus
     nooffset = args.nooffset
     reset_bright = args.reset_bright
+    limit_pool = args.limit_pool
+    catchup_version = args.catchup_version
+
+    if(catchup_version is not None):
+        catchup = True
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -311,6 +346,10 @@ if __name__ == '__main__':
                                    observatory=observatory)
     allocate_file = allocate_file.replace('rsAllocation',
                                           'final/rsAllocationFinal')
+    if(catchup):
+        allocate_file = allocate_file.replace('final', 'catchup')
+        allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
+
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
@@ -327,25 +366,38 @@ if __name__ == '__main__':
         end = fieldids.max()
     ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
 
+    if(clobber is False):
+        not_done = np.ones(len(ikeep), dtype=bool)
+        for i, fieldid in enumerate(fieldids[ikeep]):
+            field_assignments_file = sdss_path.full('rsFieldTargets',
+                                                    plan=plan, observatory=observatory,
+                                                    fieldid=fieldid)
+            field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
+                                                                    'final/rsFieldAssignmentsFinal')
+
+            if(catchup):
+                field_assignments_file = field_assignments_file.replace('final', 'catchup')
+                field_assignments_file = field_assignments_file.replace('Final',
+                                                                        'Catchup{v}'.format(v=catchup_version.upper()))
+
+            if(os.path.isfile(field_assignments_file)):
+                print("fieldid {f}: Exists already in {file}, going to skip".format(f=fieldid, file=field_assignments_file), flush=True)
+                not_done[i] = False
+        ikeep = ikeep[not_done]
+
     isort = np.flip(np.argsort(neededs[ikeep]))
     ikeep = indx[ikeep[isort]]
 
+    print(len(ikeep))
     print(ikeep)
 
     if(nomultiprocess):
         for i in ikeep:
             assign_update(i)
     else:
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(limit_pool) as pool:
             ikeep = list(ikeep)
-            ikeep_distributed = []
-            icurr = 0
-            while(len(ikeep) > 0):
-                ikeep_distributed.append(ikeep[icurr])
-                ikeep.remove(ikeep[icurr])
-                if(len(ikeep) > 0):
-                    icurr = (icurr + int(pool._processes)) % len(ikeep)
-            pool.map(assign_update, ikeep_distributed)
+            pool.map(assign_update, ikeep, 1)
 
     print('DONE: rs_assign_update')
     print(time.ctime(time.time()))

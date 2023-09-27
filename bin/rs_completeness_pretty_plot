@@ -21,13 +21,14 @@ import matplotlib.pyplot as plt
 import healpy
 import fitsio
 import sdss_access.path
+import matplotlib
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 def clean_minmax(n):
-    vmin = np.floor(10. * n.min()) / 10.
-    vmax = np.ceil(10. * n.max()) / 10.
+    vmin = np.floor(10. * np.nanmin(n)) / 10.
+    vmax = np.ceil(10. * np.nanmax(n)) / 10.
     return(vmin, vmax)
 
 
@@ -44,7 +45,7 @@ def make_map(hdr, tmap, perarea=True, log=True):
         nzero = tmap > 0
         zero = tmap <= 0
         tmap[nzero] = np.log10(tmap[nzero])
-        tmap[zero] = np.log10(0.1)
+        tmap[zero] = np.nan
 
     return(tmap)
 
@@ -57,7 +58,8 @@ def plot_map(hdr, tmap, name=None, title=None, vmin=None, vmax=None,
     healpy.mollview(
         tmap,
         title=title,
-        cmap='Greys',
+        cmap='Blues',
+        badcolor='#d0d0d0',
         rot=(270., 0., 0.),
         max=vmax, min=vmin)
 
@@ -67,6 +69,8 @@ def plot_map(hdr, tmap, name=None, title=None, vmin=None, vmax=None,
         'rsAssignmentsPng', name=name,
         plan=plan, observatory=observatory)
     outfile = outfile.replace('rsAssignments', 'final/rsCompleteness')
+    if(directory is not None):
+        outfile = os.path.join(directory, os.path.basename(outfile))
 
     plt.savefig(outfile)
     plt.clf()
@@ -89,21 +93,31 @@ def make_maps(completeness_file, ttype, ttype_pretty):
     vmin, tmp_vmax = clean_minmax(nmap)
 
     print("Targets")
+    if(big):
+        title = ttype_pretty
+    else:
+        title = '$\log_{10}$ Target Density (deg$^{-2}$) ' + '(' + ttype_pretty + ')'
     plot_map(hdr, ntargets, name='{tt}-ntargets'.format(tt=ttype.lower()),
-             title='$\log_{10}$ Target Density (deg$^{-2}$) ' + '('
-             + ttype_pretty + ')',
-             vmin=vmin, vmax=vmax)
+             title=title, vmin=vmin, vmax=vmax)
 
     print("Gotten")
+    if(big):
+        title = ttype_pretty
+    else:
+        title = '$\log_{10}$ Assigned Target Density (deg$^{-2}$) ' + '(' + ttype_pretty + ')'
     plot_map(hdr, ngot, name='{tt}-ngot'.format(tt=ttype.lower()),
-             title='$\log_{10}$ Assigned Target Density (deg$^{-2}$) ' +
-             '(' + ttype_pretty + ')',
-             vmin=vmin, vmax=vmax)
+             title=title, vmin=vmin, vmax=vmax)
 
     print("Fraction")
+    if(big):
+        title = ttype_pretty
+    else:
+        title = 'Assigned Target Fraction ({tt})'.format(tt=ttype_pretty)
+    fgot_plot = fgot
+    ibad = np.where(ntargets == 0)[0]
+    fgot_plot[ibad] = np.nan
     plot_map(hdr, fgot, name='{tt}-fgot'.format(tt=ttype.lower()),
-             title='Assigned Target Fraction ({tt})'.format(tt=ttype_pretty),
-             vmin=0., vmax=1., log=False, perarea=False)
+             title=title, vmin=0., vmax=1., log=False, perarea=False)
 
     return
 
@@ -118,10 +132,20 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco or both',
                         choices=['apo', 'lco', 'both'], required=True)
-
+    parser.add_argument('-d', '--directory', dest='directory',
+                        type=str, help='output dir', required=False)
+    parser.add_argument('-b', '--big', dest='big',
+                        help='make big words', required=False,
+                        default=False, action='store_true')
+                        
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    directory = args.directory
+    big = args.big
+
+    if(big):
+        matplotlib.rcParams['font.size'] = 18
 
     cfile = sdss_path.full('rsTargetCadences', plan=plan,
                            observatory='apo')

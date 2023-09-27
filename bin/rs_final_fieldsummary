@@ -2,7 +2,6 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Date: Sept 26, 2018
 # @Filename: rs_final_fieldsummary
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
@@ -18,11 +17,9 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 import argparse
 import sys
-import datetime
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
-import robostrategy.field as field
 import robostrategy.allocate
 import sdss_access.path
 
@@ -31,46 +28,6 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
-
-def assign_update(indx):
-
-    field_assignments_file = sdss_path.full('rsFieldTargets',
-                                            plan=plan, observatory=observatory,
-                                            fieldid=fieldid)
-    field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
-                                                            'final/rsFieldAssignmentsFinal')
-
-    if((clobber is False) & os.path.isfile(field_assignments_file)):
-        print("Fieldid {f} exists already in {file}".format(f=fieldid, file=field_assignments_file))
-        return
-
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-    f = field.Field(filename=field_target_file, verbose=True,
-                    fieldid=fieldid, bright_neighbors=True,
-                    untrim_cadence_version=cadence_version)
-    f.fieldid = fieldid
-
-    if(f.field_cadence is None):
-        print("fieldid {fid}: no field cadence to assign! Skipping".format(fid=fieldid), flush=True)
-        return
-
-    rmcadences = ['dark_174x8', 'dark_100x8']
-    if(f.field_cadence.name in rmcadences):
-        print("fieldid {fid}: Not reassigning RM field, just copying".format(fid=fieldid), flush=True)
-    else:
-        print("fieldid {fid}: Clear old assignments".format(fid=fieldid), flush=True)
-        f.clear_assignments()
-
-        print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
-        f.assign_science_and_calibs(stage='srd')
-
-    print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
-
-    print("Write assignments", flush=True)
-    f.tofits(field_assignments_file)
-
-    print("fieldid {f}: Done".format(f=fieldid), flush=True)
-    return
 
 
 if __name__ == '__main__':
@@ -84,10 +41,24 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-i', '--incomplete', dest='incomplete',
+                        help='skip fields which do not exist', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='update to these catchup versions (comma separated list)',
+                        default=None, required=False, type=str)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    incomplete = args.incomplete
+    catchup_version = args.catchup_version
+    if(catchup_version is not None):
+        catchup = True
+        catchup_versions = catchup_version.split(',')
+    else:
+        catchup = False
+        catchup_versions = []
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
@@ -96,30 +67,57 @@ if __name__ == '__main__':
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
+    replacements = dict()
+    for catchup_version in catchup_versions:
+        allocate_file_catchup = allocate_file.replace('final/rsAllocationFinal',
+                                                      'catchup/rsAllocationCatchup{v}'.format(v=catchup_version.upper()))
+        allocate_catchup = robostrategy.allocate.AllocateLST(filename=allocate_file_catchup,
+                                                             observatory=observatory)
+        for fieldid in np.unique(allocate_catchup.fields['fieldid']):
+            replacements[fieldid] = catchup_version
+
     fieldids = np.unique(allocate.field_array['fieldid'])
 
     target_file = sdss_path.full('rsTargets', plan=plan,
                                  observatory=observatory)
-    target_file = target_file.replace('rsTargets', 'final/rsTargetsFinal')
-    targets = fitsio.read(target_file)
+    target_file = target_file.replace('rsTargets', 'rsTargetCadences')
+    target_cartons = fitsio.read(target_file, ext='CARTONS')
 
     summary_dtype = [('fieldid', np.int32),
                      ('racen', np.float64),
                      ('deccen', np.float64),
                      ('cadence', np.unicode_, 30)]
 
-    cartons = np.unique(targets['carton'])
+    cartons = np.unique(target_cartons['carton'])
     for carton in cartons:
         summary_dtype.append((carton + '_nwithin', np.int32))
         summary_dtype.append((carton + '_ngot', np.int32))
         summary_dtype.append((carton + '_fgot', np.float32))
 
+    exp_summary_dtype = [('fieldid', np.int32),
+                         ('iexp', np.int32),
+                         ('racen', np.float64),
+                         ('deccen', np.float64),
+                         ('cadence', np.unicode_, 30)]
+
+    categories = ['science', 'sky_boss', 'standard_boss', 'sky_apogee', 'standard_apogee']
+    for category in categories:
+        exp_summary_dtype.append((category + '_nassigned', np.int32))
+        exp_summary_dtype.append((category + '_ngot', np.int32))
+
+    cartons = np.unique(target_cartons['carton'])
+    for carton in cartons:
+        exp_summary_dtype.append((carton + '_nassigned', np.int32))
+        exp_summary_dtype.append((carton + '_ngot', np.int32))
+
     summary_dtype = np.dtype(summary_dtype)
+    exp_summary_dtype = np.dtype(exp_summary_dtype)
 
     summary = np.zeros(len(fieldids), dtype=summary_dtype)
+    exp_summary = None
 
     for i, fieldid in enumerate(fieldids):
-        print("fieldid {fid}: Reading file".format(fid=fieldid), flush=True)
+        print("fieldid {fid}: Processing field".format(fid=fieldid), flush=True)
 
         field_target_file = sdss_path.full('rsFieldTargets',
                                            plan=plan, observatory=observatory,
@@ -127,6 +125,16 @@ if __name__ == '__main__':
         field_target_file = field_target_file.replace('targets/rsFieldTargets',
                                                       'final/rsFieldAssignmentsFinal')
 
+        if(fieldid in replacements):
+            field_target_file = field_target_file.replace('final/rsFieldAssignmentsFinal',
+                                                          'catchup/rsFieldAssignmentsCatchup{v}'.format(v=replacements[fieldid].upper()))
+
+
+        if((os.path.exists(field_target_file) is False) & incomplete):
+            print(" ... not done, skipping!", flush=True)
+            continue
+
+        print(" ... reading file", flush=True)
         hdr = fitsio.read_header(field_target_file, ext=0)
         targets = fitsio.read(field_target_file, ext='TARGET')
         assignments = fitsio.read(field_target_file, ext='ASSIGN')
@@ -135,21 +143,59 @@ if __name__ == '__main__':
         summary['racen'][i] = np.float64(hdr['RACEN'])
         summary['deccen'][i] = np.float64(hdr['DECCEN'])
         summary['cadence'][i] = hdr['FCADENCE']
+        nexps = hdr['NEXP']
+        assignedrobot = (assignments['robotID'].reshape(len(assignments), nexps) >= 0)
+        equivrobot = (assignments['equivRobotID'].reshape(len(assignments), nexps) >= 0)
 
+        tmp_exp_summary = np.zeros(nexps, dtype=exp_summary_dtype)
+        tmp_exp_summary['fieldid'] = fieldid
+        tmp_exp_summary['iexp'] = np.arange(nexps, dtype=np.int32)
+        tmp_exp_summary['racen'] = np.float64(hdr['RACEN'])
+        tmp_exp_summary['deccen'] = np.float64(hdr['DECCEN'])
+        tmp_exp_summary['cadence'] = hdr['FCADENCE']
+
+        print(" ... processing cartons", flush=True)
         for carton in cartons:
-            iwithin = np.where((targets['carton'] == carton) &
-                               (targets['within'] > 0))[0]
-            igot = np.where((targets['carton'] == carton) &
-                            (assignments['satisfied'] > 0))[0]
-            if(len(iwithin) > 0):
-                fgot = np.float32(len(igot)) / np.float32(len(iwithin))
+            incarton = (targets['carton'] == carton)
+            within = (incarton & (targets['within'] > 0))
+            got = (incarton & (assignments['satisfied'] > 0))
+            if(within.sum() > 0):
+                fgot = np.float32(got.sum()) / np.float32(within.sum())
             else:
                 fgot = - 1.0
         
-            summary[carton + '_nwithin'][i] = len(iwithin)
-            summary[carton + '_ngot'][i] = len(igot)
+            summary[carton + '_nwithin'][i] = within.sum()
+            summary[carton + '_ngot'][i] = got.sum()
             summary[carton + '_fgot'][i] = fgot
 
-    fieldsummary_file = target_file.replace('final/rsTargetsFinal',
+            tmp_exp_summary[carton + '_nassigned'] = assignedrobot[incarton, :].sum(axis=0)
+            tmp_exp_summary[carton + '_ngot'] = equivrobot[incarton, :].sum(axis=0)
+
+        print(" ... processing categories", flush=True)
+        for category in categories:
+            incategory = (targets['category'] == category)
+            tmp_exp_summary[category + '_nassigned'] = assignedrobot[incategory, :].sum(axis=0)
+            tmp_exp_summary[category + '_ngot'] = equivrobot[incategory, :].sum(axis=0)
+            for iexp in np.arange(nexps, dtype=np.int32):
+                iequiv = np.where((incategory > 0) &
+                                  (equivrobot[:, iexp] > 0))[0]
+                nunique = len(np.unique(targets['catalogid'][iequiv]))
+                idisagree = np.where((incategory > 0) &
+                                     (equivrobot[:, iexp] > 0) &
+                                     (assignedrobot[:, iexp] == 0))[0]
+                                    
+        print("   ... adding to exp_summary", flush=True)
+        if(exp_summary is None):
+            exp_summary = tmp_exp_summary
+        else:
+            exp_summary = np.append(exp_summary, tmp_exp_summary)
+
+    fieldsummary_file = target_file.replace('rsTargetCadences',
                                             'final/rsFieldSummaryFinal')
-    fitsio.write(fieldsummary_file, summary, clobber=True)
+    if(catchup):
+        fieldsummary_file = fieldsummary_file.replace('final/rsFieldSummaryFinal',
+                                                      'catchup/rsFieldSummaryCatchup{v}'.format(v=catchup_versions[-1].upper()))
+
+    
+    fitsio.write(fieldsummary_file, summary, extname='SATISFIED', clobber=True)
+    fitsio.write(fieldsummary_file, exp_summary, extname='EXPOSURE', clobber=False)

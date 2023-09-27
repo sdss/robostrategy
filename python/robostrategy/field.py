@@ -1740,8 +1740,7 @@ class Field(object):
         design_status = np.zeros(self.field_cadence.nexp_total, dtype=design_status_dtype)
         design_status['fieldid'] = self.fieldid
         for field_exposure in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
-            icurr = np.where((status_field['fieldid'] == self.fieldid) &
-                             (status_field['field_exposure'] == field_exposure) &
+            icurr = np.where((status_field['field_exposure'] == field_exposure) &
                              (status_field['status'] == 'done'))[0]
             if(len(icurr) > 0):
                 designid = status_field['design_id'][icurr].min()
@@ -2398,7 +2397,10 @@ class Field(object):
             if(self.verbose):
                 print("fieldid {fieldid}: Setup all grids".format(fieldid=self.fieldid), flush=True)
 
+            ng = len(self.robotgrids)
             for iexp, rg in enumerate(self.robotgrids):
+                if(self.verbose):
+                    print("fieldid {fid}:   grid {i}/{n}".format(fid=self.fieldid, i=iexp, n=ng), flush=True)
                 epoch = self.field_cadence.epochs[iexp]
                 self._targets_to_robotgrid(targets=targets,
                                            assignments=assignments,
@@ -2457,7 +2459,7 @@ class Field(object):
                     continue
                 targets[n] = target_array[n]
 
-        # Deal with unusual use case where we need to reference a cadence version
+        # Deal with use case where we need to reference a cadence version
         if(self._untrim_cadence_version is not None):
             for itarget, tc in enumerate(targets['cadence']):
                 if(tc.split('_')[-1] != self._untrim_cadence_version):
@@ -2524,6 +2526,9 @@ class Field(object):
             _is_good_calibration[inotsci] = True
             _calibration_index[inotsci] = 1
 
+        if(self.verbose):
+            print("fieldid {f}: Connect rsid and index".format(f=self.fieldid), flush=True)
+
         # Connect rsid with index of list
         for itarget, t in enumerate(targets):
             if(t['rsid'] in self.rsid2indx.keys()):
@@ -2542,6 +2547,9 @@ class Field(object):
             assignments = None
 
         target_duplicated = np.zeros(len(targets), dtype=np.int32)
+
+        if(self.verbose):
+            print("fieldid {f}: Setup calibration tracking".format(f=self.fieldid), flush=True)
 
         self.targets = np.append(self.targets, targets)
         self.target_duplicated = np.append(self.target_duplicated,
@@ -2562,6 +2570,8 @@ class Field(object):
         # that for each target we can look up all of the other targets
         # whose catalog, fiberType, lambda_eff, delta_ra, delta_dec 
         # are the same
+        if(self.verbose):
+            print("fieldid {f}: Setup equiv dictionaries".format(f=self.fieldid), flush=True)
         self._equivindx = collections.OrderedDict()
         self._equivindx_science = collections.OrderedDict()
         self._equivkey = collections.OrderedDict()
@@ -2582,11 +2592,15 @@ class Field(object):
                                                                    dtype=int))
 
         if(assignments is not None):
+            if(self.verbose):
+                print("fieldid {f}: Add assignments, set satisifed".format(f=self.fieldid), flush=True)
             self.assignments = np.append(self.assignments, assignments, axis=0)
             self._set_satisfied()
             self._set_satisfied(science=True)
             self._set_count(reset_equiv=False)
 
+        if(self.verbose):
+            print("fieldid {f}: Setup mastergrid".format(f=self.fieldid), flush=True)
         self._set_masterGrid()
 
         return
@@ -2772,6 +2786,21 @@ class Field(object):
                             robots['fiberType'][indx, iexp] = self.targets['fiberType'][robots['itarget'][indx, iexp]]
 
             fitsio.write(filename, robots, extname='ROBOTS', clobber=False)
+
+        r2t_dtype = [('robotID', np.int32),
+                     ('holeID', np.dtype("|U15")),
+                     ('rsid', np.int64)]
+        r2t = np.zeros(0, dtype=r2t_dtype)
+        for indx, robotID in enumerate(self.robotIDs):
+            valid = self.mastergrid.robotDict[robotID].validTargetIDs
+            if(len(valid) == 0):
+                continue
+            tmp_r2t = np.zeros(len(valid), dtype=r2t_dtype)
+            tmp_r2t['robotID'] = robotID
+            tmp_r2t['holeID'] = self.mastergrid.robotDict[robotID].holeID
+            tmp_r2t['rsid'] = valid
+            r2t = np.append(r2t, tmp_r2t)
+        fitsio.write(filename, r2t, extname='VALIDTARGETS', clobber=False)
 
         if(self.bright_neighbors):
             if(len(self.bright_stars) > 0):
@@ -4387,9 +4416,7 @@ class Field(object):
     def _unsatisfied(self, indxs):
         # Return which are unsatisfied, and include ones which are
         # satisfied but only because of a calibration target
-        print("fieldid {fid}: Setting satisfied".format(fid=self.fieldid), flush=True)
         self._set_satisfied(rsids=self.targets['rsid'][indxs], science=True)
-        print("fieldid {fid}: Done setting satisfied".format(fid=self.fieldid), flush=True)
         unsatisfied = ((self.assignments['satisfied'][indxs] == 0) |
                        ((self.assignments['satisfied'][indxs] != self.assignments['science_satisfied'][indxs]) &
                         (self.targets['category'][indxs] == 'science')))
@@ -4811,6 +4838,10 @@ class Field(object):
 
         inotsat = np.where(self._unsatisfied(indxs) == True)[0]
         succeed = np.zeros(len(rsids), dtype=bool)
+
+        if(len(iexpsall) == 0):
+            return(succeed)
+
         for cinotsat in inotsat:
             rsid = rsids[cinotsat]
             indx = self.rsid2indx[rsid]
@@ -5234,6 +5265,7 @@ class Field(object):
             # Or else let us lower thresholds of goodness in under performing zones
             # If we have run out of targets in all zones ... we are finished.
             finished = True
+            print("fieldid {fid}: Lowering goodness threshold!".format(fid=self.fieldid), flush=True)
             for zone in zones:
                 izone = np.where(self.targets['zone'][icalib] == zone)[0]
                 if(len(izone) == 0):
@@ -5357,10 +5389,10 @@ class Field(object):
         self.decollide_unassigned()
         nproblems = self.validate()
         if(nproblems == 0):
-            print("fieldid {f}: No problems".format(f=self.fieldid))
+            print("fieldid {f}: No problems".format(f=self.fieldid), flush=True)
         else:
             print("fieldid {f}: {n} problems!!!".format(f=self.fieldid,
-                                                        n=nproblems))
+                                                        n=nproblems), flush=True)
 
         self._set_satisfied(rsids=self.targets['rsid'][iscience])
         self._set_count(reset_equiv=False)
@@ -5438,10 +5470,10 @@ class Field(object):
 
         nproblems = self.validate()
         if(nproblems == 0):
-            print("fieldid {f}: No problems".format(f=self.fieldid))
+            print("fieldid {f}: No problems".format(f=self.fieldid), flush=True)
         else:
             print("fieldid {f}: {n} problems!!!".format(f=self.fieldid,
-                                                        n=nproblems))
+                                                        n=nproblems), flush=True)
         if(self.verbose):
             print("fieldid {fid}:   (done assigning science with CP)".format(fid=self.fieldid), flush=True)
 
@@ -5609,10 +5641,10 @@ class Field(object):
                             (self.targets['stage'] == stage_select))[0]
         np.random.shuffle(iscience)
 
-        assigned_exposure_calib = collections.OrderedDict()
+        permanent_exposure_calib = collections.OrderedDict()
         for c in self.calibration_order:
-            assigned_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
-                                                  dtype=bool)
+            permanent_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
+                                                   dtype=bool)
 
         priorities = np.unique(self.targets['priority'][iscience])
         for priority in priorities:
@@ -5626,7 +5658,7 @@ class Field(object):
             self.assign_cadences(rsids=self.targets['rsid'][ipriority])
 
             # See how the calibrations are doing
-            self._assign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
+            self._assign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
 
             # If there is a calibration shortfall, try to fix it
             anyshortfall, shortfalls = self._find_shortfall()
@@ -5642,17 +5674,22 @@ class Field(object):
                 self.unassign(rsids=self.targets['rsid'][ipriority], respect_fixed=True)
 
                 # Make sure any temporary calibrations are unassigned
-                self._unassign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
+                self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
 
-                # Then assign the shortfall cases permanently
+                # Then assign the shortfall cases permanently (this also assigns
+                # temporary calibs along the way to make sure everything stays as
+                # before).
                 self._assign_permanent_calibs(shortfalls=shortfalls,
-                                              assigned_exposure_calib=assigned_exposure_calib) 
+                                              permanent_exposure_calib=permanent_exposure_calib) 
+
+                # Make sure any temporary calibrations are unassigned
+                self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
 
                 # Reassign the science
                 self.assign_cadences(rsids=self.targets['rsid'][ipriority])
 
                 # Check if this has solved the problem
-                self._assign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
+                self._assign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
                 anyshortfall, shortfalls = self._find_shortfall()
 
                 cycle = cycle + 1
@@ -5664,20 +5701,20 @@ class Field(object):
                 self.unassign(rsids=self.targets['rsid'][ipriority], respect_fixed=True)
 
                 # Make sure any temporary calibrations are unassigned
-                self._unassign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
+                self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
 
                 # Then try again with all calibrations made permanent
                 for c in self.calibration_order:
                     if(len(shortfalls[c]) > 0):
-                        shortfalls[c] = set(list(np.where(assigned_exposure_calib[c] == False)[0]))
+                        shortfalls[c] = set(list(np.where(permanent_exposure_calib[c] == False)[0]))
                 self._assign_permanent_calibs(shortfalls=shortfalls,
-                                              assigned_exposure_calib=assigned_exposure_calib)
+                                              permanent_exposure_calib=permanent_exposure_calib)
                         
                 # Reassign the science
                 self.assign_cadences(rsids=self.targets['rsid'][ipriority])
 
                 # Another go at calibs
-                self._assign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
+                self._assign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
 
                 anyshortfall, shortfalls = self._find_shortfall()
                 if(anyshortfall):
@@ -5687,8 +5724,8 @@ class Field(object):
             # calibrations, remove the calibration targets.
             # UNLESS this is the last priority.
             if(priority != priorities[-1]):
-                self._unassign_temporary_calibs(assigned_exposure_calib=assigned_exposure_calib)
-                            
+                self._unassign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib)
+
         if(self.verbose):
             print("fieldid {fid}: Decolliding unassigned".format(fid=self.fieldid), flush=True)
         self.decollide_unassigned()
@@ -5719,7 +5756,7 @@ class Field(object):
                 if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
                     shortfalls[c].add(iexp)
                     if(self.verbose):
-                        print("fieldid {fid}:  - shortfall in {c}, exposure {iexp}".format(fid=self.fieldid, c=c, iexp=iexp), flush=True)
+                        print("fieldid {fid}:  - shortfall in {c}, exposure {iexp}, {gc}/{ac}".format(fid=self.fieldid, c=c, iexp=iexp, gc=self.calibrations[c][iexp], ac=self.achievable_calibrations[c][iexp]), flush=True)
                     anyshortfall = True
                 if(self.required_calibrations_per_zone[ic + 1] > 0):
                     ninzone = self.calibrations_per_zone[ic + 1, iexp, :]
@@ -5733,27 +5770,37 @@ class Field(object):
         return(anyshortfall, shortfalls)
 
     def _assign_permanent_calibs(self, shortfalls=None,
-                                 assigned_exposure_calib=None,
-                                 report=True,
-                                 all_exposures=False):
+                                 permanent_exposure_calib=None,
+                                 report=True):
         """Assign permanent calibrations for category and exposure, converting science to calib"""
         if(self.verbose):
             print("fieldid {fid}: Assigning calibs permanently in shortfall exposures, converting science targets".format(fid=self.fieldid), flush=True)
 
         # Go through assignment again; notice that we have 
         # left the original assignments in place.
-        for c in shortfalls:
-            ic = list(self.calibration_order).index(c)
+        for c in self.calibration_order:
+            print("fieldid {fid}:  ... {c}".format(fid=self.fieldid, c=c), flush=True)
+
+            # If it is a shortfall skip the temporary assignment
+            # (note that this DOES do the temporary assignment
+            # for permanent cases)
             iexps = np.array(list(shortfalls[c]), dtype=int)
+            exps_temp = np.ones(self.field_cadence.nexp_total, dtype=bool)
+            exps_temp[iexps] = False
+            iexps_temp = np.where(exps_temp)[0]
+
+            if(len(iexps_temp) > 0):
+                # If this is not a category with a short fall, assign temporary
+                # to stake claims; otherwise move on to permanent assignment in
+                # affected exposures
+                self._assign_temporary_calibs(permanent_exposure_calib=permanent_exposure_calib,
+                                              category=c, iexps=iexps_temp)
 
             if(len(iexps) == 0):
                 continue
-            else:
-                if(all_exposures):
-                    iexps = np.arange(self.field_cadence.nexp_total, dtype=int)
 
             if(self.verbose):
-                print("fieldid {fid}:   ... assigning {c} permanently in exposures {iexps}".format(c=c, iexps=iexps, fid=self.fieldid))
+                print("fieldid {fid}:  ... assigning {c} permanently in exposures {iexps}".format(c=c, iexps=iexps, fid=self.fieldid))
             icalib = self._select_calibs(self.targets['category'] == c)
             isort = np.argsort(self.targets['priority'][icalib],
                                kind='stable')
@@ -5785,39 +5832,38 @@ class Field(object):
 
             self._set_satisfied(rsids=self.targets['rsid'][icalib])
             self._set_has_spare_calib()
-            
+
             # Then set any others
             for i in icalib:
                 notgot = self.assignments['robotID'][i, iexps] < 0
                 self.assign_exposures(rsid=self.targets['rsid'][i],
                                       iexps=iexps[notgot],
                                       reset_satisfied=False)
-            assigned_exposure_calib[c][iexps] = True
+            permanent_exposure_calib[c][iexps] = True
             self._set_satisfied(rsids=self.targets['rsid'][icalib])
             self._set_has_spare_calib()
 
             if(report):
                 for iexp in iexps:
-                    # TODO check zones
                     if(self.calibrations[c][iexp] < self.achievable_calibrations[c][iexp]):
                         print("fieldid {fid}:   still short in {c}, exposure {iexp}; {nc}/{nac}".format(fid=self.fieldid, c=c, iexp=iexp, nc=self.calibrations[c][iexp], nac=self.achievable_calibrations[c][iexp]), flush=True)
 
         return
                        
-    def _unassign_temporary_calibs(self, assigned_exposure_calib=None):
+    def _unassign_temporary_calibs(self, permanent_exposure_calib=None):
         """Unassign temporary calibrations unless their assignment is fixed for a category and exposure"""
         if(self.verbose):
             print("fieldid {fid}: Unassigning temporary calibs".format(fid=self.fieldid), flush=True)
 
-        if(assigned_exposure_calib == None):
-            assigned_exposure_calib = collections.OrderedDict()
+        if(permanent_exposure_calib == None):
+            permanent_exposure_calib = collections.OrderedDict()
             for c in self.calibration_order:
-                assigned_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
-                                                      dtype=bool)
+                permanent_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
+                                                       dtype=bool)
 
         for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
             for c in self.calibration_order:
-                if(assigned_exposure_calib[c][iexp] == False):
+                if(permanent_exposure_calib[c][iexp] == False):
                     icalib = self._select_calibs(self.targets['category'] == c)
                     for i in icalib:
                         if(self.check_expflag(rsid=self.targets['rsid'][i],
@@ -5833,7 +5879,8 @@ class Field(object):
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
         return
 
-    def _assign_temporary_calibs(self, ok=None, iexps=None, assigned_exposure_calib=None):
+    def _assign_temporary_calibs(self, ok=None, iexps=None, permanent_exposure_calib=None,
+                                 category=None):
         """Assign temporary calibrations unless their assignment is fixed for a category and exposure"""
         if(self.verbose):
             print("fieldid {fid}: Assigning calibrations for each exposure".format(fid=self.fieldid), flush=True)
@@ -5841,19 +5888,22 @@ class Field(object):
         if(ok is None):
             ok = True
 
-        if(assigned_exposure_calib == None):
-            assigned_exposure_calib = collections.OrderedDict()
+        if(permanent_exposure_calib == None):
+            permanent_exposure_calib = collections.OrderedDict()
             for c in self.calibration_order:
-                assigned_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
-                                                      dtype=bool)
+                permanent_exposure_calib[c] = np.zeros(self.field_cadence.nexp_total,
+                                                       dtype=bool)
 
         assigned_rsids = []
         for ic, c in enumerate(self.calibration_order):
+            # If we have specified a category, assign only that one
+            if((category is not None) & (c != category)):
+                continue
             if(self.verbose):
-                print("fieldid {fid}:   ... {c}".format(fid=self.fieldid, c=c), flush=True)
+                print("fieldid {fid}:  ... assigning temporarily {c}".format(fid=self.fieldid, c=c), flush=True)
 
             if(iexps is None):
-                iexps_assign = np.where(assigned_exposure_calib[c] == False)[0]
+                iexps_assign = np.where(permanent_exposure_calib[c] == False)[0]
                 if(len(iexps_assign) == 0):
                     continue
             else:
@@ -5867,7 +5917,7 @@ class Field(object):
                 inotdone = np.where(self.assignments['robotID'][i, iexps_assign] == -1)[0]
                 if(len(inotdone) > 0):
                     self.assign_exposures(rsid=self.targets['rsid'][i], iexps=iexps_assign[inotdone],
-                                          reset_satisfied=False)
+                                          reset_satisfied=False, set_expflag=True)
 
         icalib = self._select_calibs(self.targets['category'] != 'science')
         self._set_satisfied(rsids=self.targets['rsid'][icalib])
@@ -6039,12 +6089,17 @@ class Field(object):
         For other exposures, it will set a preferred robot for each 
         previously observed target.
 """
+        anydone = (observed_status['status'] > 0).any()
+        if(anydone is False):
+            print("fieldid {fid}: Nothing marked as done in field".format(fid=self.fieldid),
+                  flush=True)
+            return
+
         c2t_to_rsid = dict()
         for t in self.targets:
             c2t_to_rsid[t['carton_to_target_pk']] = t['rsid']
 
         rsid_obs_to_istatus = dict()
-        gotone = np.zeros(len(self.targets), dtype=bool)
 
         # Find observed cases in each exposure. Track down rsid for each observation.
         # If there is an rsid appropriate, and the observed status is done, then
@@ -6060,18 +6115,30 @@ class Field(object):
                     print("fieldid {fid}: Accounting for exposure={iexp} completion".format(fid=self.fieldid, iexp=iexp), flush=True)
                 rsids = np.zeros(len(iobs), dtype=np.int64) - 1
                 for indx, cstatus in enumerate(observed_status[iobs]):
+                    tmp_rsids = self.equiv_target(cstatus)
                     if(cstatus['carton_to_target_pk'] in c2t_to_rsid):
+                        # If this carton_to_target is explicitly in status table,
+                        # assign that rsid
                         rsids[indx] = c2t_to_rsid[cstatus['carton_to_target_pk']]
                     else:
-                        tmp_rsids = self.equiv_target(cstatus)
+                        # Else take an equivalent based on catalogid/fiberType
                         if(len(tmp_rsids) > 0):
                             rsids[indx] = tmp_rsids[0]
-                    if(rsids[indx] >= 0):
-                        rsid_obs_to_istatus[iexp, rsids[indx]] = iobs[indx]
-                        if(cstatus['status'] > 0):
-                            gotone[self.rsid2indx[rsids[indx]]] = True
+                    # Associate the status with ANY equivalent target for step below
+                    # "completing" cadences with bad observations; this relies on
+                    # the observed_status only existing for one equivalent rsid
+                    # per exposure, which really ought to be true
+                    for tmp_rsid in tmp_rsids:
+                        rsid_obs_to_istatus[iexp, tmp_rsid] = iobs[indx]
 
                 infield_and_done = ((rsids >= 0) & (observed_status['status'][iobs] > 0))
+
+                if(infield_and_done.max() > 0):
+                    if(self.design_status['status'][iexp] != 'done'):
+                        raise ValueError("""fieldid {fid}: Assignments marked done for exposure {e}, which is not done!
+   {f}
+""".format(fid=self.fieldid, f=self.design_status, e=iexp))
+
                 self.assign_done_exposure(iexp=iexp, rsids=rsids[infield_and_done],
                                           holeIDs=observed_status['holeid'][iobs[infield_and_done]],
                                           force=True, lock=True)
@@ -6090,15 +6157,21 @@ class Field(object):
 
         # For SRD targets that are NOT satisfied, that DID get one good observation,
         # check if they are satisfiable AT ALL any more; if not, assign the missing MJDs
-        # to do the best we can
+        # to do the best we can; but only if they are in the cadence
+        gotone = ((self.assignments['equivRobotID'] >= 0).sum(axis=1) > 0)
         isci = np.where((self.assignments['satisfied'] == 0) & (gotone) &
-                        (self.targets['stage'] == 'srd'))[0]
+                        (self.targets['stage'] == 'srd') &
+                        (self.assignments['incadence'] > 0))[0]
         for indx, target in enumerate(self.targets[isci]):
             success = self.assign_cadences(rsids=np.array([target['rsid']]),
                                            test_only=True)
             if(success == False) :
                 for iexp in iexps:
                     if((iexp, target['rsid']) in rsid_obs_to_istatus):
+                        # Bail if this assignment was equivalently done already
+                        # earlier in this loop
+                        if(self.assignments['equivRobotID'][indx, iexp] >= 0):
+                            continue
                         istatus = rsid_obs_to_istatus[iexp, target['rsid']]
                         if(observed_status['status'][istatus] == 0):
                             self.assign_done_exposure(iexp=iexp, rsids=np.array([target['rsid']]),

@@ -95,15 +95,25 @@ def ra_transform(ras):
     return(ras)
 
 
-def fieldshape(racen=180., deccen=0., pa=0., observatory='apo'):
+def fieldshape(racen=180., deccen=0., pa=0., observatory='apo',
+               ra_transform_func=None):
+
+    if(ra_transform_func is None):
+        ra_transform_func = ra_transform
+
     ras, decs = radechex(racen=racen, deccen=deccen, pa=pa, observatory=observatory)
-    ras = ra_transform(ras)
+    ras = ra_transform_func(ras)
     xy = np.array([ras, decs]).transpose()
     fsh = shapely.geometry.Polygon(xy)
     return(fsh)
 
-def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=None,
-                      type2color=None):
+
+def field_patches(m=None, racen=None, deccen=None, pa=None,
+                  observatory=None, types=None, type2color=None,
+                  dont_check_360=False, ra_transform_func=None):
+
+    if(ra_transform_func is None):
+        ra_transform_func = ra_transform
 
     if(type2color is None):
         type2color = dict()
@@ -115,23 +125,10 @@ def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=
         
     fieldshapes = []
     for i in np.arange(len(racen), dtype=int):
-        print(i)
         fieldshapes.append(fieldshape(racen=racen[i], deccen=deccen[i],
-                                      pa=pa[i], observatory=observatory[i]))
+                                      pa=pa[i], observatory=observatory,
+                                      ra_transform_func=ra_transform_func))
     allfieldshapes = shapely.geometry.MultiPolygon(fieldshapes)
-
-    fig, ax = plt.subplots(figsize=(12, 6.))
-    plt.subplots_adjust(0.005, 0.005, 0.995, 0.995, 0., 0.)
-    
-    m = basemap.Basemap(projection='moll', lon_0=0, resolution='c')
-    
-    # draw parallels and meridians.
-    m.drawparallels(np.arange(-90., 120., 30.),
-                    linewidth=0.5,
-                    labels=[0, 0, 0, 0],
-                    labelstyle='+/-')
-    m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
-    m.drawmapboundary()
 
     patches = []
     for i, fsh in enumerate(fieldshapes):
@@ -142,7 +139,7 @@ def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=
         
         ras = np.array([x[0] for x in fsh.exterior.coords])
         decs = np.array([x[1] for x in fsh.exterior.coords])
-        if(ras.max() - ras.min() < 180.):
+        if(dont_check_360 | (ras.max() - ras.min() < 180.)):
             mpoly = shapely.ops.transform(m, fsh)
             patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=0.5,
                                         linewidth=0))
@@ -167,6 +164,36 @@ def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=
             if(fsh2.area > 0):
                 mpoly = shapely.ops.transform(m, fsh2)
                 patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=0.5))
+
+    return(patches)
+
+def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=None,
+                      type2color=None):
+
+    if(type2color is None):
+        type2color = dict()
+        type2color['AllSkySloane'] = 'black'
+        type2color['BHMAqmesMedium'] = 'orange'
+        type2color['BHMAqmesWide2'] = 'yellow'
+        type2color['RM'] = 'red'
+        type2color['RMlite'] = 'red'
+
+    fig, ax = plt.subplots(figsize=(12, 6.))
+    plt.subplots_adjust(0.005, 0.005, 0.995, 0.995, 0., 0.)
+    
+    m = basemap.Basemap(projection='moll', lon_0=0, resolution='c')
+    
+    # draw parallels and meridians.
+    m.drawparallels(np.arange(-90., 120., 30.),
+                    linewidth=0.5,
+                    labels=[0, 0, 0, 0],
+                    labelstyle='+/-')
+    m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+    m.drawmapboundary()
+
+    patches = field_patches(m=m, racen=racen, deccen=deccen, pa=pa,
+                            observatory=observatory, types=types,
+                            type2color=type2color)
     ax.add_collection(matplotlib.collections.PatchCollection(patches, match_original=True))
 
     return

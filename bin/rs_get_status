@@ -2,7 +2,6 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Date: Sept 26, 2018
 # @Filename: rs_get_status
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
@@ -30,6 +29,9 @@ clobber = False
 offset_min_skybrightness = None
 plan = None
 fromplan = None
+fieldid_shift = 0
+catchup = False
+catchup_version = None
 
 
 def get_status(indx):
@@ -45,13 +47,32 @@ def get_status(indx):
     field_status_file = field_status_file.replace('targets/rsFieldTargets',
                                                   'final/rsFieldStatus')
 
+    if(catchup):
+        field_status_file = field_status_file.replace('final', 'catchup')
+        field_status_file = field_status_file.replace('Status',
+                                                      'StatusCatchup{v}'.format(v=catchup_version.upper()))
+
     if((clobber is False) & os.path.isfile(field_status_file)):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_file), flush=True)
         return
 
-    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan, fieldid=fieldid)
+    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
+                                                                     fieldid=fieldid - fieldid_shift)
 
     if(status is not None):
+        print("Verifying consistency of status and status_field", flush=True)
+        idone = np.where(status['status'] > 0)[0]
+        field_exposures = np.unique(status['field_exposure'][idone])
+        for field_exposure in field_exposures:
+            istatus_field = np.where(status_field['field_exposure'] == field_exposure)[0]
+            if(len(istatus_field) == 0):
+                raise ValueError("field_exposure appears not at all in status_field")
+            if(len(istatus_field) > 1):
+                raise ValueError("field_exposure appears more than once in status_field")
+            istatus_field = istatus_field[0] 
+            if(status_field['status'][istatus_field] != 'done'):
+                raise ValueError("assignments are marked done in a non-done exposure")
+        
         print("Write status information", flush=True)
         hdr = robostrategy.header.rsheader()
         fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
@@ -83,9 +104,15 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-d', '--fieldid-shift', dest='fieldid_shift',
+                        help='shift in field id to apply', required=False,
+                        type=np.int32, default=0)
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-v', '--catchup-version', dest='catchup_version',
+                        help='catchup version', required=False,
+                        default=None, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -95,11 +122,21 @@ if __name__ == '__main__':
     end = args.end
     clobber = args.clobber
     nomultiprocess = args.nomultiprocess
+    fieldid_shift = args.fieldid_shift
+    catchup_version = args.catchup_version
+
+    if(catchup_version is not None):
+        catchup = True
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
     allocate_file = allocate_file.replace('rsAllocation',
                                           'final/rsAllocationFinal')
+
+    if(catchup):
+        allocate_file = allocate_file.replace('final', 'catchup')
+        allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
+
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
@@ -115,16 +152,8 @@ if __name__ == '__main__':
         for i in ikeep:
             get_status(i)
     else:
-        with multiprocessing.Pool(4) as pool:
-            ikeep = list(ikeep)
-            ikeep_distributed = []
-            icurr = 0
-            while(len(ikeep) > 0):
-                ikeep_distributed.append(ikeep[icurr])
-                ikeep.remove(ikeep[icurr])
-                if(len(ikeep) > 0):
-                    icurr = (icurr + int(pool._processes)) % len(ikeep)
-            pool.map(get_status, ikeep_distributed)
+        with multiprocessing.Pool(8) as pool:
+            pool.map(get_status, ikeep, 1)
 
     print('DONE: rs_get_status', flush=True)
     print(time.ctime(time.time()), flush=True)
