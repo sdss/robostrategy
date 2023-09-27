@@ -40,7 +40,7 @@ if __name__ == '__main__':
                         required=False, help="start MJD (overrides --date-start)", 
                         default=None)
     parser.add_argument("-d", "--date-start", dest="date_start", type=str,
-                        required=False, help="start date (YYYY-MM-DD)", 
+                        required=False, help="start date (YYYY-MM-DD); overrides cfg file", 
                         default=None)
 
     args = parser.parse_args()
@@ -49,16 +49,24 @@ if __name__ == '__main__':
     mjd_start = args.mjd_start
     date_start = args.date_start
 
-    if((date_start is not None) &
-       (mjd_start is None)):
-        mjd_start = np.int32(roboscheduler.scheduler.dateandtime2mjd(date=date_start))
-
     rsParams = params.RobostrategyParams(plan=plan)
     schedule = rsParams.cfg.get('Allocation', 'Schedule')
     if(observatory == 'apo'):
         fclear = rsParams.cfg.get('Allocation', 'fClearAPO')
     else:
         fclear = rsParams.cfg.get('Allocation', 'fClearLCO')
+
+    if(mjd_start is None):
+        if('mjdStart' in rsParams.cfg['Allocation']):
+            mjd_start = int(rsParams.cfg.get('Allocation', 'mjdStart'))
+
+    if(date_start is None):
+        if('dateStart' in rsParams.cfg['Allocation']):
+            date_start = rsParams.cfg.get('Allocation', 'dateStart')
+
+    if((date_start is not None) &
+       (mjd_start is None)):
+        mjd_start = np.int32(roboscheduler.scheduler.dateandtime2mjd(date=date_start))
 
     if('ExposureTime' in rsParams.cfg['Allocation']):
         exposure_times = rsParams.cfg.get('Allocation', 'ExposureTime').split()
