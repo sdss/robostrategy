@@ -66,6 +66,9 @@ if __name__ == '__main__':
                         help='read the field without creating grids',
                         default=False, required=False,
                         action='store_true')
+    parser.add_argument('-u', '--unpickle', dest='unpickle',
+                        help='unpickle cadence', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-t', '--test', dest='test',
                         help='read test file', required=False,
                         default=False, action='store_true')
@@ -82,6 +85,7 @@ if __name__ == '__main__':
     nogrids = args.nogrids
     oldmag = args.oldmag
     test = args.test
+    unpickle = args.unpickle
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -96,7 +100,7 @@ if __name__ == '__main__':
     if(final):
         cadences_file = cadences_file.replace('rsCadences',
                                               'final/rsCadencesFinal')
-    cadencelist.fromfits(filename=cadences_file, unpickle=False)
+    cadencelist.fromfits(filename=cadences_file, unpickle=unpickle)
 
     field_target_file = sdss_path.full('rsFieldAssignments',
                                        plan=plan, observatory=observatory,
