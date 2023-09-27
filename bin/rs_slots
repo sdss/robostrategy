@@ -17,6 +17,7 @@ import os
 import sys
 import argparse
 import numpy as np
+import roboscheduler.scheduler
 import robostrategy.slots
 import robostrategy.params as params
 import sdss_access.path
@@ -35,10 +36,22 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--observatory", dest="observatory", type=str,
                         required=False, help="observatory ('apo' or 'lco')",
                         default='apo')
+    parser.add_argument("-m", "--mjd-start", dest="mjd_start", type=int,
+                        required=False, help="start MJD (overrides --date-start)", 
+                        default=None)
+    parser.add_argument("-d", "--date-start", dest="date_start", type=str,
+                        required=False, help="start date (YYYY-MM-DD)", 
+                        default=None)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    mjd_start = args.mjd_start
+    date_start = args.date_start
+
+    if((date_start is not None) &
+       (mjd_start is None)):
+        mjd_start = np.int32(roboscheduler.scheduler.dateandtime2mjd(date=date_start))
 
     rsParams = params.RobostrategyParams(plan=plan)
     schedule = rsParams.cfg.get('Allocation', 'Schedule')
@@ -70,6 +83,6 @@ if __name__ == '__main__':
                                      schedule=schedule, fclear=fclear,
                                      exptimes=exptimes / 60.,
                                      exposure_overhead=exposure_overhead / 60.)
-    slots.fill()
+    slots.fill(mjd_start=mjd_start)
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
     slots.tofits(filename=slots_file)
