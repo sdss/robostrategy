@@ -38,6 +38,10 @@ def get_status(indx):
     import robostrategy.status
 
     fieldid = allocate.field_array['fieldid'][indx]
+
+    original_fieldid = allocate.field_array['rs_fieldid'][indx]
+    ioriginal = np.where(original_allocate.field_array['fieldid'] == original_fieldid)[0]
+    full_cadence = original_allocate.field_array['cadence'][ioriginal]
     
     print("fieldid {fid}: Get status".format(fid=fieldid), flush=True)
 
@@ -56,8 +60,15 @@ def get_status(indx):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_file), flush=True)
         return
 
-    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
-                                                                     fieldid=fieldid - fieldid_shift)
+    status, tmp_status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
+                                                                         fieldid=fieldid - fieldid_shift)
+
+    status_field_dtype = np.dtype(tmp_status_field.dtype.descr +
+                                  [('full_cadence', str, 50)])
+    status_field = np.zeros(len(tmp_status_field), dtype=status_field_dtype)
+    for n in tmp_status_field.dtype.names:
+        status_field[n] = tmp_status_field[n]
+    status_field['full_cadence'] = full_cadence
 
     if(status is not None):
         print("Verifying consistency of status and status_field", flush=True)
@@ -92,6 +103,9 @@ if __name__ == '__main__':
                         type=str, help='name of plan', required=True)
     parser.add_argument('-f', '--from-plan', dest='fromplan',
                         type=str, help='name of plan to start from', required=True)
+    parser.add_argument('-n', '--new-allocation', dest='new_allocation',
+                        help='treat as a new allocation run, so fieldids are from old plan',
+                        required=False, default=False, action='store_true')
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
@@ -124,18 +138,28 @@ if __name__ == '__main__':
     nomultiprocess = args.nomultiprocess
     fieldid_shift = args.fieldid_shift
     catchup_version = args.catchup_version
+    new_allocation = args.new_allocation
 
     if(catchup_version is not None):
         catchup = True
 
-    allocate_file = sdss_path.full('rsAllocation', plan=plan,
-                                   observatory=observatory)
-    allocate_file = allocate_file.replace('rsAllocation',
-                                          'final/rsAllocationFinal')
+    if(new_allocation):
+        aplan = fromplan
+    else:
+        aplan = plan
+
+    print(aplan)
+    original_allocate_file = sdss_path.full('rsAllocation', plan=aplan,
+                                            observatory=observatory)
+    allocate_file = original_allocate_file.replace('rsAllocation',
+                                                   'final/rsAllocationFinal')
 
     if(catchup):
         allocate_file = allocate_file.replace('final', 'catchup')
         allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
+
+    original_allocate = robostrategy.allocate.AllocateLST(filename=original_allocate_file,
+                                                          observatory=observatory)
 
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)

@@ -46,6 +46,7 @@ status_dtype = [('fieldid', np.int32),  # in field
                 ('fiberType', np.unicode_, 6)]  # from instrument
 
 status_field_dtype = [('fieldid', np.int32),
+                      ('cadence', np.unicode_, 25),
                       ('field_pk', np.int64),
                       ('field_exposure', np.int32),
                       ('design_id', np.int32),
@@ -241,7 +242,7 @@ def get_status_by_fieldid(plan=None, fieldid=None):
 
     status_designs_set = set()
     for s in status_array:
-        thing = (s['fieldid'], s['field_pk'], s['field_exposure'], s['design_id'])
+        thing = (s['fieldid'], s['field_pk'], s['field_exposure'], s['design_id'], s['field_cadence'])
         status_designs_set.add(thing)
     status_field = np.zeros(0, dtype=status_field_dtype)
     for s in status_designs_set:
@@ -250,6 +251,7 @@ def get_status_by_fieldid(plan=None, fieldid=None):
         tmp_status_field['field_pk'] = s[1]
         tmp_status_field['field_exposure'] = s[2]
         tmp_status_field['design_id'] = s[3]
+        tmp_status_field['cadence'] = s[4]
         tmp_status_field['status'] = 'not started'
         igd = np.where((status_array['fieldid'] == tmp_status_field['fieldid']) &
                        (status_array['field_pk'] == tmp_status_field['field_pk']) &
@@ -259,5 +261,8 @@ def get_status_by_fieldid(plan=None, fieldid=None):
         if(len(igd) > 0):
             tmp_status_field['status'] = 'done'
         status_field = np.append(status_field, tmp_status_field)
+
+    isort = np.argsort(status_field['field_exposure'])
+    status_field = status_field[isort]
 
     return(status_array, status_field)

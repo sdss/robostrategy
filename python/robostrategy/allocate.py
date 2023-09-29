@@ -26,6 +26,72 @@ except ImportError:
     basemap = None
 
 
+
+
+def option_epochs_done(option_cadence=None, current_cadence=None,
+                       current_exposures_done=None,
+                       skybrightness_only=False):
+    """Assess field options given status
+
+    Parameters
+    ----------
+
+    option_cadence : str
+        cadence option to check
+
+    current_cadence : str
+        current cadence for this field
+
+    current_exposures_done : ndarray of np.int32
+        current exposures that are done
+
+    skybrightness_only : bool
+        whether the full sky conditions should be checked (False) or not (True)
+
+    Returns
+    -------
+
+    ok: bool
+        whether the option's cadence can be used
+
+    eption_epochs_done : ndarray of np.int32
+        which epochs in option_cadence should be considered done
+         
+    Notes
+    -----
+
+    This associates current exposures done with the earliest of option's
+    exposures, avoiding if possible associating a current bright time exposure
+    with a dark time exposure in the option's cadence.
+"""
+    clist = rcadence.CadenceList()
+    if(len(clist.cadences) == 0):
+        raise ValueError("CadenceList must be initialized")
+
+    current_epochs = clist.cadences[current_cadence].epochs[current_exposures_done]
+    current_epochs = np.unique(current_epochs)
+
+    ok, epochs_list = clist.specific_cadence_consistency(current_cadence, option_cadence,
+                                                         current_epochs)
+    if(not ok):
+        return(False, np.array([], dtype=np.int32))
+
+    # Now pick an option which minimizes the number of originally-bright cadences
+    # associated with dark epochs
+    nbright_in_dark = np.zeros(len(epochs_list), dtype=np.int32)
+    lowest = -1
+    for indx, epochs in enumerate(epochs_list):
+        nbright_in_dark[indx] = (clist.cadences[current_cadence].skybrightness[current_epochs] >
+                                 clist.cadences[option_cadence].skybrightness[epochs]).sum()
+        if(nbright_in_dark[indx] == 0):
+            lowest = indx
+            break
+    if(lowest < 0):
+        lowest = np.argmin(nbright_in_dark)
+
+    return(True, np.array(epochs_list[lowest], dtype=np.int32))
+
+
 class AllocateLST(object):
     """LST allocation object for robostrategy
 
