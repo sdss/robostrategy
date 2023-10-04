@@ -61,6 +61,8 @@ def prep_field(indx):
                                     plan=bright_stars_cache,
                                     observatory=observatory,
                                     fieldid=fieldid)
+        cache_file = cache_file.replace('allocations',
+                                        'bs-cache')
         cache_file = cache_file.replace('rsFieldTargets',
                                         'rsBrightStars')
         cache = fitsio.FITS(cache_file)
