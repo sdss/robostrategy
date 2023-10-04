@@ -53,6 +53,8 @@ def cache_stars(indx):
                                        fieldid=fieldid)
     cache_file = field_target_file.replace('rsFieldTargets',
                                            'rsBrightStars')
+    cache_file = field_target_file.replace('allocations',
+                                           'bs-cache')
 
     robostrategy.field.write_bright_stars(filename=cache_file, bright_stars=bsDict,
                                           clobber=(noclobber == False))
