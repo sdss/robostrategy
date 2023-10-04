@@ -311,6 +311,9 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--ncadence', dest='ncadence',
                         type=np.int32, help='max number of cadences',
                         default=99)
+    parser.add_argument('-l', '--limit-pool', dest='limit_pool',
+                        help='upper limit on thread pool size', required=False,
+                        default=None, type=np.int32)
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-s', '--start', dest='start',
@@ -342,6 +345,7 @@ if __name__ == '__main__':
     test = args.test
     noclobber = args.noclobber
     nomultiprocessing = args.nomultiprocessing
+    limit_pool = args.limit_pool
 
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
@@ -415,7 +419,7 @@ if __name__ == '__main__':
                      (fields_array['fieldid'] <= end))[0]
 
     if((len(ikeep) > 1) and (nomultiprocessing is False)):
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(limit_pool) as pool:
             pool.map(field_options, ikeep)
     else:
         for ifield in ikeep:
