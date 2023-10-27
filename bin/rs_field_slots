@@ -89,19 +89,16 @@ if __name__ == '__main__':
                                               slots.nskybrightness))]
     field_slots = np.zeros(nfields, dtype=field_slots_dtype)
     field_slots['fieldid'] = field_options['fieldid']
-    field_slots['cadence'] = [c.strip()
-                              for c in field_options['cadence']]
+    field_slots['cadence'] = field_options['cadence']
     field_slots['racen'] = field_options['racen']
     field_slots['deccen'] = field_options['deccen']
-    field_cadences = [c.strip() for c in field_options['cadence']]
     field_max_skybrightness = [cadencelist.cadences[c].skybrightness.max() for
-                               c in field_cadences]
+                               c in field_slots['cadence']]
 
     # needed is how many exposures are needed for cadence
     # needed_sb says how many are needed in each skybrightness
     #   slot (assuming they use bright for bright, dark for dark)
-    for i in range(len(field_cadences)):
-        c = field_cadences[i]
+    for i, c in enumerate(field_slots['cadence']):
         field_slots['needed'][i] = cadencelist.cadences[c].nexp_total
         for epoch in range(cadencelist.cadences[c].nepochs):
             isb = -1

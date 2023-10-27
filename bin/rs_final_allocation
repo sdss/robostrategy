@@ -28,26 +28,27 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
-def split_slots(exps, time, ndark=2, ttype=''):
-    new_exps_dark = exps.copy()
-    new_exps_bright = exps.copy()
-    new_exps_dark[:, 1] = 0.
-    new_time_dark = time.copy()
-    new_time_bright = time.copy()
-    new_time_dark[:, 1] = 0.
-    dark_total = new_exps_dark[:, 0].sum()
-    dark_scale = np.float32(ndark) / dark_total
-    new_exps_dark[:, 0] = new_exps_dark[:, 0] * dark_scale
-    new_exps_bright[:, 0] = new_exps_bright[:, 0] * (1. - dark_scale)
-    new_time_dark[:, 0] = new_time_dark[:, 0] * dark_scale
-    new_time_bright[:, 0] = new_time_bright[:, 0] * (1. - dark_scale)
+def split_slots(exps, time, ndark=2, ttype='', iexp=[]):
+    exps_total = exps.sum()
+    dark_total = exps[:, 0].sum()
+    nexp = iexp[1] - iexp[0] + 1
+    new_exps = exps.copy()
+    new_time = time.copy()
     if(ttype == 'dark'):
-        return(new_exps_dark, new_time_dark)
+        new_exps[:, 0] = new_exps[:, 0] * ndark / dark_total
+        new_exps[:, 1] = 0.
+        new_time[:, 1] = new_time[:, 0] * ndark / dark_total
+        new_time[:, 1] = 0.
     elif(ttype == 'bright'):
-        return(new_exps_bright, new_time_bright)
+        if(dark_total > 0):
+            new_exps[:, 0] = new_exps[:, 0] * (dark_total - ndark) / dark_total
+            new_time[:, 0] = new_time[:, 0] * (dark_total - ndark) / dark_total
+        new_exps[:, :] = new_exps[:, :] * (nexp) / (exps_total - ndark)
+        new_time[:, :] = new_time[:, :] * (nexp) / (exps_total - ndark)
     else:
+        raise ValueError('ttype is bad')
         return
-    return
+    return(new_exps, new_time)
 
 
 if __name__ == '__main__':
@@ -64,11 +65,15 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='name of observatory', required=False,
                         choices=['lco', 'apo', 'both'], default='both')
+    parser.add_argument('-s', '--split-nocadence', dest='split_nocadence',
+                        help='split off after 18 bright epochs', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     reset = args.reset
     observatory = args.observatory
+    split_nocadence = args.split_nocadence
     
     if(observatory == 'both'):
         observatories = ['apo', 'lco']
@@ -133,17 +138,23 @@ if __name__ == '__main__':
             curr_cadence_name = rs_fields_array['cadence'][irsfield]
             curr_cadence = cadencelist.cadences[curr_cadence_name]
             skybrightness = curr_cadence.skybrightness[curr_cadence.epochs]
+            delta_max = curr_cadence.delta_max[curr_cadence.epochs]
             iexpst = 0
             while(iexpst < curr_cadence.nexp_total):
                 iexpnd = iexpst
                 sb = skybrightness[iexpst]
                 if(iexpnd + 1 < curr_cadence.nexp_total):
                     nextsb = skybrightness[iexpnd + 1]
+                    nextdelta = delta_max[iexpnd + 1]
                 while(((iexpnd + 1) < curr_cadence.nexp_total) &
-                      (np.abs(nextsb - sb) < 0.001)):
+                      (np.abs(nextsb - sb) < 0.001) & (
+                      ((delta_max[iexpnd] == -1) |
+                       (nextdelta != -1) |
+                       (split_nocadence == False)))):
                     iexpnd = iexpnd + 1
                     if(iexpnd + 1 < curr_cadence.nexp_total):
                         nextsb = skybrightness[iexpnd + 1]
+                        nextdelta = delta_max[iexpnd + 1]
 
                 tmp_fields_array = np.zeros(1, dtype=fields_array_dtype)
                 for n in rs_fields_array.dtype.names:
@@ -189,23 +200,56 @@ if __name__ == '__main__':
                         fields_array['cadence'][ifield] = 'mixed2_single_2x1'
                         new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
                                                         fields_array['slots_time'][ifield, :, :],
-                                                        ttype='dark')
-                        fields_array['slots_exposures'][ifield, :, :] = new_exp
-                        fields_array['slots_time'][ifield, :, :] = new_time
+                                                        ttype='dark',
+                                                        ndark=2,
+                                                        iexp=[iexpst, iexpnd])
                     elif((iexpst == 2) & (iexpnd <= 19)):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
                         new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
                                                         fields_array['slots_time'][ifield, :, :],
-                                                        ttype='bright')
-                        fields_array['slots_exposures'][ifield, :, :] = new_exp
-                        fields_array['slots_time'][ifield, :, :] = new_time
+                                                        ttype='bright',
+                                                        ndark=2,
+                                                        iexp=[iexpst, iexpnd])
                     elif(iexpst == 2):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
                         new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
                                                         fields_array['slots_time'][ifield, :, :],
-                                                        ttype='bright')
-                        fields_array['slots_exposures'][ifield, :, :] = new_exp
-                        fields_array['slots_time'][ifield, :, :] = new_time
+                                                        ttype='bright',
+                                                        ndark=2,
+                                                        iexp=[iexpst, iexpnd])
+                    elif((iexpst >= 20) & (split_nocadence != False)):
+                        fields_array['cadence'][ifield] = 'bright_flexible_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
+                                                        fields_array['slots_time'][ifield, :, :],
+                                                        ttype='bright',
+                                                        ndark=2,
+                                                        iexp=[iexpst, iexpnd])
+                    else:
+                        print(fields_array['fieldid'][ifield])
+                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        sys.exit(3)
+                elif(curr_cadence_name[0:13] == 'bright_single'):
+                    if((iexpst == 0) & (iexpnd <= 17)):
+                        fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
+                                                        fields_array['slots_time'][ifield, :, :],
+                                                        ttype='bright',
+                                                        ndark=0,
+                                                        iexp=[iexpst, iexpnd])
+                    elif(iexpst == 0):
+                        fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
+                                                        fields_array['slots_time'][ifield, :, :],
+                                                        ttype='bright',
+                                                        ndark=0,
+                                                        iexp=[iexpst, iexpnd])
+                    elif((iexpst >= 18) & (split_nocadence != False)):
+                        fields_array['cadence'][ifield] = 'bright_flexible_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
+                                                        fields_array['slots_time'][ifield, :, :],
+                                                        ttype='bright',
+                                                        ndark=0,
+                                                        iexp=[iexpst, iexpnd])
                     else:
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
@@ -215,6 +259,12 @@ if __name__ == '__main__':
                                                                          r=rs_nexp_total))
                     print(cadencelist.cadences[curr_cadence_name])
                     sys.exit(2)
+                #print(fields_array['cadence'][ifield])
+                #print(fields_array['slots_exposures'][ifield, :, :])
+                #print(new_exp)
+                #print("-----")
+                fields_array['slots_exposures'][ifield, :, :] = new_exp
+                fields_array['slots_time'][ifield, :, :] = new_time
 
         # HACK to return cadences in the db
         imixed22 = np.where(fields_array['cadence'] == b'mixed2_single_2x1')[0]
