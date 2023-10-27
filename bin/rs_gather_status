@@ -2,7 +2,7 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Filename: rs_get_status
+# @Filename: rs_gather_status
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
 
@@ -21,7 +21,6 @@ import robostrategy.header
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -38,10 +37,10 @@ if __name__ == '__main__':
     plan = args.plan
     observatory = args.observatory
 
-    original_allocate_file = sdss_path.full('rsAllocation', plan=plan,
-                                            observatory=observatory)
-    allocate_file = original_allocate_file.replace('rsAllocation',
-                                                   'final/rsAllocationFinal')
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate_file = allocate_file.replace('rsAllocation',
+                                          'final/rsAllocationFinal')
 
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
