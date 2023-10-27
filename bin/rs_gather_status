@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_gather_status
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.allocate
+import robostrategy.header
+import sdss_access.path
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+cadencelist = cadence.CadenceList(skybrightness_only=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Extract current status information')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate_file = allocate_file.replace('rsAllocation',
+                                          'final/rsAllocationFinal')
+
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+                               return_index=True)
+
+    allst = None
+    for fieldid in fieldids:
+        print(fieldid)
+        field_status_file = sdss_path.full('rsFieldTargets',
+                                           plan=plan, observatory=observatory,
+                                           fieldid=fieldid)
+        field_status_file = field_status_file.replace('targets/rsFieldTargets',
+                                                      'final/rsFieldStatus')
+        try:
+            fst = fitsio.read(field_status_file, ext='FIELD')
+        except OSError:
+            print("Could not find status file for {fid}".format(fid=fieldid))
+
+        if(allst is None):
+            allst = fst
+        else:
+            allst = np.append(allst, fst)
+
+    fitsio.write('final/rsStatus-{p}-{o}.fits'.format(p=plan, o=observatory),
+                 allst, clobber=True)
