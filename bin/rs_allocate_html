@@ -53,12 +53,13 @@ if __name__ == '__main__':
     cadences = [c.strip() for c in allocate.field_array['cadence']]
     base_cadences = []
     for c in cadences:
-        last = c.split('_')[-2]
-        if(last == 'single'):
-            base_cadence = "_".join(c.split('_')[0:-1])
-        else:
-            base_cadence = c
-        base_cadences.append(base_cadence)
+        if(c != 'none'):
+            last = c.split('_')[-2]
+            if(last == 'single'):
+                base_cadence = "_".join(c.split('_')[0:-1])
+            else:
+                base_cadence = c
+            base_cadences.append(base_cadence)
     base_cadences = np.array(base_cadences)
 
     alloc_dict = dict()

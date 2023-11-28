@@ -50,6 +50,17 @@ def test_option_status():
 
     option_cadence = 'single_5x1'
     current_cadence = 'mixed2_7x1'
+    current_exposures_done = np.array([], dtype=np.int32)
+
+    ok, option_epochs_done = allocate.option_epochs_done(option_cadence=option_cadence,
+                                                         current_cadence=current_cadence,
+                                                         current_exposures_done=current_exposures_done)
+
+    assert ok is False
+    assert np.all(option_epochs_done == np.array([], dtype=np.int32))
+
+    option_cadence = 'single_5x1'
+    current_cadence = 'mixed2_7x1'
     current_exposures_done = np.array([2], dtype=np.int32)
 
     ok, option_epochs_done = allocate.option_epochs_done(option_cadence=option_cadence,

@@ -61,8 +61,8 @@ if __name__ == '__main__':
             mjd_start = int(rsParams.cfg.get('Allocation', 'mjdStart'))
 
     if(date_start is None):
-        if('dateStart' in rsParams.cfg['Allocation']):
-            date_start = rsParams.cfg.get('Allocation', 'dateStart')
+        if('DateStart' in rsParams.cfg['Allocation']):
+            date_start = rsParams.cfg.get('Allocation', 'DateStart')
 
     if((date_start is not None) &
        (mjd_start is None)):

@@ -32,12 +32,25 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-f', '--from-plan', dest='fromplan',
+                        type=str, help='name of plan to start from', required=False,
+                        default=None)
+    parser.add_argument('-n', '--new-allocation', dest='new_allocation',
+                        help='treat as a new allocation run, so fieldids are from old plan',
+                        required=False, default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
+    fromplan = args.fromplan
     observatory = args.observatory
+    new_allocation = args.new_allocation
 
-    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+    if(new_allocation):
+        aplan = fromplan
+    else:
+        aplan = plan
+
+    allocate_file = sdss_path.full('rsAllocation', plan=aplan,
                                    observatory=observatory)
     allocate_file = allocate_file.replace('rsAllocation',
                                           'final/rsAllocationFinal')
@@ -45,26 +58,57 @@ if __name__ == '__main__':
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
+    fieldid_to_rs = dict()
+    for af in allocate.field_array:
+        fieldid_to_rs[af['fieldid']] = af['rs_fieldid']
+
     fieldids, indx = np.unique(allocate.field_array['fieldid'],
                                return_index=True)
 
     fieldids = np.unique(fieldids)
 
     field_status = None
+    fromplan_field = None
     for fieldid in fieldids:
+        print(fieldid)
         field_status_file = sdss_path.full('rsFieldTargets',
                                            plan=plan, observatory=observatory,
                                            fieldid=fieldid)
         field_status_file = field_status_file.replace('targets/rsFieldTargets',
                                                       'final/rsFieldStatus')
+        if(os.path.exists(field_status_file) is False):
+            continue
+
         tmp_field_status = fitsio.read(field_status_file, ext='FIELD')
+        hdr = fitsio.read_header(field_status_file)
+        if('FROMPLAN' in hdr):
+            tmp_fromplan = hdr['FROMPLAN']
+            if(fromplan_field is None):
+                fromplan_field = tmp_fromplan
+            else:
+                if(fromplan_field != tmp_fromplan):
+                    raise ValueError("Inconsistency in FROMPLANs found in status files")
+                        
         if(field_status is None):
-            field_status = np.zeros(0, dtype=tmp_field_status.dtype)
-        field_status = np.append(field_status, tmp_field_status)
+            field_status_dtype = tmp_field_status.dtype.descr
+            field_status_dtype.append(('rs_fieldid', np.int32))
+            field_status_dtype = np.dtype(field_status_dtype)
+            field_status = np.zeros(0, dtype=field_status_dtype)
+        append_field_status = np.zeros(len(tmp_field_status), dtype=field_status_dtype)
+        for n in tmp_field_status.dtype.names:
+            append_field_status[n] = tmp_field_status[n]
+        append_field_status['rs_fieldid'] = fieldid_to_rs[fieldid]
+        field_status = np.append(field_status, append_field_status)
 
-
+    if(fromplan is None):
+        fromplan = fromplan_field
+    
     outfile = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'allocations',
                            plan, 'rsStatus-{p}-{o}.fits'.format(p=plan, o=observatory))
     hdr = robostrategy.header.rsheader()
+    if(fromplan is not None):
+        hdr.append({'name':'FROMPLAN',
+                    'value':fromplan,
+                    'comment':'plan this status is based on'})
     fitsio.write(outfile, field_status, header=hdr, clobber=True)
     print('DONE: rs_gather_status', flush=True)

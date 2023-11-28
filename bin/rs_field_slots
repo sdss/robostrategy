@@ -2,7 +2,6 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Date: Aug 3, 2018
 # @Filename: rs_field_slots
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
@@ -21,6 +20,7 @@ import fitsio
 import robostrategy
 import robostrategy.header
 import robostrategy.slots
+import robostrategy.allocate
 import roboscheduler
 import roboscheduler.scheduler
 import roboscheduler.cadence as cadence
@@ -28,6 +28,101 @@ import robostrategy.params as params
 import sdss_access.path
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
+                     current_cadence=None, slots=None):
+    """Calculate filled exposure counts given current status
+
+    Parameters
+    ----------
+
+    fieldid : int
+        field ID
+
+    field_status : ndarray
+        array with status informion
+
+    slots : robostrategy.slots.Slots object
+        information about sky brightness and LST slots
+
+    option_cadence : str
+        cadence we are trying
+
+    current_cadence : str
+        current cadence
+
+    Returns
+    ------
+
+    allowed : bool
+        is this option allowed?
+
+    filled_sb : ndarray of np.int32
+        filled exposures for each sky brightness
+
+    Notes
+    -----
+
+    If the field hasn't been started, all cadences are allowed.
+
+    If the field has been started, only cadences which include the already-taken cadences
+    are allowed.
+""" 
+    cadencelist = cadence.CadenceList()
+
+    ifield = np.where(field_status['rs_fieldid'] == fieldid)[0]
+    curr_field_status = field_status[ifield]
+    idone = np.where(curr_field_status['status'] == 'done')
+    current_exposures_done_flag = np.zeros(cadencelist.cadences[current_cadence].nexp_total,
+                                           dtype=bool)
+    current_exposures_done_flag[curr_field_status['field_exposure'][idone]] = True
+    current_exposures_done = np.where(current_exposures_done_flag)[0]
+    filled_sb = np.zeros(slots.nskybrightness, dtype=np.int32)
+
+    if(len(current_exposures_done) == 0):
+        return(True, filled_sb)
+
+    print(" ... Checking option {o} against {c}".format(o=option_cadence,
+                                                        c=current_cadence), flush=True)
+    print(" ...   {e}".format(e=current_exposures_done), flush=True)
+
+    # This checks whether the option under consideration expresses satisfies 
+    # the conditions that the original cadence had for the exposures that
+    # are already done.
+    ok, epochs_done = robostrategy.allocate.option_epochs_done(option_cadence=option_cadence,
+                                                               current_cadence=current_cadence,
+                                                               current_exposures_done=current_exposures_done)
+
+    if(ok is False):
+        return(False, filled_sb)
+
+    # Now we check the reverse: does the original cadence satisfy the conditions
+    # that the option under consideration requires.
+    option_exposures_done = np.zeros(0, dtype=np.int32)
+    ocadence = cadencelist.cadences[option_cadence]
+    for epoch in epochs_done:
+        exps = ocadence.epoch_indx[epoch] + np.arange(ocadence.nexp[epoch], dtype=np.int32)
+        option_exposures_done = np.append(option_exposures_done, exps)
+    ok, epochs_done_reverse = robostrategy.allocate.option_epochs_done(option_cadence=current_cadence,
+                                                                       current_cadence=option_cadence,
+                                                                       current_exposures_done=option_exposures_done)
+
+    if(ok is False):
+        return(False, filled_sb)
+
+    for epoch in epochs_done:
+        isb = -1
+        # well, that's a bit dangerous isn't it
+        # relies on skybrightness in cadence always <= 1
+        while((cadencelist.cadences[option_cadence].skybrightness[epoch] >
+               slots.skybrightness[isb + 1]) &
+              (cadencelist.cadences[option_cadence].skybrightness[epoch] <=
+               slots.skybrightness[isb + 2])):
+            isb = isb + 1
+        filled_sb[isb] = filled_sb[isb] + cadencelist.cadences[option_cadence].nexp[epoch]
+
+    return(True, filled_sb)
 
 
 if __name__ == '__main__':
@@ -41,10 +136,14 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--observatory", dest="observatory", type=str,
                         required=False, help="observatory ('apo' or 'lco')",
                         default='apo')
+    parser.add_argument('-S', '--no-status', dest='nostatus',
+                        help='do not use status', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    nostatus = args.nostatus
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -52,6 +151,11 @@ if __name__ == '__main__':
         bright_only_bright = True
     else:
         bright_only_bright = False
+
+    if('FractionRM' in rsParams.cfg['Allocation']):
+        fraction_rm = np.float32(rsParams.cfg.get('Allocation', 'FractionRM'))
+    else:
+        fraction_rm = 1.
 
     if('AirmassLimits' in rsParams.cfg['Allocation']):
         airmass_limits_str = rsParams.cfg.get('Allocation', 'AirmassLimits').split()
@@ -65,25 +169,52 @@ if __name__ == '__main__':
     else:
         airmass_pad = 0.2
 
+    print("Reading options ...", flush=True)
+    options_file = sdss_path.full('rsOptions', plan=plan,
+                                  observatory=observatory)
+    field_options = fitsio.read(options_file)
+
+    nfields = len(field_options)
+
+    if(nostatus is False):
+        print("Reading status file ...", flush=True)
+        field_status_file = options_file.replace('rsOptions', 'rsStatus')
+        field_status = fitsio.read(field_status_file)
+        field_status_hdr = fitsio.read_header(field_status_file, ext=1)
+        fromplan = field_status_hdr['FROMPLAN']
+    else:
+        print("Not reading status file ...", flush=True)
+
+    print("Reading cadences ...", flush=True)
     cadencelist = cadence.CadenceList()
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(cadences_file, unpickle=True)
 
+    print("Reading slots ...", flush=True)
     slots = robostrategy.slots.Slots(observatory=observatory)
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
     slots.fromfits(filename=slots_file)
 
-    options_file = sdss_path.full('rsOptions', plan=plan,
-                                  observatory=observatory)
-    field_options = fitsio.read(options_file)
-    nfields = len(field_options)
+    if(nostatus is False):
+        print("Reading allocations  ...", flush=True)
+        allocate_file = sdss_path.full('rsAllocation', plan=fromplan,
+                                       observatory=observatory)
+        allocate_fromplan = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                              observatory=observatory)
+    else:
+        print("Not reading allocations  ...", flush=True)
+        fromplan = None
+        allocate_fromplan = None
 
+    print("Set up output array ...", flush=True)
     field_slots_dtype = [('fieldid', np.int32),
                          ('cadence', np.unicode_, 30),
                          ('racen', np.float64),
                          ('deccen', np.float64),
                          ('needed', np.int32),
+                         ('allowed', bool),
+                         ('filled_sb', np.int32, slots.nskybrightness),
                          ('needed_sb', np.int32, slots.nskybrightness),
                          ('slots', np.int32, (slots.nlst,
                                               slots.nskybrightness))]
@@ -98,7 +229,10 @@ if __name__ == '__main__':
     # needed is how many exposures are needed for cadence
     # needed_sb says how many are needed in each skybrightness
     #   slot (assuming they use bright for bright, dark for dark)
+    print("Calculate needed and filled ...", flush=True)
     for i, c in enumerate(field_slots['cadence']):
+        fieldid = field_slots['fieldid'][i]
+        print(" ... {fid}".format(fid=fieldid), flush=True)
         field_slots['needed'][i] = cadencelist.cadences[c].nexp_total
         for epoch in range(cadencelist.cadences[c].nepochs):
             isb = -1
@@ -110,6 +244,18 @@ if __name__ == '__main__':
                    slots.skybrightness[isb + 2])):
                 isb = isb + 1
             field_slots['needed_sb'][i, isb] = field_slots['needed_sb'][i, isb] + cadencelist.cadences[c].nexp[epoch]
+
+        if(nostatus is False):
+            iallocate = np.where(allocate_fromplan.field_array['fieldid'] == fieldid)[0]
+            current_cadence = allocate_fromplan.field_array['cadence'][iallocate[0]]
+            allowed, filled_sb = calculate_filled(fieldid=fieldid,
+                                                  field_status=field_status,
+                                                  option_cadence=c,
+                                                  current_cadence=current_cadence, slots=slots)
+            field_slots['filled_sb'][i, :] = filled_sb
+            field_slots['allowed'][i] = allowed
+        else:
+            field_slots['allowed'][i] = True
 
     observer = roboscheduler.scheduler.Observer(observatory=observatory)
     for ilst in np.arange(slots.nlst):
@@ -138,6 +284,17 @@ if __name__ == '__main__':
                          slots.skybrightness[iskybrightness + 1])
             iok = np.where(okalt & oksky)[0]
             field_slots['slots'][iok, ilst, iskybrightness] = 1.
+
+    # Now adjust filled for RM
+    irm = np.where((field_slots['cadence'] == 'dark_174x8') |
+                   (field_slots['cadence'] == 'dark_100x8'))[0]
+    print("Dealing with {n} RM fields".format(n=len(irm)))
+    for crm in irm:
+        filled_sb = np.int32((1. - fraction_rm) * field_slots['needed_sb'][crm, :])
+        print("   fieldid {fid} gets {n} filled of {m}".format(fid=field_slots['fieldid'][crm],
+                                                               n=filled_sb,
+                                                               m=field_slots['needed_sb'][crm, :]))
+        field_slots['filled_sb'][crm, :] = filled_sb
 
     slots_file = sdss_path.full('rsFieldSlots', plan=plan,
                                 observatory=observatory)

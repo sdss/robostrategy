@@ -16,15 +16,12 @@ import sys
 import multiprocessing
 import numpy as np
 import fitsio
-import roboscheduler.cadence as cadence
 import robostrategy.allocate
 import robostrategy.header
 import sdss_access.path
 import time
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
-
-cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
 offset_min_skybrightness = None
@@ -151,6 +148,11 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--catchup-version', dest='catchup_version',
                         help='catchup version', required=False,
                         default=None, type=str)
+    parser.add_argument('-n', '--new-allocation', dest='new_allocation',
+                        help='treat as a new allocation run, so fieldids are from old plan',
+                        required=False, default=False, action='store_true')
+    parser.add_argument('-f', '--from-plan', dest='fromplan',
+                        type=str, help='name of plan to start from', required=True)
 
     args = parser.parse_args()
     plan = args.plan
@@ -160,14 +162,22 @@ if __name__ == '__main__':
     clobber = args.clobber
     nomultiprocess = args.nomultiprocess
     catchup_version = args.catchup_version
+    new_allocation = args.new_allocation
+    fromplan = args.fromplan
 
     if(catchup_version is not None):
         catchup = True
 
-    allocate_file = sdss_path.full('rsAllocation', plan=plan,
-                                   observatory=observatory)
-    allocate_file = allocate_file.replace('rsAllocation',
-                                          'final/rsAllocationFinal')
+    if(new_allocation):
+        aplan = fromplan
+    else:
+        aplan = plan
+
+    original_allocate_file = sdss_path.full('rsAllocation', plan=aplan,
+                                            observatory=observatory)
+    allocate_file = original_allocate_file.replace('rsAllocation',
+                                                   'final/rsAllocationFinal')
+
     if(catchup):
         allocate_file = allocate_file.replace('final', 'catchup')
         allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))

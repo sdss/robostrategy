@@ -63,14 +63,15 @@ def get_status(indx):
     status, tmp_status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
                                                                          fieldid=fieldid - fieldid_shift)
 
-    status_field_dtype = np.dtype(tmp_status_field.dtype.descr +
-                                  [('full_cadence', str, 50)])
-    status_field = np.zeros(len(tmp_status_field), dtype=status_field_dtype)
-    for n in tmp_status_field.dtype.names:
-        status_field[n] = tmp_status_field[n]
-    status_field['full_cadence'] = full_cadence
-
     if(status is not None):
+
+        status_field_dtype = np.dtype(tmp_status_field.dtype.descr +
+                                      [('full_cadence', str, 50)])
+        status_field = np.zeros(len(tmp_status_field), dtype=status_field_dtype)
+        for n in tmp_status_field.dtype.names:
+            status_field[n] = tmp_status_field[n]
+        status_field['full_cadence'] = full_cadence
+
         print("Verifying consistency of status and status_field", flush=True)
         idone = np.where(status['status'] > 0)[0]
         field_exposures = np.unique(status['field_exposure'][idone])
@@ -86,6 +87,9 @@ def get_status(indx):
         
         print("Write status information", flush=True)
         hdr = robostrategy.header.rsheader()
+        hdr.append({'name':'FROMPLAN',
+                    'value':fromplan,
+                    'comment':'plan this status is based on'})
         fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
         fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
 
@@ -148,7 +152,6 @@ if __name__ == '__main__':
     else:
         aplan = plan
 
-    print(aplan)
     original_allocate_file = sdss_path.full('rsAllocation', plan=aplan,
                                             observatory=observatory)
     allocate_file = original_allocate_file.replace('rsAllocation',
