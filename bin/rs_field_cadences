@@ -22,10 +22,23 @@ import astropy.units as u
 import fitsio
 import sdss_access.path
 import robostrategy
+import robostrategy.allocate
 import robostrategy.header
+import roboscheduler.cadence
 import robostrategy.params as params
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def parse_cadence(cadence):
+    words = cadence.split('_')
+    prefix = '_'.join(words[:-1])
+    nxm = words[-1]
+    n, m = nxm.split('x')
+    if(n[0] != 'n'):
+        n = int(n)
+    m = int(m)
+    return(prefix, n, m)
 
 
 def cadences_from_targets(cfg=None, target_cadences=None):
@@ -60,11 +73,16 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-S', '--no-status', dest='nostatus',
+                        help='do not use status', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    nostatus = args.nostatus
 
+    print("Reading cfg file ...", flush=True)
     rsParams = params.RobostrategyParams(plan=plan)
 
     darkPlane = False
@@ -84,11 +102,38 @@ if __name__ == '__main__':
         rotate = False
         paname = ''
 
+    print("Reading fields ...", flush=True)
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
+    field_status_file = fields_file.replace('rsFields', 'rsStatus')
     if(rotate):
         fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
     fields_array = fitsio.read(fields_file)
+
+    if(nostatus is False):
+        print("Reading status file ...", flush=True)
+        field_status = fitsio.read(field_status_file)
+        field_status_hdr = fitsio.read_header(field_status_file, ext=1)
+        fromplan = field_status_hdr['FROMPLAN']
+    else:
+        print("Not reading status file ...", flush=True)
+
+    if(nostatus is False):
+        print("Reading allocations  ...", flush=True)
+        allocate_file = sdss_path.full('rsAllocation', plan=fromplan,
+                                       observatory=observatory)
+        allocate_fromplan = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                              observatory=observatory)
+    else:
+        print("Not reading allocations  ...", flush=True)
+        fromplan = None
+        allocate_fromplan = None
+
+    print("Reading cadences ...", flush=True)
+    cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(cadences_file, unpickle=True)
 
     fields_coords = coords.SkyCoord(ra=fields_array['racen'] * u.degree,
                                     dec=fields_array['deccen'] * u.degree,
@@ -134,7 +179,61 @@ if __name__ == '__main__':
                 if('bright_8x1' in field_cadences):
                     field_cadences = ['bright_8x1']
 
+        if(nostatus is False):
+            # If any exposures are done, make sure at least one of the current
+            # cadences can accommodate those exposures
+            idone = np.where((field_status['rs_fieldid'] == fieldid) &
+                             (field_status['status'] == 'done'))[0]
+            if(len(idone) > 0):
+                current_exposures_done = field_status['field_exposure'][idone]
+                iallocate = np.where(allocate_fromplan.field_array['fieldid'] == fieldid)[0]
+                current_cadence = allocate_fromplan.field_array['cadence'][iallocate[0]]
+                current_epochs = cadencelist.cadences[current_cadence].epochs[current_exposures_done]
+                current_epochs, nexp_epochs = np.unique(current_epochs, return_counts=True)
+
+                atleastone = False
+                for option_cadence in field_cadences:
+                    if(option_cadence == 'mixed2_single_n2x1'):
+                        option_cadence = 'mixed2_single_nx1'
+                    ok, epochs_list = cadencelist.specific_cadence_consistency(current_cadence,
+                                                                               option_cadence,
+                                                                               current_epochs,
+                                                                               limit=1000)
+                    if(ok):
+                        atleastone = True
+                        break
+
+                if(atleastone == False):
+                    if(current_cadence in rsParams.cfg['ConvertToHybridCadences']):
+                        prefix_c, n_c, m_c = parse_cadence(current_cadence)
+                        convert_cadences = rsParams.cfg['ConvertToHybridCadences'][current_cadence].split()
+                        hybrid_cadences = []
+                        for option_cadence in field_cadences:
+                            if(option_cadence in convert_cadences):
+                                prefix, n, m = parse_cadence(option_cadence)
+                                ndone = len(current_epochs)
+                                nnotdone = n - ndone
+                                if(nnotdone > 0):
+                                    hybrid_cadence = '{prefix}_{d}x{mc}+{nd}x{m}'.format(prefix=prefix,
+                                                                                         d=ndone,
+                                                                                         mc=m_c,
+                                                                                         nd=nnotdone,
+                                                                                         m=m)
+                                    if(hybrid_cadence in cadencelist.cadences):
+                                        print("Adding hybrid cadence: {h}".format(h=hybrid_cadence))
+                                        hybrid_cadences.append(hybrid_cadence)
+                                    else:
+                                        print("Not adding hybrid cadence (not available): fieldid={fid} with cadence={c} and hybrid={h}".format(fid=fieldid, c=current_cadence, h=hybrid_cadence))
+
+                        field_cadences = field_cadences + hybrid_cadences
+                        if(len(hybrid_cadences) == 0):
+                            print("Not converting to hybrid cadence (no option found): fieldid={fid} with cadence={c}".format(fid=fieldid, c=current_cadence))
+                            print(field_cadences)
+                    else:
+                        print("Not converting to hybrid cadence (not in cfg): fieldid={fid} with cadence={c}".format(fid=fieldid, c=current_cadence))
+
         all_field_cadences.append(np.array(field_cadences))
+            
 
     all_field_cadences_1d = []
     for field_cadences in all_field_cadences:
