@@ -514,12 +514,6 @@ class AllocateLST(object):
                                                 ccadence['needed'] - ccadence['filled']
                                                 + epsprime,
                                                 name)
-                            if(self.verbose):
-                                if(fieldid == 12307):
-                                    print("fieldid {fid} {c}: limit {n} : value {v}".format(fid=fieldid,
-                                                                                            c=cadence,
-                                                                                            n=ccadence['needed'] - ccadence['filled'] + epsilon,
-                                                                                            v=ccadence['value']))
                             if(minimize_time is False):
                                 objective.SetCoefficient(var,
                                                          ccadence['value'] /
@@ -541,12 +535,6 @@ class AllocateLST(object):
                 cadence_constraint = solver.Constraint(minval,
                                                        ccadence['needed'] - ccadence['filled']
                                                        + epsprime)
-                if(self.verbose):
-                    if(fieldid == 12307):
-                        print("fieldid {fid} {c}: min {m} max {n}".format(fid=fieldid,
-                                                                          c=cadence,
-                                                                          m=minval,
-                                                                          n=ccadence['needed'] - ccadence['filled'] + 2. * epsprime))
 
                 # set total cadence constraint
                 for iskybrightness in np.arange(self.slots.nskybrightness, dtype=np.int32):
@@ -566,12 +554,6 @@ class AllocateLST(object):
                                      #ccadence['filled_sb'][0] * ccadence['needed_sb'][1])
                 min_constraint_sb = - epsprime
 
-                if(self.verbose):
-                    if(fieldid == 12307):
-                        print("fieldid {fid} {c}: min_constraint_sb {n} ".format(fid=fieldid,
-                                                                                 c=cadence,
-                                                                                 n=min_constraint_sb))
-                
                 cadence_constraint_sb = solver.Constraint(min_constraint_sb, solver_inf)
                 for iskybrightness in np.arange(self.slots.nskybrightness, dtype=np.int32):
                     for ilst in np.arange(self.slots.nlst, dtype=np.int32):
@@ -605,11 +587,6 @@ class AllocateLST(object):
 
                     invneeded = 1. / (ccadence['needed'] - ccadence['filled'] + epsprime)
 
-                    if(self.verbose):
-                        if(fieldid == 12307):
-                            print("fieldid {fid} {c}: invneeded {n} ".format(fid=fieldid,
-                                                                             c=cadence,
-                                                                             n=invneeded))
                     for ilst in np.arange(self.slots.nlst, dtype=np.int32):
                         for iskybrightness in np.arange(self.slots.nskybrightness, dtype=np.int32):
                             if(ccadence['slots'][ilst, iskybrightness] > 0):
@@ -706,12 +683,14 @@ class AllocateLST(object):
                                      self.slots.nskybrightness), dtype=np.float32)
             for indx, cadence in zip(np.arange(ncadence),
                                      self.allocinfo[fieldid]):
+                ccadence = self.allocinfo[fieldid][cadence]
                 print("fieldid {fid} {c} {t}".format(fid=fieldid, c=cadence,
                                                      t=ccadence['allocation'].sum()),
                       flush=True)
-                ccadence = self.allocinfo[fieldid][cadence]
                 slots_totals = slots_totals + ccadence['allocation']
                 cadence_totals[indx] = ccadence['allocation'].sum()
+            print("fieldid {fid} {s}".format(fid=fieldid, s=slots_totals),
+                  flush=True)
             field_total = cadence_totals.sum()
             field_array['cadence'][findx] = 'none'
             field_array['slots_exposures'][findx] = (
@@ -730,17 +709,14 @@ class AllocateLST(object):
                 field_array['needed'][findx] = self.allocinfo[fieldid][cadence]['needed']
                 field_array['needed_sb'][findx] = self.allocinfo[fieldid][cadence]['needed_sb']
                 field_array['filled_sb'][findx] = self.allocinfo[fieldid][cadence]['filled_sb']
-                slots_totals_dark, slots_totals_bright = slots_totals.sum(axis=0)
-                if(slots_totals_dark > 0):
-                    normalize_dark = ((field_array['needed_sb'][findx, 0] -
-                                       field_array['filled_sb'][findx, 0])/ slots_totals_dark)
-                    field_array['slots_exposures'][findx, :, 0] = (slots_totals[:, 0] *
-                                                                   normalize_dark)
-                if(slots_totals_bright > 0):
-                    normalize_bright = ((field_array['needed_sb'][findx, 1] -
-                                         field_array['filled_sb'][findx, 1])/ slots_totals_bright)
-                    field_array['slots_exposures'][findx, :, 1] = (slots_totals[:, 1] *
-                                                                   normalize_bright)
+                slots_totals_total = slots_totals.sum()
+                if(slots_totals_total > 0):
+                    normalize = ((field_array['needed_sb'][findx, :].sum() -
+                                  field_array['filled_sb'][findx, :].sum()) /
+                                 slots_totals_total)
+                    field_array['slots_exposures'][findx, :, :] = (slots_totals * normalize)
+                else:
+                    print("Something weird! slots_totals_total should not be zero here", flush=True)
 
             field_array['nfilled'][findx] = np.int32(
                 field_array['slots_exposures'][findx, :, :].sum() + 0.001)
@@ -864,7 +840,8 @@ class AllocateLST(object):
 
             issky = (self.cadencelist.cadences[field['cadence']].skybrightness
                      == self.slots.skybrightness[iskybrightness + 1])
-            nsky = self.cadencelist.cadences[field['cadence']].nexp[issky].sum()
+            nsky = (field['needed_sb'][iskybrightness].sum() -
+                    field['filled_sb'][iskybrightness].sum())
 
             if(nsky > 0):
                 avgx = ((field['xfactor'] * field['slots_time']).sum() /
