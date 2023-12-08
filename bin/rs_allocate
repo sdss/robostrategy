@@ -2,7 +2,6 @@
 # encoding: utf-8
 #
 # @Author: Michael R. Blanton
-# @Date: Aug 3, 2018
 # @Filename: rs_allocate
 # @License: BSD 3-Clause
 # @Copyright: Michael R. Blanton
@@ -91,48 +90,10 @@ if __name__ == '__main__':
     print("Reading fields", flush=True)
     fields_array = fitsio.read(fields_file)
 
-    if(test):
-        fids = fields_array['fieldid'].copy()
-        np.random.seed(5)
-        np.random.shuffle(fids)
-        fids = list(fids[0:300])
-        #fids = []
-        #fids.append(3000)
-        keep = np.zeros(len(fields_array), dtype=bool)
-        for fid in fids:
-            ii = np.where(fields_array['fieldid'] == fid)[0]
-            keep[ii] = True
-        fields_array = fields_array[keep]
-
     print("Reading options for fields", flush=True)
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
     field_options = fitsio.read(options_file)
-
-    if(test):
-        keep = np.zeros(len(field_options), dtype=bool)
-        fcb = np.array([c[0:6] for c in field_options['cadence']])
-        for fid in fids:
-            ii = np.where((field_options['fieldid'] == fid) &
-                          ((field_options['cadence'] == 'bright_single_6x1') |
-                           (field_options['cadence'] == 'mixed2_single_6x1') |
-                           (field_options['cadence'] == 'bright_single_3x1') |
-                           (field_options['cadence'] == 'bright_single_90x1')))[0]
-            ii = np.where((field_options['fieldid'] == fid) &
-                          ((field_options['cadence'] != 'bright_6x1') &
-                           (field_options['cadence'] != 'bright_single_6x1')))[0]
-            ii = np.where((field_options['fieldid'] == fid) & (fcb == 'mixed2'))[0]
-            ii = np.where((field_options['fieldid'] == fid))[0]
-            #iran = np.arange(len(ii), dtype=np.int32)
-            #np.random.seed(13)
-            #np.random.shuffle(iran)
-            #iran = iran[0:20]
-            # kk = np.where(field_options['cadence'][ii] == 'mixed2_single_10x1')[0]
-            # iran = np.append(iran, kk)
-            keep[ii] = True
-        field_options = field_options[keep]
-
-    print(np.unique(field_options['cadence']))
 
     foarr = fitsio.read(options_file, ext=3)
     focartons = np.array([x.strip() for x in foarr['carton']])
@@ -198,27 +159,6 @@ if __name__ == '__main__':
     field_slots_file = sdss_path.full('rsFieldSlots', plan=plan,
                                       observatory=observatory)
     field_slots = fitsio.read(field_slots_file)
-    #if(test):
-    #    field_slots['filled_sb'][:, :] = 0
-
-    if(test):
-        keep = np.zeros(len(field_slots), dtype=bool)
-        fcb = np.array([c[0:6] for c in field_slots['cadence']])
-        for fid in fids:
-            ii = np.where((field_slots['fieldid'] == fid) &
-                          ((field_slots['cadence'] == 'bright_single_6x1') |
-                           (field_slots['cadence'] == 'mixed2_single_8x1') |
-                           (field_slots['cadence'] == 'bright_single_3x1') |
-                           (field_slots['cadence'] == 'bright_single_90x1')))[0]
-            ii = np.where((field_slots['fieldid'] == fid) & (field_slots['cadence'] != 'bright_6x1') & (fcb == 'mixed2'))[0]
-            ii = np.where((field_slots['fieldid'] == fid) &
-                          ((field_slots['cadence'] != 'bright_6x1') &
-                           (field_slots['cadence'] != 'bright_single_6x1')))[0]
-            ii = np.where((field_slots['fieldid'] == fid) & (fcb == 'mixed2'))[0]
-            ii = np.where((field_slots['fieldid'] == fid))[0]
-            keep[ii] = True
-        field_slots = field_slots[keep]
-    print(np.unique(field_slots['cadence']))
 
     print("Reading slots", flush=True)
     slots_file = sdss_path.full('rsSlots', plan=plan,
