@@ -69,7 +69,7 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
     If the field has been started, only cadences which include the already-taken cadences
     are allowed.
 """ 
-    cadencelist = cadence.CadenceList()
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
 
     ifield = np.where(field_status['rs_fieldid'] == fieldid)[0]
     curr_field_status = field_status[ifield]
@@ -186,7 +186,7 @@ if __name__ == '__main__':
         print("Not reading status file ...", flush=True)
 
     print("Reading cadences ...", flush=True)
-    cadencelist = cadence.CadenceList()
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(cadences_file, unpickle=True)
