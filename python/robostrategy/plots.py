@@ -110,12 +110,13 @@ def fieldshape(racen=180., deccen=0., pa=0., observatory='apo',
 
 def field_patches(m=None, racen=None, deccen=None, pa=None,
                   observatory=None, types=None, type2color=None,
-                  dont_check_360=False, ra_transform_func=None):
+                  dont_check_360=False, ra_transform_func=None,
+                  colors=None):
 
     if(ra_transform_func is None):
         ra_transform_func = ra_transform
 
-    if(type2color is None):
+    if((type2color is None) & (colors is None)):
         type2color = dict()
         type2color['AllSkySloane'] = 'black'
         type2color['BHMAqmesMedium'] = 'orange'
@@ -126,7 +127,7 @@ def field_patches(m=None, racen=None, deccen=None, pa=None,
     fieldshapes = []
     for i in np.arange(len(racen), dtype=int):
         fieldshapes.append(fieldshape(racen=racen[i], deccen=deccen[i],
-                                      pa=pa[i], observatory=observatory,
+                                      pa=pa[i], observatory=observatory[i],
                                       ra_transform_func=ra_transform_func))
     allfieldshapes = shapely.geometry.MultiPolygon(fieldshapes)
 
@@ -136,39 +137,46 @@ def field_patches(m=None, racen=None, deccen=None, pa=None,
             color = 'black'
         else:
             color = type2color[types[i]]
+
+        if(colors is not None):
+            coolwarm = matplotlib.cm.get_cmap('coolwarm') 
+            color = coolwarm(colors[i])
         
         ras = np.array([x[0] for x in fsh.exterior.coords])
         decs = np.array([x[1] for x in fsh.exterior.coords])
-        if(dont_check_360 | (ras.max() - ras.min() < 180.)):
-            mpoly = shapely.ops.transform(m, fsh)
-            patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=0.5,
-                                        linewidth=0))
-        else:
-            ras1 = ras
-            ii = np.where(ras1 < 0.)[0]
-            ras1[ii] = ras1[ii] + 360.
-            p1 = shapely.geometry.box(0., -90., 180., 90.)
-            xy1 = zip(ras1, decs)
-            fsh1 = shapely.geometry.Polygon(xy1)
-            fsh1 = fsh1.intersection(p1)
-            if(fsh1.area > 0):
-                mpoly = shapely.ops.transform(m, fsh1)
-                patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=0.5))
-            ras2 = ras
-            ii = np.where(ras2 > 0.)[0]
-            ras2[ii] = ras2[ii] - 360.
-            p2 = shapely.geometry.box(-180., -90., 0., 90.)
-            xy2 = zip(ras2, decs)
-            fsh2 = shapely.geometry.Polygon(xy2)
-            fsh2 = fsh2.intersection(p2)
-            if(fsh2.area > 0):
-                mpoly = shapely.ops.transform(m, fsh2)
-                patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=0.5))
+        try:
+            if(dont_check_360 | (ras.max() - ras.min() < 180.)):
+                mpoly = shapely.ops.transform(m, fsh)
+                patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=0.5,
+                                            linewidth=0))
+            else:
+                ras1 = ras
+                ii = np.where(ras1 < 0.)[0]
+                ras1[ii] = ras1[ii] + 360.
+                p1 = shapely.geometry.box(0., -90., 180., 90.)
+                xy1 = zip(ras1, decs)
+                fsh1 = shapely.geometry.Polygon(xy1)
+                fsh1 = fsh1.intersection(p1)
+                if(fsh1.area > 0):
+                    mpoly = shapely.ops.transform(m, fsh1)
+                    patches.append(PolygonPatch(mpoly, fc=color, ec='none', alpha=0.5))
+                ras2 = ras
+                ii = np.where(ras2 > 0.)[0]
+                ras2[ii] = ras2[ii] - 360.
+                p2 = shapely.geometry.box(-180., -90., 0., 90.)
+                xy2 = zip(ras2, decs)
+                fsh2 = shapely.geometry.Polygon(xy2)
+                fsh2 = fsh2.intersection(p2)
+                if(fsh2.area > 0):
+                    mpoly = shapely.ops.transform(m, fsh2)
+                    patches.append(PolygonPatch(mpoly, fc=color, ec='none', alpha=0.5))
+        except:
+            pass
 
     return(patches)
 
 def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=None,
-                      type2color=None):
+                      type2color=None, colors=None):
 
     if(type2color is None):
         type2color = dict()
@@ -193,7 +201,7 @@ def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=
 
     patches = field_patches(m=m, racen=racen, deccen=deccen, pa=pa,
                             observatory=observatory, types=types,
-                            type2color=type2color)
+                            type2color=type2color, colors=colors)
     ax.add_collection(matplotlib.collections.PatchCollection(patches, match_original=True))
 
     return
@@ -317,31 +325,13 @@ def plot_targets(targets=None, assignments=None, iexp=0,
     ax.set_xlim([-370., 370.])
     ax.set_ylim([-370., 370.])
 
-    if(robots):
-        coverage = []
-        colors = []
-        for robotID in rg.robotDict:
-            robot = rg.robotDict[robotID]
-            if(robot.hasApogee):
-                color = 'red'
-            else:
-                color = 'black'
-            robotpatch = matplotlib.patches.Wedge((robot.xPos, robot.yPos),
-                                                  betaLen + alphaLen, 
-                                                  0., 360.,
-                                                  width=2. * alphaLen)
-            colors.append(color)
-            coverage.append(robotpatch)
-
-        coverage_collection = matplotlib.collections.PatchCollection(coverage)
-        coverage_collection.set_color(colors)
-        coverage_collection.set_alpha(np.zeros(len(coverage)) + 0.1)
-
-        ax.add_collection(coverage_collection)
-
     if(hexagon):
         xv, yv = xyhex()
-        ax.plot(xv, yv, linewidth=2, color='black')
+        xv = np.append(xv, xv[-1:])
+        yv = np.append(yv, yv[-1:])
+        ax.plot(xv, yv, linewidth=1, color='black')
+
+    ax.set_axis_off()
 
     category_colors = dict()
     category_colors['science'] = 'black'
@@ -365,5 +355,27 @@ def plot_targets(targets=None, assignments=None, iexp=0,
                    s=18, color=color)
         ax.set_xlabel('X (mm)')
         ax.set_ylabel('Y (mm)')
+
+    if(robots):
+        coverage = []
+        colors = []
+        for robotID in rg.robotDict:
+            robot = rg.robotDict[robotID]
+            if(robot.hasApogee):
+                color = 'red'
+            else:
+                color = 'black'
+            robotpatch = matplotlib.patches.Wedge((robot.xPos, robot.yPos),
+                                                  betaLen + alphaLen, 
+                                                  0., 360.,
+                                                  width=2. * alphaLen)
+            colors.append(color)
+            coverage.append(robotpatch)
+
+        coverage_collection = matplotlib.collections.PatchCollection(coverage)
+        coverage_collection.set_color(colors)
+        coverage_collection.set_alpha(np.zeros(len(coverage)) + 0.1)
+
+        ax.add_collection(coverage_collection)
 
     return(fig, ax)
