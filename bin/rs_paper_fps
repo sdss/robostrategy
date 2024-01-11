@@ -18,38 +18,54 @@ if __name__ == '__main__':
         prog=os.path.basename(sys.argv[0]),
         description='Pretty plot of FPS')
 
+    parser.add_argument('-Z', '--no-zones', dest='no_zones',
+                        help='no zones', required=False,
+                        default=False, action='store_true')
+
+    parser.add_argument('-A', '--no-axes', dest='no_axes',
+                        help='no axes', required=False,
+                        default=False, action='store_true')
+    
+    args = parser.parse_args()
+    no_zones = args.no_zones
+    no_axes = args.no_axes
 
     fig, ax = rp.plot_targets(hexagon=False)
 
-    r = 122.
-    th = np.arange(1000) / 999. * 2. * np.pi
-    x = r * np.cos(th)
-    y = r * np.sin(th)
-    ax.plot(x, y, color='black', linewidth=2)
-    ax.plot(np.array([0., 0.]), np.array([- r, r]), color='black', linewidth=2)
-
-    rout = 315. * np.sqrt(3.) / 2.
-    rs = np.array([r, rout])
-    for i in np.arange(6):
-        th = np.pi / 6. + i * np.pi / 3.
-        ths = np.array([th, th])
-        x = rs * np.cos(ths)
-        y = rs * np.sin(ths)
+    if(no_zones == False):
+        r = 122.
+        th = np.arange(1000) / 999. * 2. * np.pi
+        x = r * np.cos(th)
+        y = r * np.sin(th)
         ax.plot(x, y, color='black', linewidth=2)
+        ax.plot(np.array([0., 0.]), np.array([- r, r]), color='black', linewidth=2)
 
-    xr = (np.random.random(10000000) - 0.5) * 500.
-    yr = (np.random.random(10000000) - 0.5) * 500.
-    zs = robostrategy.standards.standard_zone(xr, yr)
-    for i in np.arange(8, dtype=int):
-        ii = np.where(zs == i)[0]
-        xx = np.median(xr[ii])
-        yy = np.median(yr[ii])
-        plt.text(xx, yy, str(i), ma='center')
+        rout = 315. * np.sqrt(3.) / 2.
+        rs = np.array([r, rout])
+        for i in np.arange(6):
+            th = np.pi / 6. + i * np.pi / 3.
+            ths = np.array([th, th])
+            x = rs * np.cos(ths)
+            y = rs * np.sin(ths)
+            ax.plot(x, y, color='black', linewidth=2)
 
-    ax.set_xlabel('X (mm)')
-    ax.set_ylabel('Y (mm)')
+        xr = (np.random.random(10000000) - 0.5) * 500.
+        yr = (np.random.random(10000000) - 0.5) * 500.
+        zs = robostrategy.standards.standard_zone(xr, yr)
+        for i in np.arange(8, dtype=int):
+            ii = np.where(zs == i)[0]
+            xx = np.median(xr[ii])
+            yy = np.median(yr[ii])
+            plt.text(xx, yy, str(i), ma='center')
+
     ax.set_xlim([-318., 318.])
     ax.set_ylim([-318., 318.])
+
+    if(no_axes):
+        ax.set_axis_off()
+    else:
+        ax.set_xlabel('X (mm)')
+        ax.set_ylabel('Y (mm)')
 
     plt.tight_layout()
     plt.savefig('fps.png')
