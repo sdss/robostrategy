@@ -79,6 +79,7 @@
 <table>
 	<thead>
 		<tr>
+			<th></th>
 			<th>All</th>
 			<th>Dark</th>
 			<th>Bright</th>
@@ -86,6 +87,9 @@
 	</thead>
 	<tbody>
 		<tr>
+			<td>
+         Current
+			</td>
 			<td>
 				<a href="rsAllocation-radec-{{plan}}-{{observatory}}.png">
 					<img src="rsAllocation-radec-{{plan}}-{{observatory}}.png"
@@ -106,6 +110,31 @@
 			</td>
 		</tr>
 	</tbody>
+	<tbody>
+		<tr>
+			<td>
+         Total
+			</td>
+			<td>
+				<a href="rsAllocation-radec-full-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-radec-full-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td>
+				<a href="rsAllocation-radec-dark-full-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-radec-dark-full-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+			<td>
+				<a href="rsAllocation-radec-bright-full-{{plan}}-{{observatory}}.png">
+					<img src="rsAllocation-radec-bright-full-{{plan}}-{{observatory}}.png"
+							 width=300px></img>
+				</a>
+			</td>
+		</tr>
+	</tbody>
 </table>
 
 <h2>Time Allocation by Cadence</h2>
@@ -115,7 +144,8 @@
     <tr>
     <th><b>Cadence</b></th>
     <th><b>Tried</b></th>
-    <th><b>Allocated</b></th>
+    <th><b>Current Allocated</b></th>
+    <th><b>Total Allocated</b></th>
     </tr>
 </thead>
 
@@ -132,6 +162,12 @@
 	<td>
 		<a href="rsAllocation-radec-{{c}}-{{plan}}-{{observatory}}.png">
 			<img src="rsAllocation-radec-{{c}}-{{plan}}-{{observatory}}.png"
+					 width=300px></img>
+		</a>
+	</td>
+	<td>
+		<a href="rsAllocation-radec-{{c}}-full-{{plan}}-{{observatory}}.png">
+			<img src="rsAllocation-radec-{{c}}-full-{{plan}}-{{observatory}}.png"
 					 width=300px></img>
 		</a>
 	</td>
