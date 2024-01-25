@@ -194,7 +194,8 @@ if __name__ == '__main__':
                 fields_array['split'][ifield] = 1
                 fields['split'][ifield] = 1
                 fields_array['needed'][ifield] = nexp_total
-                fields_array['nfilled'][ifield] = nexp_total
+                fields_array['nallocated_full'][ifield] = nexp_total
+                filled_sb = fields_array['filled_sb'][ifield, :]
                 if(curr_cadence_name[0:13] == 'mixed2_single'):
                     if((iexpst == 0) & (iexpnd == 1)):
                         fields_array['cadence'][ifield] = 'mixed2_single_2x1'
@@ -203,6 +204,7 @@ if __name__ == '__main__':
                                                         ttype='dark',
                                                         ndark=2,
                                                         iexp=[iexpst, iexpnd])
+                        filled_sb[1] = 0
                     elif((iexpst == 2) & (iexpnd <= 19)):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
                         new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
@@ -210,6 +212,9 @@ if __name__ == '__main__':
                                                         ttype='bright',
                                                         ndark=2,
                                                         iexp=[iexpst, iexpnd])
+                        filled_sb[0] = 0
+                        if(filled_sb[1] >= iexpnd - 2 + 1):
+                            filled_sb[1] = iexpnd - 2 + 1
                     elif(iexpst == 2):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
                         new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
@@ -217,13 +222,21 @@ if __name__ == '__main__':
                                                         ttype='bright',
                                                         ndark=2,
                                                         iexp=[iexpst, iexpnd])
-                    elif((iexpst >= 20) & (split_nocadence != False)):
+                        filled_sb[0] = 0
+                    elif((iexpst >= 20) & (split_nocadence == True)):
                         fields_array['cadence'][ifield] = 'bright_flexible_{n}x1'.format(n=nexp_total)
                         new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
                                                         fields_array['slots_time'][ifield, :, :],
                                                         ttype='bright',
                                                         ndark=2,
                                                         iexp=[iexpst, iexpnd])
+                        filled_sb[0] = 0
+                        if(filled_sb[1] <= 20):
+                            filled_sb[1] = 0
+                        elif(filled_sb[1] >= iexpnd - 2 + 1):
+                            filled_sb[1] = iexpnd - iexpst + 1
+                        else:
+                            filled_sb[1] = filled_sb[1] - iexpst
                     else:
                         print(fields_array['fieldid'][ifield])
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
@@ -236,6 +249,8 @@ if __name__ == '__main__':
                                                         ttype='bright',
                                                         ndark=0,
                                                         iexp=[iexpst, iexpnd])
+                        if(filled_sb[1] >= iexpnd - 2 + 1):
+                            filled_sb[1] = iexpnd - 2 + 1
                     elif(iexpst == 0):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
                         new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
@@ -250,6 +265,12 @@ if __name__ == '__main__':
                                                         ttype='bright',
                                                         ndark=0,
                                                         iexp=[iexpst, iexpnd])
+                        if(filled_sb[1] <= 18):
+                            filled_sb[1] = 0
+                        elif(filled_sb[1] >= iexpnd - 2 + 1):
+                            filled_sb[1] = iexpnd - iexpst + 1
+                        else:
+                            filled_sb[1] = filled_sb[1] - iexpst
                     else:
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
@@ -259,10 +280,10 @@ if __name__ == '__main__':
                                                                          r=rs_nexp_total))
                     print(cadencelist.cadences[curr_cadence_name])
                     sys.exit(2)
-                #print(fields_array['cadence'][ifield])
-                #print(fields_array['slots_exposures'][ifield, :, :])
-                #print(new_exp)
-                #print("-----")
+                fields_array['nallocated_full_sb'][ifield, :] = new_exp.sum(axis=0)
+                fields_array['nallocated_sb'][ifield, :] = (
+                    fields_array['nallocated_full_sb'][ifield, :] - filled_sb)
+                fields_array['nallocated'][ifield] = fields_array['nallocated_sb'][ifield, :].sum()
                 fields_array['slots_exposures'][ifield, :, :] = new_exp
                 fields_array['slots_time'][ifield, :, :] = new_time
 
