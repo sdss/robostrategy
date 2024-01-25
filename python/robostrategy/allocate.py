@@ -149,7 +149,10 @@ class AllocateLST(object):
 
          * 'fieldid' : field identifier
          * 'cadence' : cadence name
-         * 'nfilled' : number of exposures allocated
+         * 'nallocated' : observations allocated in this run
+         * 'nallocated_sb' : same, per skybrightness
+         * 'nallocated_full' : observations including already done
+         * 'nallocated_full_sb' : same, per skybrightness
          * 'slots_exposures' : number of exposures allocated for each slot
          * 'slots_time' : time allocated for each slots (hours)
 
@@ -432,6 +435,9 @@ class AllocateLST(object):
                 alloc[curr_cadence]['needed_sb'] = [float(n) for n in curr_slot['needed_sb']]
                 alloc[curr_cadence]['filled_sb'] = [float(n) for n in curr_slot['filled_sb']]
                 alloc[curr_cadence]['filled'] = curr_slot['filled_sb'].sum()
+                alloc[curr_cadence]['allocated_exposures_done'] = curr_slot['allocated_exposures_done']
+                alloc[curr_cadence]['original_exposures_done'] = curr_slot['original_exposures_done']
+                alloc[curr_cadence]['filled'] = curr_slot['filled_sb'].sum()
 
                 # If there have been SOME observations of this field, note
                 # that so we can reduce the field minimum to zero if necessary
@@ -441,8 +447,6 @@ class AllocateLST(object):
                 alloc[curr_cadence]['ngot_pct'] = curr_option['ngot_pct'].copy()
                 alloc[curr_cadence]['value'] = float(curr_option['valuegot'] *
                                                      prefer)
-                # NEED TO CHANGE BACK TO VALUEGOT
-                alloc[curr_cadence]['value'] = float(curr_option['ngot'])
 
 
             self.allocinfo[fieldid] = alloc
@@ -550,8 +554,6 @@ class AllocateLST(object):
                 Asb = np.array([(ccadence['needed_sb'][1] - ccadence['filled_sb'][1]),
                                 - (ccadence['needed_sb'][0] - ccadence['filled_sb'][0])])
                 solver_inf = solver.infinity()
-                #min_constraint_sb = (ccadence['filled_sb'][1] * ccadence['needed_sb'][0] -
-                                     #ccadence['filled_sb'][0] * ccadence['needed_sb'][1])
                 min_constraint_sb = - epsprime
 
                 cadence_constraint_sb = solver.Constraint(min_constraint_sb, solver_inf)
@@ -599,6 +601,9 @@ class AllocateLST(object):
                                         var, invneeded *
                                         float(ccadence['ngot_pct'][imint]))
                 field_constraints.append(field_constraint)
+            else:
+                if(field_minimum_float[fieldid] > 0.):
+                    raise ValueError("No allowed cadences for field with required observations")
 
         # Constrain sum of each slot to be less than total. Here the
         # units are still in numbers of exposures, but we multiply by
@@ -660,10 +665,16 @@ class AllocateLST(object):
                              ('racen', np.float64),
                              ('deccen', np.float64),
                              ('cadence', np.unicode_, 30),
-                             ('nfilled', np.int32),
+                             ('nallocated', np.int32),
+                             ('nallocated_sb', np.int32, self.slots.nskybrightness),
+                             ('nallocated_full', np.int32),
+                             ('nallocated_full_sb', np.int32, self.slots.nskybrightness),
                              ('needed', np.int32),
                              ('needed_sb', np.int32, self.slots.nskybrightness),
+                             ('filled', np.int32),
                              ('filled_sb', np.int32, self.slots.nskybrightness),
+                             ('allocated_exposures_done', np.int32, 100),
+                             ('original_exposures_done', np.int32, 100),
                              ('xfactor', np.float32,
                               (self.slots.nlst, self.slots.nskybrightness)),
                              ('slots_exposures', np.float32,
@@ -671,6 +682,8 @@ class AllocateLST(object):
                              ('slots_time', np.float32,
                               (self.slots.nlst, self.slots.nskybrightness))]
         field_array = np.zeros(len(self.allocinfo), dtype=field_array_dtype)
+        field_array['allocated_exposures_done'] = -1
+        field_array['original_exposures_done'] = -1
         for findx, fieldid in zip(np.arange(len(self.allocinfo)),
                                   self.allocinfo):
             field_array['fieldid'][findx] = fieldid
@@ -709,6 +722,9 @@ class AllocateLST(object):
                 field_array['needed'][findx] = self.allocinfo[fieldid][cadence]['needed']
                 field_array['needed_sb'][findx] = self.allocinfo[fieldid][cadence]['needed_sb']
                 field_array['filled_sb'][findx] = self.allocinfo[fieldid][cadence]['filled_sb']
+                field_array['filled'][findx] = self.allocinfo[fieldid][cadence]['filled']
+                field_array['allocated_exposures_done'][findx] = self.allocinfo[fieldid][cadence]['allocated_exposures_done']
+                field_array['original_exposures_done'][findx] = self.allocinfo[fieldid][cadence]['original_exposures_done']
                 slots_totals_total = slots_totals.sum()
                 if(slots_totals_total > 0):
                     normalize = ((field_array['needed_sb'][findx, :].sum() -
@@ -718,8 +734,16 @@ class AllocateLST(object):
                 else:
                     print("Something weird! slots_totals_total should not be zero here", flush=True)
 
-            field_array['nfilled'][findx] = np.int32(
+            field_array['nallocated'][findx] = np.int32(
                 field_array['slots_exposures'][findx, :, :].sum() + 0.001)
+            for isky in np.arange(self.slots.nskybrightness, dtype=np.int32):
+                field_array['nallocated_sb'][findx, isky] = np.int32(
+                    field_array['slots_exposures'][findx, :, isky].sum() + 0.001)
+            field_array['nallocated_full'][findx] = (field_array['nallocated'][findx] +
+                                                     field_array['filled'][findx])
+            for isky in np.arange(self.slots.nskybrightness, dtype=np.int32):
+                field_array['nallocated_full_sb'][findx, isky] = (field_array['nallocated_sb'][findx, isky] +
+                                                                  field_array['filled_sb'][findx, isky])
 
         fscadence = np.array([x.strip()
                               for x in self.field_slots['cadence']])
@@ -822,10 +846,10 @@ class AllocateLST(object):
         got = np.zeros((self.slots.nlst, self.slots.nskybrightness),
                        dtype=np.float32)
         for iskybrightness in np.arange(self.slots.nskybrightness):
-            nfilled = self.field_array['slots_time'][:, :, iskybrightness].sum(axis=1)
+            ngot = self.field_array['slots_time'][:, :, iskybrightness].sum(axis=1)
             rahist, rabinedges = np.histogram(self.field_array['racen'] / 15.,
                                               range=[0., 24.],
-                                              weights=nfilled,
+                                              weights=ngot,
                                               bins=self.slots.nlst)
             got[:, iskybrightness] = rahist
 
@@ -854,7 +878,7 @@ class AllocateLST(object):
 
         return(used)
 
-    def plot_full(self, iskybrightness=None, title=None, loc=2):
+    def plot_lst(self, iskybrightness=None, title=None, loc=2):
         """Plot the LST distributions for the allocations
 
         Parameters
@@ -910,9 +934,9 @@ class AllocateLST(object):
     def _convert_radec(self, m, ra, dec):
         return m(((360. - ra) + 180.) % 360., dec, inverse=False)
 
-    def plot_fields(self, indx=None, label=False, linear=False,
-                    colorbar=True, lon_0=270., darkorbright=None,
-                    **kwargs):
+    def plot_fields(self, full=False, indx=None, label=False, linear=False,
+                    colorbar=True, lon_0=270., darkorbright=None, vmax=None,
+                    vmin=None, **kwargs):
         """Plot the RA/Dec distribution of fields allocated
 
         Parameters
@@ -939,37 +963,51 @@ class AllocateLST(object):
         m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
         m.drawmapboundary(fill_color='#f0f0f0')
 
-        ii = np.where(self.field_array['nfilled'][indx] > 0)[0]
+        if(full):
+            nallocated_tag = 'nallocated_full'
+            nallocated_sb_tag = 'nallocated_full_sb'
+        else:
+            nallocated_tag = 'nallocated'
+            nallocated_sb_tag = 'nallocated_sb'
+
+        ii = np.where(self.field_array[nallocated_tag][indx] > 0)[0]
         ii = indx[ii]
 
-        nfilled_max = 1
+        nallocated_max = 1
         if(len(ii) > 0):
             isrm = np.array([('x8' in c) for c in self.field_array['cadence'][ii]], dtype=bool)
             ilimit = np.where(isrm == False)[0]
             if(len(ilimit) > 0):
-                nfilled_max = self.field_array['nfilled'][ii[ilimit]].max()
+                nallocated_max = self.field_array[nallocated_tag][ii[ilimit]].max()
 
         if(darkorbright is not None):
             if(darkorbright == 'dark'):
-                nfilled = self.field_array['slots_exposures'][ii, :, :].sum(axis=1)[:, 0]
+                nallocated = self.field_array[nallocated_sb_tag][ii, 0]
             if(darkorbright == 'bright'):
-                nfilled = self.field_array['slots_exposures'][ii, :, :].sum(axis=1)[:, 1]
+                nallocated = self.field_array[nallocated_sb_tag][ii, 1]
         else:
-            nfilled = self.field_array['nfilled'][ii]
+            nallocated = self.field_array[nallocated_tag][ii]
 
         if(linear is False):
-            nfilled_value = np.log10(nfilled)
-            nfilled_value_max = np.log10(nfilled_max)
+            nallocated_value = np.log10(nallocated)
+            nallocated_value_max = np.log10(nallocated_max)
             colorbar_label = r'$\log_{10} N$'
+            if(vmin is None):
+                vmin = -0.1
         else:
-            nfilled_value = nfilled
-            nfilled_value_max = nfilled_max
+            nallocated_value = nallocated
+            nallocated_value_max = nallocated_max
             colorbar_label = '$N$'
+            if(vmin is None):
+                vmin = 0.
+
+        if(vmax is None):
+            vmax = nallocated_value_max
 
         if(label is False):
             (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
                                            self.field_array['deccen'][ii])
-            plt.scatter(xx, yy, s=4, c=nfilled_value, vmax=nfilled_value_max,
+            plt.scatter(xx, yy, s=4, c=nallocated_value, vmin=vmin, vmax=vmax,
                         cmap='Blues', **kwargs)
             if(colorbar):
                 cb = plt.colorbar()
@@ -987,7 +1025,7 @@ class AllocateLST(object):
 
             plt.legend(loc='lower center', fontsize=8, ncol=2)
 
-        return
+        return(vmin, vmax)
 
 
 class AllocateLSTCostA(AllocateLST):
