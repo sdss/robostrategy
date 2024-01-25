@@ -319,6 +319,9 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--start', dest='start',
                         type=np.int32, help='field to start', required=False,
                         default=0)
+    parser.add_argument('-f', '--fields', dest='fields',
+                        type=str, help='fields to run', required=False,
+                        default=None)
     parser.add_argument('-C', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
@@ -343,9 +346,15 @@ if __name__ == '__main__':
     observatory = args.observatory
     ncadence = args.ncadence
     test = args.test
+    fieldids_str = args.fields
     noclobber = args.noclobber
     nomultiprocessing = args.nomultiprocessing
     limit_pool = args.limit_pool
+
+    if(fieldids_str is not None):
+        fieldids = [np.int32(x) for x in fieldids_str.split(',')]
+    else:
+        fieldids = None
 
     rsParams = params.RobostrategyParams(plan=plan)
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
@@ -418,8 +427,18 @@ if __name__ == '__main__':
     if(end < 0):
         end = fields_array['fieldid'].max()
 
-    ikeep = np.where((fields_array['fieldid'] >= start) &
-                     (fields_array['fieldid'] <= end))[0]
+
+    keep = ((fields_array['fieldid'] >= start) &
+            (fields_array['fieldid'] <= end))
+
+    if(fieldids is not None):
+        inlist = np.zeros(len(keep), dtype=bool)
+        for fieldid in fieldids:
+            inlist = inlist | (fields_array['fieldid'] == fieldid)
+    else:
+        inlist = np.ones(len(keep), dtype=bool)
+
+    ikeep = np.where(keep & inlist)[0]
 
     if((len(ikeep) > 1) and (nomultiprocessing is False)):
         with multiprocessing.Pool(limit_pool) as pool:
