@@ -73,11 +73,11 @@ if __name__ == '__main__':
     m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
     m.drawmapboundary()
 
-    racen = np.zeros(allocate_apo.field_array['nfilled'].sum(), dtype=np.float64)
-    deccen = np.zeros(allocate_apo.field_array['nfilled'].sum(), dtype=np.float64)
+    racen = np.zeros(allocate_apo.field_array['nallocated_full'].sum(), dtype=np.float64)
+    deccen = np.zeros(allocate_apo.field_array['nallocated_full'].sum(), dtype=np.float64)
     i = 0
     for f in allocate_apo.field_array:
-        nf = f['nfilled']
+        nf = f['nallocated_full']
         racen[i:i + nf] = f['racen']
         deccen[i:i + nf] = f['deccen']
         i = i + nf
@@ -96,11 +96,11 @@ if __name__ == '__main__':
     m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
     m.drawmapboundary()
 
-    racen = np.zeros(allocate_lco.field_array['nfilled'].sum(), dtype=np.float64)
-    deccen = np.zeros(allocate_lco.field_array['nfilled'].sum(), dtype=np.float64)
+    racen = np.zeros(allocate_lco.field_array['nallocated_full'].sum(), dtype=np.float64)
+    deccen = np.zeros(allocate_lco.field_array['nallocated_full'].sum(), dtype=np.float64)
     i = 0
     for f in allocate_lco.field_array:
-        nf = f['nfilled']
+        nf = f['nallocated_full']
         racen[i:i + nf] = f['racen']
         deccen[i:i + nf] = f['deccen']
         i = i + nf
