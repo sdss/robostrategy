@@ -70,7 +70,7 @@ if __name__ == '__main__':
                               observatory=observatory, name='lst-all')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     matplotlib.rcParams['font.size'] = 14
-    allocate.plot_full(title='Total time at {o}'.format(o=observatory.upper()))
+    allocate.plot_lst(title='Total time at {o}'.format(o=observatory.upper()))
     plt.tight_layout()
     plt.savefig(png_file)
     plt.clf()
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         loc=1
     else:
         loc=2
-    allocate.plot_full(iskybrightness=0, title='Dark time at {o}'.format(o=observatory.upper()), loc=loc)
+    allocate.plot_lst(iskybrightness=0, title='Dark time at {o}'.format(o=observatory.upper()), loc=loc)
     plt.tight_layout()
     plt.savefig(png_file)
     plt.clf()
@@ -92,79 +92,91 @@ if __name__ == '__main__':
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-bright')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_full(iskybrightness=1, title='Bright time at {o}'.format(o=observatory.upper()))
+    allocate.plot_lst(iskybrightness=1, title='Bright time at {o}'.format(o=observatory.upper()))
     plt.tight_layout()
     plt.savefig(png_file)
     plt.clf()
     subprocess.run(['convert', png_file, '-trim', png_file])
 
-    png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                              observatory=observatory, name='radec')
-    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_fields()
-    plt.title("All cadences")
-    plt.savefig(png_file)
-    plt.clf()
-    subprocess.run(['convert', png_file, '-trim', png_file])
-
-    png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                              observatory=observatory, name='radec-dark')
-    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_fields(darkorbright='dark')
-    plt.title("Dark cadences")
-    plt.savefig(png_file)
-    plt.clf()
-    subprocess.run(['convert', png_file, '-trim', png_file])
-
-    png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                              observatory=observatory, name='radec-bright')
-    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_fields(darkorbright='bright')
-    plt.title("Bright cadences")
-    plt.savefig(png_file)
-    plt.clf()
-    subprocess.run(['convert', png_file, '-trim', png_file])
-
-    png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                              observatory=observatory, name='radec-labeled')
-    matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-    allocate.plot_fields(label=True)
-    plt.title("All cadences")
-    plt.savefig(png_file)
-    plt.clf()
-    subprocess.run(['convert', png_file, '-trim', png_file])
-
     ncad = np.int32(hdr['NCAD'])
-    for icad in np.arange(ncad):
-        field_cadence = hdr['CAD{icad}'.format(icad=icad)]
-        last = field_cadence.split('_')[-1]
-        if(last[0] == 'n'):
-            field_cadence_base = "_".join(field_cadence.split('_')[0:-1])
+    vmax = None
+    vmin = None
+    cvmax = [None] * ncad
+    cvmin = [None] * ncad
+
+    for full in [True, False]:
+        if(full):
+            full_str = '-full'
         else:
-            field_cadence_base = field_cadence
-        print(field_cadence_base)
-        name = 'radec-{field_cadence_base}'.format(
-            field_cadence_base=field_cadence_base)
+            full_str = ''
         png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                                  observatory=observatory, name=name)
-        indx = np.where(base_cadences == field_cadence_base)[0]
-        print(len(indx))
+                                  observatory=observatory, name='radec' + full_str)
         matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-        allocate.plot_fields(indx=indx)
-        plt.title(field_cadence_base)
+        vmin, vmax = allocate.plot_fields(full=full, vmin=vmin, vmax=vmax)
+        plt.title("All cadences")
+        plt.savefig(png_file)
+        plt.clf()
+        subprocess.run(['convert', png_file, '-trim', png_file])
+        
+        png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                  observatory=observatory, name='radec-dark' + full_str)
+        matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+        allocate.plot_fields(darkorbright='dark', full=full, vmin=vmin, vmax=vmax)
+        plt.title("Dark cadences")
+        plt.savefig(png_file)
+        plt.clf()
+        subprocess.run(['convert', png_file, '-trim', png_file])
+        
+        png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                  observatory=observatory, name='radec-bright' + full_str)
+        matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+        allocate.plot_fields(darkorbright='bright', full=full, vmin=vmin, vmax=vmax)
+        plt.title("Bright cadences")
+        plt.savefig(png_file)
+        plt.clf()
+        subprocess.run(['convert', png_file, '-trim', png_file])
+        
+        png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                  observatory=observatory, name='radec-labeled' + full_str)
+        matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+        allocate.plot_fields(label=True, full=full, vmin=vmin, vmax=vmax)
+        plt.title("All cadences")
         plt.savefig(png_file)
         plt.clf()
         subprocess.run(['convert', png_file, '-trim', png_file])
 
-        name = 'radec-tried-{field_cadence_base}'.format(
-            field_cadence_base=field_cadence_base)
-        png_file = sdss_path.full('rsAllocationPng', plan=plan,
-                                  observatory=observatory, name=name)
-        indx = np.where(cadence_mask[:, icad] > 0)[0]
-        print(len(indx))
-        matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
-        allocate.plot_fields(indx=indx)
-        plt.title(field_cadence_base)
-        plt.savefig(png_file)
-        plt.clf()
-        subprocess.run(['convert', png_file, '-trim', png_file])
+        for icad in np.arange(ncad):
+            field_cadence = hdr['CAD{icad}'.format(icad=icad)]
+            last = field_cadence.split('_')[-1]
+            if(last[0] == 'n'):
+                field_cadence_base = "_".join(field_cadence.split('_')[0:-1])
+            else:
+                field_cadence_base = field_cadence
+            print(field_cadence_base)
+            name = 'radec-{field_cadence_base}'.format(
+                field_cadence_base=field_cadence_base) + full_str
+            png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                      observatory=observatory, name=name)
+            indx = np.where(base_cadences == field_cadence_base)[0]
+            print(len(indx))
+            matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+            cvmin[icad], cvmax[icad] = allocate.plot_fields(indx=indx, full=full,
+                                                            vmin=cvmin[icad],
+                                                            vmax=cvmax[icad])
+            plt.title(field_cadence_base)
+            plt.savefig(png_file)
+            plt.clf()
+            subprocess.run(['convert', png_file, '-trim', png_file])
+
+            name = 'radec-tried-{field_cadence_base}'.format(
+                field_cadence_base=field_cadence_base) + full_str
+            png_file = sdss_path.full('rsAllocationPng', plan=plan,
+                                      observatory=observatory, name=name)
+            indx = np.where(cadence_mask[:, icad] > 0)[0]
+            print(len(indx))
+            matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
+            allocate.plot_fields(indx=indx, full=full, vmin=cvmin[icad], vmax=cvmax[icad])
+            plt.title(field_cadence_base)
+            plt.savefig(png_file)
+            plt.clf()
+            subprocess.run(['convert', png_file, '-trim', png_file])
