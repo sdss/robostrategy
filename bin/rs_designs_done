@@ -51,7 +51,7 @@ if __name__ == '__main__':
     allocate = robostrategy.allocate.AllocateLSTCostE(filename=allocation_file)
 
     fieldids = np.unique(allocate.field_array['fieldid'])
-    ndesigns = allocate.field_array['nfilled'].sum()
+    ndesigns = allocate.field_array['nallocated_full'].sum()
 
     designs_dtype = np.dtype([('fieldid', np.int32),
                               ('designid', np.int32),
