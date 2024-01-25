@@ -274,7 +274,7 @@ if __name__ == '__main__':
         pool.map(count_spares, ikeep)
 
     spares = np.zeros(len(ikeep), dtype=spares_dtype)
-    spares_exp = np.zeros(allocate.field_array['nfilled'].sum(),
+    spares_exp = np.zeros(allocate.field_array['nallocated_full'].sum(),
                           dtype=spares_exp_dtype)
 
     ispares_exp = 0
