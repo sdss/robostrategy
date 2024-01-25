@@ -72,6 +72,23 @@ def get_status(indx):
             status_field[n] = tmp_status_field[n]
         status_field['full_cadence'] = full_cadence
 
+        print("Checking for incomplete epochs", flush=True)
+        c = cadencelist.cadences[status_field['full_cadence'][0]]
+        for iepoch in np.arange(c.nepochs, dtype=np.int32):
+            isort = np.argsort(status_field['field_exposure'])
+            cst = status_field[isort]
+            ust = np.unique(cst['status'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]])
+            if(len(ust) > 1):
+                print("WARNING: fieldid {fid} epoch {iepoch} is incomplete, treating all as not done".format(fid=fieldid, iepoch=iepoch))
+                field_exposures = cst['field_exposure'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]]
+                for field_exposure in field_exposures:
+                    ifexp = np.where(status_field['field_exposure'] == field_exposure)[0]
+                    status_field['status'][ifexp] = 'not_started'
+                    ifexp = np.where(status['field_exposure'] == field_exposure)[0]
+                    status['status'][ifexp] = 0
+                    status['mjd'][ifexp] = 0
+                    status['assignment_status_pk'][ifexp] = 0
+
         print("Verifying consistency of status and status_field", flush=True)
         idone = np.where(status['status'] > 0)[0]
         field_exposures = np.unique(status['field_exposure'][idone])
@@ -122,6 +139,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-l', '--field-list', dest='fieldlist',
+                        type=str, help='field list', required=False,
+                        default=None)
     parser.add_argument('-d', '--fieldid-shift', dest='fieldid_shift',
                         help='shift in field id to apply', required=False,
                         type=np.int32, default=0)
@@ -143,6 +163,12 @@ if __name__ == '__main__':
     fieldid_shift = args.fieldid_shift
     catchup_version = args.catchup_version
     new_allocation = args.new_allocation
+    fieldlist_str = args.fieldlist
+
+    fieldlist = None
+    if(fieldlist_str is not None):
+        fieldlist = np.array([np.int32(x) for x in fieldlist_str.split(',')],
+                             dtype=np.int32)
 
     if(catchup_version is not None):
         catchup = True
@@ -151,6 +177,10 @@ if __name__ == '__main__':
         aplan = fromplan
     else:
         aplan = plan
+
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=False)
 
     original_allocate_file = sdss_path.full('rsAllocation', plan=aplan,
                                             observatory=observatory)
@@ -172,7 +202,19 @@ if __name__ == '__main__':
 
     if(end < 0):
         end = fieldids.max()
-    ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
+    rkeep = ((fieldids >= start) & (fieldids <= end))
+
+    if(fieldlist is not None):
+        fkeep = np.zeros(len(fieldids), dtype=bool)
+        for fid in fieldlist:
+            ifid = np.where(fieldids == fid)[0]
+            fkeep[ifid] = True
+    else:
+        fkeep = np.ones(len(fieldids), dtype=bool)
+        
+    keep = fkeep & rkeep
+    
+    ikeep = np.where(keep)[0]
     ikeep = indx[ikeep]
 
     if(nomultiprocess):
