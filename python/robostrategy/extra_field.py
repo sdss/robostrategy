@@ -73,17 +73,13 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
             # Assign up to max_extra epochs. availableRobotIds is a list of lists
             # Outer list length is field nepoch? Inner list is len n robots (1 if first = True)
             n_assign = 0
-            u_nexp = np.unique(self.field_cadence.nexp)
-
-            if len(u_nexp) != 1:
-                raise ValueError("More than one nexp found for this cadence. Need to recode logic")
 
             # If skip_assigned_epochs, then if any exposure in an epoch is assinged,
             # mark them all as previously assigned. Otherwise, you are assigning
             # extra exposures, not epochs
-            iassigned_epoch = np.full(self.field_cadence.nepochs,False)
+            iassigned_epoch = np.full(self.field_cadence.nepochs, False)
             if skip_assigned_epochs:
-                for iexp,rid in enumerate( self.assignments['equivRobotID'][self.rsid2indx[rsid]]):
+                for iexp, rid in enumerate(self.assignments['equivRobotID'][self.rsid2indx[rsid]]):
                     if rid >= 0:
                         iassigned_epoch[self.field_cadence.epochs[iexp]] = True
 
@@ -97,7 +93,7 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     is_assign = self.assign_robot_epoch(rsid=rsid, robotID=first_free_robot, epoch=iepoch,
                                                         status=free['statuses'][iepoch][0], nexp=nexps)
                     if is_assign:
-                       n_assign += 1
+                        n_assign += 1
                 if n_assign >= max_extra: #stop when you have hit maximum extra
                     break
 
