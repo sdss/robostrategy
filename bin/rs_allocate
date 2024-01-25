@@ -139,6 +139,9 @@ if __name__ == '__main__':
                     scale = np.float32(rsParams.cfg.get('ValueRescale',
                                                         c))
                     scales_pct[indx] = scale
+            for i in np.arange(len(scales_pct)):
+                print("Carton {c} rescale = {rs}".format(c=focartons[i], rs=scales_pct[i]),
+                      flush=True)
             for indx in np.arange(len(field_options)):
                 field_options['valuegot'][indx] = (
                     field_options['valuegot_pct'][indx, :] *
