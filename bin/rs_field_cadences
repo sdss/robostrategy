@@ -188,20 +188,33 @@ if __name__ == '__main__':
                 current_exposures_done = field_status['field_exposure'][idone]
                 iallocate = np.where(allocate_fromplan.field_array['fieldid'] == fieldid)[0]
                 current_cadence = allocate_fromplan.field_array['cadence'][iallocate[0]]
-                current_epochs = cadencelist.cadences[current_cadence].epochs[current_exposures_done]
-                current_epochs, nexp_epochs = np.unique(current_epochs, return_counts=True)
+                current_epochs_done = cadencelist.cadences[current_cadence].epochs[current_exposures_done]
+                current_epochs_done = np.unique(current_epochs_done)
 
                 atleastone = False
                 for option_cadence in field_cadences:
                     if(option_cadence == 'mixed2_single_n2x1'):
                         option_cadence = 'mixed2_single_nx1'
-                    ok, epochs_list = cadencelist.specific_cadence_consistency(current_cadence,
-                                                                               option_cadence,
-                                                                               current_epochs,
-                                                                               limit=1000)
-                    if(ok):
-                        atleastone = True
-                        break
+                    ok1, epochs_done1 = robostrategy.allocate.option_epochs_done(
+                        option_cadence=option_cadence,
+                        current_cadence=current_cadence,
+                        current_exposures_done=current_exposures_done)
+
+                    if(ok1):
+                        option_exposures_done = np.zeros(0, dtype=np.int32)
+                        ocadence = cadencelist.cadences[option_cadence]
+                        for epoch in epochs_done1:
+                            exps = ocadence.epoch_indx[epoch] + np.arange(ocadence.nexp[epoch],
+                                                                          dtype=np.int32)
+                            option_exposures_done = np.append(option_exposures_done, exps)
+                        ok2, epochs_done2 = robostrategy.allocate.option_epochs_done(
+                            current_cadence=option_cadence,
+                            option_cadence=current_cadence,
+                            current_exposures_done=option_exposures_done)
+
+                        if(ok2):
+                            atleastone = True
+                            break
 
                 if(atleastone == False):
                     if(current_cadence in rsParams.cfg['ConvertToHybridCadences']):
@@ -211,7 +224,7 @@ if __name__ == '__main__':
                         for option_cadence in field_cadences:
                             if(option_cadence in convert_cadences):
                                 prefix, n, m = parse_cadence(option_cadence)
-                                ndone = len(current_epochs)
+                                ndone = len(current_epochs_done)
                                 nnotdone = n - ndone
                                 if(nnotdone > 0):
                                     hybrid_cadence = '{prefix}_{d}x{mc}+{nd}x{m}'.format(prefix=prefix,
