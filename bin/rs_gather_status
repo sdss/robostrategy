@@ -88,7 +88,7 @@ if __name__ == '__main__':
             else:
                 if(fromplan_field != tmp_fromplan):
                     raise ValueError("Inconsistency in FROMPLANs found in status files")
-                        
+
         if(field_status is None):
             field_status_dtype = tmp_field_status.dtype.descr
             field_status_dtype.append(('rs_fieldid', np.int32))
