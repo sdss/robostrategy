@@ -81,7 +81,7 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
     filled_sb = np.zeros(slots.nskybrightness, dtype=np.int32)
 
     if(len(current_exposures_done) == 0):
-        return(True, filled_sb)
+        return(True, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
 
     print(" ... Checking option {o} against {c}".format(o=option_cadence,
                                                         c=current_cadence), flush=True)
@@ -95,7 +95,7 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
                                                                current_exposures_done=current_exposures_done)
 
     if(ok is False):
-        return(False, filled_sb)
+        return(False, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
 
     # Now we check the reverse: does the original cadence satisfy the conditions
     # that the option under consideration requires.
@@ -109,7 +109,7 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
                                                                        current_exposures_done=option_exposures_done)
 
     if(ok is False):
-        return(False, filled_sb)
+        return(False, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
 
     for epoch in epochs_done:
         isb = -1
@@ -122,7 +122,7 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
             isb = isb + 1
         filled_sb[isb] = filled_sb[isb] + cadencelist.cadences[option_cadence].nexp[epoch]
 
-    return(True, filled_sb)
+    return(True, filled_sb, current_exposures_done, option_exposures_done)
 
 
 if __name__ == '__main__':
@@ -139,11 +139,19 @@ if __name__ == '__main__':
     parser.add_argument('-S', '--no-status', dest='nostatus',
                         help='do not use status', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-s', '--start', dest='start',
+                        type=np.int32, help='field to start', required=False,
+                        default=0)
+    parser.add_argument('-e', '--end', dest='end',
+                        type=np.int32, help='field to end', required=False,
+                        default=-1)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     nostatus = args.nostatus
+    start = args.start
+    end = args.end
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -215,6 +223,8 @@ if __name__ == '__main__':
                          ('needed', np.int32),
                          ('allowed', bool),
                          ('filled_sb', np.int32, slots.nskybrightness),
+                         ('allocated_exposures_done', np.int32, 100),
+                         ('original_exposures_done', np.int32, 100),
                          ('needed_sb', np.int32, slots.nskybrightness),
                          ('slots', np.int32, (slots.nlst,
                                               slots.nskybrightness))]
@@ -223,6 +233,8 @@ if __name__ == '__main__':
     field_slots['cadence'] = field_options['cadence']
     field_slots['racen'] = field_options['racen']
     field_slots['deccen'] = field_options['deccen']
+    field_slots['original_exposures_done'] = -1
+    field_slots['allocated_exposures_done'] = -1
     field_max_skybrightness = [cadencelist.cadences[c].skybrightness.max() for
                                c in field_slots['cadence']]
 
@@ -248,12 +260,18 @@ if __name__ == '__main__':
         if(nostatus is False):
             iallocate = np.where(allocate_fromplan.field_array['fieldid'] == fieldid)[0]
             current_cadence = allocate_fromplan.field_array['cadence'][iallocate[0]]
-            allowed, filled_sb = calculate_filled(fieldid=fieldid,
-                                                  field_status=field_status,
-                                                  option_cadence=c,
-                                                  current_cadence=current_cadence, slots=slots)
+            (allowed, filled_sb,
+             current_exposures_done,
+             option_exposures_done) = calculate_filled(fieldid=fieldid,
+                                                       field_status=field_status,
+                                                       option_cadence=c,
+                                                       current_cadence=current_cadence,
+                                                       slots=slots)
             field_slots['filled_sb'][i, :] = filled_sb
             field_slots['allowed'][i] = allowed
+            if(len(current_exposures_done) > 0):
+                field_slots['original_exposures_done'][i, 0:len(current_exposures_done)] = current_exposures_done
+                field_slots['allocated_exposures_done'][i, 0:len(current_exposures_done)] = option_exposures_done
         else:
             field_slots['allowed'][i] = True
 
