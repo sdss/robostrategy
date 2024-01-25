@@ -86,8 +86,12 @@ def match_to_old(indx):
 
     print("fieldid {fid}: Building status dict".format(fid=fieldid), flush=True)
     istatus_for_v0p5 = dict()
+    istatus_for_v1 = dict()
     for i, s in enumerate(status):
-        istatus_for_v0p5[s['catalogid'], s['fiberType'], s['field_exposure']] = i
+        if(s['catalogdb_plan'] == '0.5.0'):
+            istatus_for_v0p5[s['catalogid'], s['fiberType'], s['field_exposure']] = i
+        else:
+            istatus_for_v1[s['catalogid'], s['fiberType'], s['field_exposure']] = i
 
     print("fieldid {fid}: Processing ids".format(fid=fieldid), flush=True)
     istatus_all = np.zeros(0, dtype=np.int32)
@@ -96,11 +100,20 @@ def match_to_old(indx):
         curr_catalogids_v0p5 = v0p5_for_v1[target['catalogid']]
         for iexp in iexps:
             istatus = np.zeros(0, dtype=np.int32)
+
+            # Match to v1 
+            key = (target['catalogid'], target['fiberType'], iexp)
+            if(key in istatus_for_v1):
+                tmp_istatus = istatus_for_v1.pop(key)
+                istatus = np.append(istatus, tmp_istatus)
+
+            # Match to v0.5
             for catalogid_v0p5 in curr_catalogids_v0p5:
                 key = (catalogid_v0p5, target['fiberType'], iexp)
                 if(key in istatus_for_v0p5):
                     tmp_istatus = istatus_for_v0p5.pop(key)
                     istatus = np.append(istatus, tmp_istatus)
+
             if(len(istatus) > 0):
                 istatus_best = istatus[np.argmax(status['status'][istatus])]
                 istatus_all = np.append(istatus_all, np.array([istatus_best], dtype=np.int32))
@@ -148,6 +161,9 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--catchup-version', dest='catchup_version',
                         help='catchup version', required=False,
                         default=None, type=str)
+    parser.add_argument('-l', '--field-list', dest='fieldlist',
+                        type=str, help='field list', required=False,
+                        default=None)
     parser.add_argument('-n', '--new-allocation', dest='new_allocation',
                         help='treat as a new allocation run, so fieldids are from old plan',
                         required=False, default=False, action='store_true')
@@ -164,6 +180,12 @@ if __name__ == '__main__':
     catchup_version = args.catchup_version
     new_allocation = args.new_allocation
     fromplan = args.fromplan
+    fieldlist_str = args.fieldlist
+
+    fieldlist = None
+    if(fieldlist_str is not None):
+        fieldlist = np.array([np.int32(x) for x in fieldlist_str.split(',')],
+                             dtype=np.int32)
 
     if(catchup_version is not None):
         catchup = True
@@ -190,7 +212,19 @@ if __name__ == '__main__':
 
     if(end < 0):
         end = fieldids.max()
-    ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
+    rkeep = ((fieldids >= start) & (fieldids <= end))
+
+    if(fieldlist is not None):
+        fkeep = np.zeros(len(fieldids), dtype=bool)
+        for fid in fieldlist:
+            ifid = np.where(fieldids == fid)[0]
+            fkeep[ifid] = True
+    else:
+        fkeep = np.ones(len(fieldids), dtype=bool)
+        
+    keep = fkeep & rkeep
+    
+    ikeep = np.where(keep)[0]
     ikeep = indx[ikeep]
 
     if(nomultiprocess):
