@@ -1712,7 +1712,8 @@ class Field(object):
         self.design_status = design_status
         return
 
-    def set_design_status_from_status_field(self, status_field=None):
+    def set_design_status_from_status_field(self, status_field=None, original_exposures_done=None,
+                                            allocated_exposures_done=None):
         """Set design_status based on get_status_by_field() output
         
         Parameters
@@ -1720,6 +1721,12 @@ class Field(object):
 
         status_field : ndarray
             array with 'designid', 'field_exposure', and 'status' elements
+
+        original_exposures_done : ndarray of np.int32
+            list of 'field_exposure' values that are supposed to be done
+        
+        allocated_exposures_done : ndarray of np.int32
+            which exposures of this cadence those correspond to 
 
         Notes
         -----
@@ -1737,20 +1744,51 @@ class Field(object):
         if(status_field is None):
             self.set_design_status(design_status=None)
             return
-        design_status = np.zeros(self.field_cadence.nexp_total, dtype=design_status_dtype)
-        design_status['fieldid'] = self.fieldid
-        for field_exposure in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+        ige0 = (allocated_exposures_done >= 0)
+        allocated_exposures_done = allocated_exposures_done[ige0]
+        ige0 = (original_exposures_done >= 0)
+        original_exposures_done = original_exposures_done[ige0]
+        if(len(allocated_exposures_done) != len(original_exposures_done)):
+            raise ValueError("allocated and original exposures must be same length")
+        if(len(allocated_exposures_done) != len(np.unique(allocated_exposures_done))):
+            raise ValueError("allocated exposures must be unique")
+        if(len(original_exposures_done) != len(np.unique(original_exposures_done))):
+            raise ValueError("original exposures must be unique")
+ 
+        original_design_status = np.zeros(status_field['field_exposure'].max() + 1,
+                                          dtype=design_status_dtype)
+        original_design_status['fieldid'] = self.fieldid
+        for field_exposure in np.arange(len(original_design_status), dtype=np.int32):
             icurr = np.where((status_field['field_exposure'] == field_exposure) &
                              (status_field['status'] == 'done'))[0]
             if(len(icurr) > 0):
                 designid = status_field['design_id'][icurr].min()
                 if(designid < 0):
                     raise Exception('A done designid should not be negative')
-                design_status['designid'][field_exposure] = designid
-                design_status['status'][field_exposure] = 'done'
+                original_design_status['designid'][field_exposure] = designid
+                original_design_status['status'][field_exposure] = 'done'
             else:
-                design_status['designid'][field_exposure] = -1
-                design_status['status'][field_exposure] = 'not started'
+                original_design_status['designid'][field_exposure] = -1
+                original_design_status['status'][field_exposure] = 'not started'
+
+        in_original_exposures_done = np.zeros(len(original_design_status), dtype=bool)
+        in_original_exposures_done[original_exposures_done] = True
+
+        ibad = np.where((in_original_exposures_done == True) &
+                        (original_design_status['status'] != 'done'))[0]
+        if(len(ibad) > 0):
+            raise ValueError("original_exposures_done has exposure without done status")
+
+        ibad = np.where((in_original_exposures_done == False) &
+                        (original_design_status['status'] == 'done'))[0]
+        if(len(ibad) > 0):
+            raise ValueError("original_exposures_done missing an exposure with done status")
+        
+        design_status = np.zeros(self.field_cadence.nexp_total, dtype=design_status_dtype)
+        design_status['fieldid'] = self.fieldid
+        design_status['designid'] = -1
+        design_status['status'] = 'not started'
+        design_status[allocated_exposures_done] = original_design_status[original_exposures_done]
                 
         self.set_design_status(design_status=design_status)
         return
@@ -6068,7 +6106,8 @@ class Field(object):
         self.preferred_robotids[itargets, iexp] = robotIDs[iok]
         return
 
-    def apply_observed_status(self, observed_status=None):
+    def apply_observed_status(self, observed_status=None, allocated_exposures_done=None,
+                              original_exposures_done=None):
         """Apply the information from the observational status
 
         Parameters
@@ -6078,6 +6117,12 @@ class Field(object):
             array of status information, with 'carton_to_target_pk', 'catalogid'
               'fiberType', 'lambda_eff', 'delta_ra', 'delta_dec',
               'field_exposure', 'status', 'mjd', and 'holeid'
+
+        original_exposures_done : ndarray of np.int32
+            list of 'field_exposure' values that are supposed to be done
+        
+        allocated_exposures_done : ndarray of np.int32
+            which exposures of this cadence those correspond to 
 
         Notes
         -----
@@ -6095,6 +6140,17 @@ class Field(object):
                   flush=True)
             return
 
+        ige0 = (allocated_exposures_done >= 0)
+        allocated_exposures_done = allocated_exposures_done[ige0]
+        ige0 = (original_exposures_done >= 0)
+        original_exposures_done = original_exposures_done[ige0]
+        if(len(allocated_exposures_done) != len(original_exposures_done)):
+            raise ValueError("allocated and original exposures must be same length")
+        if(len(allocated_exposures_done) != len(np.unique(allocated_exposures_done))):
+            raise ValueError("allocated exposures must be unique: {aed}".format(aed=allocated_exposures_done))
+        if(len(original_exposures_done) != len(np.unique(original_exposures_done))):
+            raise ValueError("original exposures must be unique")
+
         c2t_to_rsid = dict()
         for t in self.targets:
             c2t_to_rsid[t['carton_to_target_pk']] = t['rsid']
@@ -6106,13 +6162,21 @@ class Field(object):
         # assign it as done. We gather the information for all observations here because
         # in the next section of code we may COUNT those as done if it is the only
         # option we have to "complete" the cadence.
-        iexps = np.unique(observed_status['field_exposure'])
-        for iexp in iexps:
-            iobs = np.where((observed_status['field_exposure'] == iexp) &
+        original_iexps = np.unique(observed_status['field_exposure'])
+        for original_iexp in original_iexps:
+            iobs = np.where((observed_status['field_exposure'] == original_iexp) &
                             (observed_status['mjd'] != 0))[0]
+            iallocated = np.where(original_exposures_done == original_iexp)[0]
+            if(len(iallocated) > 0):
+                ialloc = allocated_exposures_done[iallocated[0]]
+
+            if((len(iobs) == 0) & (len(iallocated) > 0)):
+                raise ValueError("No observed status for original exposure listed as done")
+            if((len(iobs) > 0) & (len(iallocated) == 0)):
+                raise ValueError("No original exposure for exposure with objects with done status")
             if(len(iobs) > 0):
                 if(self.verbose):
-                    print("fieldid {fid}: Accounting for exposure={iexp} completion".format(fid=self.fieldid, iexp=iexp), flush=True)
+                    print("fieldid {fid}: Accounting for completion of original exposure={iexp}, allocated exposure={ialloc}".format(fid=self.fieldid, iexp=original_iexp, ialloc=ialloc), flush=True)
                 rsids = np.zeros(len(iobs), dtype=np.int64) - 1
                 for indx, cstatus in enumerate(observed_status[iobs]):
                     tmp_rsids = self.equiv_target(cstatus)
@@ -6129,21 +6193,21 @@ class Field(object):
                     # the observed_status only existing for one equivalent rsid
                     # per exposure, which really ought to be true
                     for tmp_rsid in tmp_rsids:
-                        rsid_obs_to_istatus[iexp, tmp_rsid] = iobs[indx]
+                        rsid_obs_to_istatus[ialloc, tmp_rsid] = iobs[indx]
 
                 infield_and_done = ((rsids >= 0) & (observed_status['status'][iobs] > 0))
 
                 if(infield_and_done.max() > 0):
-                    if(self.design_status['status'][iexp] != 'done'):
+                    if(self.design_status['status'][ialloc] != 'done'):
                         raise ValueError("""fieldid {fid}: Assignments marked done for exposure {e}, which is not done!
    {f}
-""".format(fid=self.fieldid, f=self.design_status, e=iexp))
+""".format(fid=self.fieldid, f=self.design_status, e=original_iexp))
 
-                self.assign_done_exposure(iexp=iexp, rsids=rsids[infield_and_done],
+                self.assign_done_exposure(iexp=ialloc, rsids=rsids[infield_and_done],
                                           holeIDs=observed_status['holeid'][iobs[infield_and_done]],
                                           force=True, lock=True)
-            else:
-                iassigned = np.where(observed_status['field_exposure'] == iexp)[0]
+            elif(len(iallocated) > 0):
+                iassigned = np.where(observed_status['field_exposure'] == original_iexp)[0]
                 rsids = np.zeros(len(iassigned), dtype=np.int64) - 1
                 for indx, cstatus in enumerate(observed_status[iassigned]):
                     if(cstatus['carton_to_target_pk'] in c2t_to_rsid):
@@ -6152,7 +6216,7 @@ class Field(object):
                         tmp_rsids = self.equiv_target(cstatus)
                         if(len(tmp_rsids) > 0):
                             rsids[indx] = tmp_rsids[0]
-                self.set_preferred_robotids(iexp=iexp, rsids=rsids,
+                self.set_preferred_robotids(iexp=ialloc, rsids=rsids,
                                             holeIDs=observed_status['holeid'][iassigned])
 
         # For SRD targets that are NOT satisfied, that DID get one good observation,
@@ -6166,7 +6230,7 @@ class Field(object):
             success = self.assign_cadences(rsids=np.array([target['rsid']]),
                                            test_only=True)
             if(success == False) :
-                for iexp in iexps:
+                for iexp in allocated_exposures_done:
                     if((iexp, target['rsid']) in rsid_obs_to_istatus):
                         # Bail if this assignment was equivalently done already
                         # earlier in this loop
