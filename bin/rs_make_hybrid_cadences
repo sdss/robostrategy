@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import fitsio
+import argparse
+import roboscheduler.cadence as cadence
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+clist = cadence.CadenceList(skybrightness_only=True)
+
+
+def make_hybrid_cadence_new(original_name=None, hybrid_name=None, ndone_epochs=None,
+			    nexpper=2, nepochs=None):
+    if(nepochs is None):
+        nepochs = clist.cadences[original_name].nepochs
+
+    nexp = clist.cadences[original_name].nexp[0:nepochs].copy()
+    nexp[0:ndone_epochs] = nexpper
+
+    version = ''
+    clist.add_cadence(name=hybrid_name + version,
+                      nepochs=nepochs,
+                      skybrightness=clist.cadences[original_name].skybrightness[0:nepochs],
+                      delta=clist.cadences[original_name].delta[0:nepochs],
+                      delta_min=clist.cadences[original_name].delta_min[0:nepochs],
+                      delta_max=clist.cadences[original_name].delta_max[0:nepochs],
+                      nexp=nexp,
+                      max_length=clist.cadences[original_name].max_length[0:nepochs],
+                      min_moon_sep=clist.cadences[original_name].min_moon_sep[0:nepochs],
+                      min_deltav_ks91=clist.cadences[original_name].min_deltav_ks91[0:nepochs],
+                      min_twilight_ang=clist.cadences[original_name].min_twilight_ang[0:nepochs],
+                      max_airmass=clist.cadences[original_name].max_airmass[0:nepochs],
+                      obsmode_pk=clist.cadences[original_name].obsmode_pk[0:nepochs])
+
+    clist.cadences[hybrid_name + version].label_root = hybrid_name
+    clist.cadences[hybrid_name + version].label_version = version
+    
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Create hybrid cadence file')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='name of observatory')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    orig_cadences_file = cadences_file.replace('rsCadences', 'rsCadencesOrig')
+    clist.fromfits(filename=orig_cadences_file, unpickle=False)
+
+    hybrid_names = []
+
+    original_names = ['bright_2x1', 'bright_3x1', 'bright_4x1', 'bright_6x1',
+                      'bright_8x1', 'bright_12x1', 'bright_18x1']
+    nexpper = 2
+    ndone_epochs_s = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    for original_name in original_names:
+        for ndone_epochs in ndone_epochs_s:
+            nnotdone_epochs = clist.cadences[original_name].nepochs - ndone_epochs
+            if(nnotdone_epochs > 0):
+                hybrid_name = 'bright_{d}x{p}+{nd}x1'.format(p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
+                hybrid_names.append(hybrid_name)
+                print(hybrid_name)
+                make_hybrid_cadence_new(original_name=original_name, hybrid_name=hybrid_name,
+                                        nexpper=nexpper, ndone_epochs=ndone_epochs)
+
+    original_names = ['bright_2x1', 'bright_3x1', 'bright_4x1', 'bright_6x1', 'bright_8x1']
+    nexpper = 4
+    ndone_epochs_s = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    for original_name in original_names:
+        for ndone_epochs in ndone_epochs_s:
+            nnotdone_epochs = clist.cadences[original_name].nepochs - ndone_epochs
+            if(nnotdone_epochs > 0):
+                hybrid_name = 'bright_{d}x{p}+{nd}x1'.format(p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
+                print(hybrid_name)
+                make_hybrid_cadence_new(original_name=original_name, hybrid_name=hybrid_name,
+                                        nexpper=nexpper, ndone_epochs=ndone_epochs)
+
+    original_names = ['bright_6x2', 'bright_8x2']
+    nexpper = 4
+    ndone_epochs_s = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    for original_name in original_names:
+        for ndone_epochs in ndone_epochs_s:
+            nnotdone_epochs = clist.cadences[original_name].nepochs - ndone_epochs
+            if(nnotdone_epochs > 0):
+                hybrid_name = 'bright_{d}x{p}+{nd}x2'.format(p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
+                print(hybrid_name)
+                make_hybrid_cadence_new(original_name=original_name, hybrid_name=hybrid_name,
+                                        nexpper=nexpper, ndone_epochs=ndone_epochs)
+
+    new_cadences_file = cadences_file.replace('rsCadences', 'rsCadencesNew')
+    clist_array = clist.toarray()
+    fitsio.write(new_cadences_file, clist_array, clobber=True)
+
+    cadences = [c for c in clist.cadences]
+    for c in cadences:
+        if(clist.cadences[c].label_root not in hybrid_names):
+            clist.cadences.pop(c)
+        else:
+            clist.cadences[c].label = clist.cadences[c].label_root + '_v2'
+            clist.cadences[c].label_version = '_v2'
+            
+    hybrid_cadences_file = cadences_file.replace('rsCadences', 'rsCadencesHybrid')
+    clist.tocsv(filename=hybrid_cadences_file.replace('.fits', '.csv'))
+
+    fp = open(hybrid_cadences_file.replace('.fits', '.cfg'), 'w')
+    for c in clist.cadences:
+        txt = clist.cadences[c].epoch_text()
+        fp.write(txt)
+    fp.close()
