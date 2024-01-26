@@ -28,31 +28,31 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
-def split_slots(exps, time, ndark=2, ttype='', iexp=[]):
+def split_slots(exps, time, ndark=2, ttype='', done_exposures=None, iexp=[],
+                verbose=False):
     exps_total = exps.sum()
     dark_total = exps[:, 0].sum()
-    nexp = iexp[1] - iexp[0] + 1
+    nexp = np.int32(done_exposures[iexp[0]:iexp[1]+1] == False).sum()
     new_exps = exps.copy()
     new_time = time.copy()
-    if(dark_total == 0):
-        print("yuh yoh", flush=True)
-        print(exps, flush=True)
     if(ttype == 'dark'):
         if(dark_total > 0):
-            new_exps[:, 0] = new_exps[:, 0] * ndark / dark_total
-            new_time[:, 0] = new_time[:, 0] * ndark / dark_total
+            new_exps[:, 0] = new_exps[:, 0] * nexp / dark_total
+            new_time[:, 0] = new_time[:, 0] * nexp / dark_total
         else:
             new_exps[:, 0] = 0.
             new_time[:, 0] = 0.
         new_exps[:, 1] = 0.
         new_time[:, 1] = 0.
     elif(ttype == 'bright'):
+        nexp_dark = np.int32(done_exposures[0:ndark] == False).sum()
         if(dark_total > 0):
-            new_exps[:, 0] = new_exps[:, 0] * (dark_total - ndark) / dark_total
-            new_time[:, 0] = new_time[:, 0] * (dark_total - ndark) / dark_total
-        if((exps_total - ndark) > 0):
-            new_exps[:, :] = new_exps[:, :] * (nexp) / (exps_total - ndark)
-            new_time[:, :] = new_time[:, :] * (nexp) / (exps_total - ndark)
+            new_exps[:, 0] = new_exps[:, 0] * (dark_total - nexp_dark) / dark_total
+            new_time[:, 0] = new_time[:, 0] * (dark_total - nexp_dark) / dark_total
+        exps_total = new_exps.sum()
+        if(exps_total > 0):
+            new_exps[:, :] = new_exps[:, :] * (nexp) / (exps_total)
+            new_time[:, :] = new_time[:, :] * (nexp) / (exps_total)
         else:
             new_exps[:, :] = 0.
             new_time[:, :] = 0.
@@ -207,47 +207,49 @@ if __name__ == '__main__':
                 fields_array['needed'][ifield] = nexp_total
                 fields_array['nallocated_full'][ifield] = nexp_total
                 filled_sb = fields_array['filled_sb'][ifield, :]
+                allocated_exposures_done = fields_array['allocated_exposures_done'][ifield, :]
+                allocated_exposures_done = allocated_exposures_done[allocated_exposures_done >= 0]
+                done_exposures = np.zeros(rs_nexp_total, dtype=bool)
+                done_exposures[allocated_exposures_done] = True
+                curr_exps = fields_array['slots_exposures'][ifield, :, :]
+                curr_time = fields_array['slots_time'][ifield, :, :]
+                verbose = False
                 if(curr_cadence_name[0:13] == 'mixed2_single'):
                     if((iexpst == 0) & (iexpnd == 1)):
                         fields_array['cadence'][ifield] = 'mixed2_single_2x1'
-                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
-                                                        fields_array['slots_time'][ifield, :, :],
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='dark',
                                                         ndark=2,
-                                                        iexp=[iexpst, iexpnd])
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
                         filled_sb[1] = 0
                     elif((iexpst == 2) & (iexpnd <= 19)):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
-                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
-                                                        fields_array['slots_time'][ifield, :, :],
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         ndark=2,
-                                                        iexp=[iexpst, iexpnd])
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
                         filled_sb[0] = 0
-                        if(filled_sb[1] >= iexpnd - 2 + 1):
-                            filled_sb[1] = iexpnd - 2 + 1
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     elif(iexpst == 2):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
-                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
-                                                        fields_array['slots_time'][ifield, :, :],
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         ndark=2,
-                                                        iexp=[iexpst, iexpnd])
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
                         filled_sb[0] = 0
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     elif((iexpst >= 20) & (split_nocadence == True)):
                         fields_array['cadence'][ifield] = 'bright_flexible_{n}x1'.format(n=nexp_total)
-                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
-                                                        fields_array['slots_time'][ifield, :, :],
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         ndark=2,
-                                                        iexp=[iexpst, iexpnd])
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
                         filled_sb[0] = 0
-                        if(filled_sb[1] <= 20):
-                            filled_sb[1] = 0
-                        elif(filled_sb[1] >= iexpnd - 2 + 1):
-                            filled_sb[1] = iexpnd - iexpst + 1
-                        else:
-                            filled_sb[1] = filled_sb[1] - iexpst
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     else:
                         print(fields_array['fieldid'][ifield])
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
@@ -255,33 +257,28 @@ if __name__ == '__main__':
                 elif(curr_cadence_name[0:13] == 'bright_single'):
                     if((iexpst == 0) & (iexpnd <= 17)):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
-                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
-                                                        fields_array['slots_time'][ifield, :, :],
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         ndark=0,
-                                                        iexp=[iexpst, iexpnd])
-                        if(filled_sb[1] >= iexpnd - 2 + 1):
-                            filled_sb[1] = iexpnd - 2 + 1
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     elif(iexpst == 0):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
-                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
-                                                        fields_array['slots_time'][ifield, :, :],
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         ndark=0,
-                                                        iexp=[iexpst, iexpnd])
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     elif((iexpst >= 18) & (split_nocadence != False)):
                         fields_array['cadence'][ifield] = 'bright_flexible_{n}x1'.format(n=nexp_total)
-                        new_exp, new_time = split_slots(fields_array['slots_exposures'][ifield, :, :],
-                                                        fields_array['slots_time'][ifield, :, :],
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         ndark=0,
-                                                        iexp=[iexpst, iexpnd])
-                        if(filled_sb[1] <= 18):
-                            filled_sb[1] = 0
-                        elif(filled_sb[1] >= iexpnd - 2 + 1):
-                            filled_sb[1] = iexpnd - iexpst + 1
-                        else:
-                            filled_sb[1] = filled_sb[1] - iexpst
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     else:
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
@@ -293,9 +290,9 @@ if __name__ == '__main__':
                     sys.exit(2)
                 fields_array['filled_sb'][ifield, :] = filled_sb
                 fields_array['filled'][ifield] = filled_sb.sum()
-                fields_array['nallocated_full_sb'][ifield, :] = new_exp.sum(axis=0)
-                fields_array['nallocated_sb'][ifield, :] = (
-                    fields_array['nallocated_full_sb'][ifield, :] - filled_sb)
+                fields_array['nallocated_sb'][ifield, :] = np.int32(np.round(new_exp.sum(axis=0)))
+                fields_array['nallocated_full_sb'][ifield, :] = (
+                    filled_sb + fields_array['nallocated_sb'][ifield, :])
                 fields_array['nallocated'][ifield] = fields_array['nallocated_sb'][ifield, :].sum()
                 fields_array['slots_exposures'][ifield, :, :] = new_exp
                 fields_array['slots_time'][ifield, :, :] = new_time
