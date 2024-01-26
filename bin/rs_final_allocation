@@ -38,23 +38,24 @@ def split_slots(exps, time, ndark=2, ttype='', iexp=[]):
         print("yuh yoh", flush=True)
         print(exps, flush=True)
     if(ttype == 'dark'):
-        new_exps[:, 0] = new_exps[:, 0] * ndark / dark_total
+        if(dark_total > 0):
+            new_exps[:, 0] = new_exps[:, 0] * ndark / dark_total
+            new_time[:, 0] = new_time[:, 0] * ndark / dark_total
+        else:
+            new_exps[:, 0] = 0.
+            new_time[:, 0] = 0.
         new_exps[:, 1] = 0.
-        new_time[:, 1] = new_time[:, 0] * ndark / dark_total
         new_time[:, 1] = 0.
     elif(ttype == 'bright'):
         if(dark_total > 0):
             new_exps[:, 0] = new_exps[:, 0] * (dark_total - ndark) / dark_total
             new_time[:, 0] = new_time[:, 0] * (dark_total - ndark) / dark_total
-        new_exps[:, :] = new_exps[:, :] * (nexp) / (exps_total - ndark)
-        new_time[:, :] = new_time[:, :] * (nexp) / (exps_total - ndark)
-        if(exps_total - ndark == 0):
-            print("yuh yoh 2", flush=True)
-            print(new_exps, flush=True)
-            print(new_time, flush=True)
-            print(exps, flush=True)
-            print(exps_total, flush=True)
-            print(ndark, flush=True)
+        if((exps_total - ndark) > 0):
+            new_exps[:, :] = new_exps[:, :] * (nexp) / (exps_total - ndark)
+            new_time[:, :] = new_time[:, :] * (nexp) / (exps_total - ndark)
+        else:
+            new_exps[:, :] = 0.
+            new_time[:, :] = 0.
     else:
         raise ValueError('ttype is bad')
         return
