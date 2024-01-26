@@ -34,6 +34,9 @@ def split_slots(exps, time, ndark=2, ttype='', iexp=[]):
     nexp = iexp[1] - iexp[0] + 1
     new_exps = exps.copy()
     new_time = time.copy()
+    if(dark_total == 0):
+        print("yuh yoh", flush=True)
+        print(exps, flush=True)
     if(ttype == 'dark'):
         new_exps[:, 0] = new_exps[:, 0] * ndark / dark_total
         new_exps[:, 1] = 0.
@@ -45,6 +48,13 @@ def split_slots(exps, time, ndark=2, ttype='', iexp=[]):
             new_time[:, 0] = new_time[:, 0] * (dark_total - ndark) / dark_total
         new_exps[:, :] = new_exps[:, :] * (nexp) / (exps_total - ndark)
         new_time[:, :] = new_time[:, :] * (nexp) / (exps_total - ndark)
+        if(exps_total - ndark == 0):
+            print("yuh yoh 2", flush=True)
+            print(new_exps, flush=True)
+            print(new_time, flush=True)
+            print(exps, flush=True)
+            print(exps_total, flush=True)
+            print(ndark, flush=True)
     else:
         raise ValueError('ttype is bad')
         return
@@ -280,6 +290,8 @@ if __name__ == '__main__':
                                                                          r=rs_nexp_total))
                     print(cadencelist.cadences[curr_cadence_name])
                     sys.exit(2)
+                fields_array['filled_sb'][ifield, :] = filled_sb
+                fields_array['filled'][ifield] = filled_sb.sum()
                 fields_array['nallocated_full_sb'][ifield, :] = new_exp.sum(axis=0)
                 fields_array['nallocated_sb'][ifield, :] = (
                     fields_array['nallocated_full_sb'][ifield, :] - filled_sb)
