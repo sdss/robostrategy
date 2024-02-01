@@ -152,8 +152,12 @@ class Slots(object):
             mjd_evening_twilight = scheduler.evening_twilight(mjd)
             mjd_morning_twilight = scheduler.morning_twilight(mjd)
             curr_mjd = mjd_evening_twilight
-            while(curr_mjd < mjd_morning_twilight and
-                  curr_mjd < scheduler.end_mjd()):
+            on, next_mjd = scheduler.on(curr_mjd)
+            if(on == 'off'):
+                continue
+            curr_duration = 0.
+            while(curr_mjd + curr_duration < mjd_morning_twilight and
+                  curr_mjd + curr_duration < scheduler.end_mjd()):
                 lst = scheduler.lst(curr_mjd)
                 skybrightness = scheduler.skybrightness(curr_mjd)
                 ilst = np.int32(np.floor((lst / 15. / 24.) * self.nlst))
@@ -165,7 +169,8 @@ class Slots(object):
                            iskybrightness] = (self.slots[ilst,
                                                          iskybrightness] +
                                               self.durations[iskybrightness])
-                curr_mjd = curr_mjd + self.durations[iskybrightness] / 24.
+                curr_duration = self.durations[iskybrightness] / 24.
+                curr_mjd = curr_mjd + curr_duration
         return
 
     def tofits(self, filename=None, clobber=True):
