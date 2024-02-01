@@ -160,10 +160,14 @@ if __name__ == '__main__':
     else:
         bright_only_bright = False
 
-    if('FractionRM' in rsParams.cfg['Allocation']):
+    fraction_rm_obs = 'FractionRM{o}'.format(o=observatory.upper())
+    if(fraction_rm_obs in rsParams.cfg['Allocation']):
+        fraction_rm = np.float32(rsParams.cfg.get('Allocation', fraction_rm_obs))
+    elif('FractionRM' in rsParams.cfg['Allocation']):
         fraction_rm = np.float32(rsParams.cfg.get('Allocation', 'FractionRM'))
     else:
         fraction_rm = 1.
+
 
     if('AirmassLimits' in rsParams.cfg['Allocation']):
         airmass_limits_str = rsParams.cfg.get('Allocation', 'AirmassLimits').split()
