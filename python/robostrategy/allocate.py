@@ -625,7 +625,7 @@ class AllocateLST(object):
                                                    cadence=cadence,
                                                    skybrightness=self.slots.skybrightness[iskybrightness + 1],
                                                    lst=self.slots.lst[ilst],
-                                                   filled_sb=ccadence['filled_sb'])
+                                                   filled_sb=np.array(ccadence['filled_sb']))
                             slot_constraints[ilst][iskybrightness].SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
                             if(minimize_time is True):
                                 objective.SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
@@ -1312,8 +1312,15 @@ class AllocateLSTCostE(AllocateLST):
         exponent_bright = 0.05
         exponent_dark = 1.0
         idark = np.where(self.cadencelist.cadences[cadence].skybrightness < 0.4)[0]
-        fdark = (np.float32(len(idark) - filled_sb[0]) /
-                 np.float32(self.cadencelist.cadences[cadence].nepochs))
+        ibright = np.where(self.cadencelist.cadences[cadence].skybrightness >= 0.4)[0]
+        ndark = self.cadencelist.cadences[cadence].nexp[idark].sum()
+        nbright = self.cadencelist.cadences[cadence].nexp[ibright].sum()
+        if(filled_sb.sum() < self.cadencelist.cadences[cadence].nexp_total):
+            fdark = (np.float32(ndark - filled_sb[0]) /
+                     np.float32(self.cadencelist.cadences[cadence].nexp_total - filled_sb.sum()))
+        else:
+            # If all filled up, this really doesn't matter
+            fdark = np.float32(ndark) / np.float32(self.cadencelist.cadences[cadence].nexp_total)
         xfactor_dark = (fdark) * (airmass**exponent_dark)
         xfactor_dark = xfactor_dark * self.duration_scale(cadence=cadence,
                                                           skybrightness=0.)
