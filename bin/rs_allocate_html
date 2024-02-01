@@ -86,6 +86,8 @@ if __name__ == '__main__':
     nepoch_dark = 0
     nepoch_bright = 0
     for cadence in allocate.field_array['cadence']:
+        if(cadence == 'none'):
+            continue 
         c = cadencelist.cadences[cadence]
         ndesign_all = ndesign_all + c.nexp_total
         nepoch_all = nepoch_all + c.nepochs
@@ -117,5 +119,3 @@ if __name__ == '__main__':
     fp = open(html_file, 'w')
     fp.write(page)
     fp.close()
-
-        
