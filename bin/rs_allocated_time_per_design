@@ -1,0 +1,69 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_allocated_time_per_design
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import numpy as np
+import fitsio
+import roboscheduler.scheduler
+import robostrategy.allocate
+import sdss_access.path
+
+import sdssdb.peewee.sdss5db.targetdb as targetdb
+from sdssdb.peewee.sdss5db import database
+
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Count designs')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    
+    original_allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                            observatory=observatory)
+    allocate_fits = fitsio.FITS(original_allocate_file)
+
+    allocate = allocate_fits['ALLOCATE'].read()
+    slots = allocate_fits['SLOTS'].read()
+
+    print("Total time (hours): {s}".format(s=slots.sum()))
+    print("Total dark time (hours): {s}".format(s=slots[:,0].sum()))
+    print("Total bright time (hours): {s}".format(s=slots[:,1].sum()))
+
+    if('nallocated_full' in allocate.dtype.names):
+        print("Total number of designs (including done): {d}".format(d=allocate['nallocated_full'].sum()))
+    else:
+        print("Total number of designs (including done): {d}".format(d=allocate['slots_exposures'].sum()))
+
+    avgtime = 60. * allocate['slots_time'].sum() / allocate['slots_exposures'].sum()
+    print("Average assumed design time (minutes): {a:0.4f}".format(a=avgtime))
+
+    avgtime = 60. * allocate['slots_time'][:, :, 0].sum() / allocate['slots_exposures'][:, :, 0].sum()
+    print("Average assumed dark design time (minutes): {a:0.4f}".format(a=avgtime))
+
+    avgtime = 60. * allocate['slots_time'][:, :, 1].sum() / allocate['slots_exposures'][:, :, 1].sum()
+    print("Average assumed bright design time (minutes): {a:0.4f}".format(a=avgtime))
