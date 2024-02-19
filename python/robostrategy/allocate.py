@@ -646,7 +646,11 @@ class AllocateLST(object):
         # Extract the solution.
         # Here var is a number of exposures, and so is allocation.
         tval = 0.
+        ttime = np.zeros((self.slots.nlst, self.slots.nskybrightness), dtype=np.float32)
         for fieldid in self.allocinfo:
+            ifield = np.where(fieldid == self.fields['fieldid'])[0]
+            field_racen = self.fields['racen'][ifield]
+            field_deccen = self.fields['deccen'][ifield]
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
                 ccadence['allocation'] = np.zeros((self.slots.nlst,
@@ -657,8 +661,18 @@ class AllocateLST(object):
                         if(ccadence['slots'][ilst, iskybrightness] > 0):
                             var = ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness]
                             ccadence['allocation'][ilst, iskybrightness] = var.solution_value()
+                            xfactor = self.xfactor(racen=field_racen,
+                                                   deccen=field_deccen,
+                                                   cadence=cadence,
+                                                   skybrightness=self.slots.skybrightness[iskybrightness + 1],
+                                                   lst=self.slots.lst[ilst],
+                                                   filled_sb=np.array(ccadence['filled_sb']))
+                            ttime[ilst, iskybrightness] += var.solution_value() * xfactor
                             cval = var.solution_value() * ccadence['value'] / ccadence['needed']
                             tval = tval + cval
+
+        print(total)
+        print(ttime)
 
         # Decide on which cadences to pick.
         field_array_dtype = [('fieldid', np.int32),
