@@ -232,4 +232,6 @@ if __name__ == '__main__':
     print("Output results", flush=True)
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
+    if(test):
+        allocate_file = allocate_file.replace('rsAllocation', 'rsAllocationTest')
     allocate.tofits(allocate_file)

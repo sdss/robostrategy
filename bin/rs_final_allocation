@@ -147,6 +147,27 @@ if __name__ == '__main__':
             fieldid = fieldid_use[iuse]
             iuse = iuse + 1
             curr_cadence_name = rs_fields_array['cadence'][irsfield]
+
+            if(curr_cadence_name == 'none'):
+                tmp_fields_array = np.zeros(1, dtype=fields_array_dtype)
+                for n in rs_fields_array.dtype.names:
+                    tmp_fields_array[n][0] = rs_fields_array[n][irsfield]
+                tmp_fields_array['iexpst'][0] = -1
+                tmp_fields_array['iexpnd'][0] = -1
+                tmp_fields_array['fieldid'][0] = fieldid
+                tmp_fields_array['rs_fieldid'][0] = rs_fieldid
+                fields_array = np.append(fields_array, tmp_fields_array)
+
+                tmp_fields = np.zeros(1, dtype=fields_dtype)
+                for n in rs_fields.dtype.names:
+                    tmp_fields[n][0] = rs_fields[n][irsfield]
+                tmp_fields['iexpst'][0] = -1
+                tmp_fields['iexpnd'][0] = -1
+                tmp_fields['fieldid'][0] = fieldid
+                tmp_fields['rs_fieldid'][0] = rs_fieldid
+                fields = np.append(fields, tmp_fields)
+                continue
+
             curr_cadence = cadencelist.cadences[curr_cadence_name]
             skybrightness = curr_cadence.skybrightness[curr_cadence.epochs]
             delta_max = curr_cadence.delta_max[curr_cadence.epochs]

@@ -718,6 +718,15 @@ class AllocateLST(object):
                 choose = np.random.random()
                 icadence = np.where(cadence_cumulative > choose)[0][0]
                 cadence = list(self.allocinfo[fieldid].keys())[icadence]
+                ii = np.where(cadence_totals > 0)[0]
+                if((len(ii) > 1) & (cadence_totals.max() < 0.9)):
+                    print("Multiples for f={fid}".format(fid=fieldid))
+                    print(self.allocinfo[fieldid].keys())
+                    print(cadence_totals)
+                    print(cadence_cumulative)
+                    print(choose)
+                    print(icadence)
+                    print(cadence)
                 field_array['cadence'][findx] = cadence
                 field_array['needed'][findx] = self.allocinfo[fieldid][cadence]['needed']
                 field_array['needed_sb'][findx] = self.allocinfo[fieldid][cadence]['needed_sb']
@@ -770,6 +779,11 @@ class AllocateLST(object):
                                                    filled_sb=curr_filled_sb)
                             field['slots_time'][ilst, isb] = field['slots_exposures'][ilst, isb] * xfactor * self.slots.durations[isb]
                             field['xfactor'][ilst, isb] = xfactor
+
+        print(field_array['slots_exposures'].sum(axis=0))
+        print(field_array['slots_time'].sum(axis=0))
+        print(self.slots.durations)
+        print(total)
 
         self.field_array = field_array
 
