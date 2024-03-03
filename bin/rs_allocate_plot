@@ -34,10 +34,14 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--observatory", dest="observatory", type=str,
                         required=False, help="observatory ('apo' or 'lco')",
                         default='apo')
+    parser.add_argument('-t', '--test', dest='test',
+                        help='test', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    test = args.test
 
     cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
     cadences_file = sdss_path.full('rsCadences', plan=plan,
@@ -46,6 +50,8 @@ if __name__ == '__main__':
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
+    if(test):
+        allocate_file = allocate_file.replace('rsAllocation', 'rsAllocationTest')
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
 
@@ -68,6 +74,8 @@ if __name__ == '__main__':
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-all')
+    if(test):
+        png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     matplotlib.rcParams['font.size'] = 14
     allocate.plot_lst(title='Total time at {o}'.format(o=observatory.upper()))
@@ -78,6 +86,8 @@ if __name__ == '__main__':
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-dark')
+    if(test):
+        png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     if(observatory == 'apo'):
         loc=1
@@ -91,6 +101,8 @@ if __name__ == '__main__':
 
     png_file = sdss_path.full('rsAllocationPng', plan=plan,
                               observatory=observatory, name='lst-bright')
+    if(test):
+        png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
     matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
     allocate.plot_lst(iskybrightness=1, title='Bright time at {o}'.format(o=observatory.upper()))
     plt.tight_layout()
@@ -111,6 +123,8 @@ if __name__ == '__main__':
             full_str = ''
         png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                   observatory=observatory, name='radec' + full_str)
+        if(test):
+            png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
         matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
         vmin, vmax = allocate.plot_fields(full=full, vmin=vmin, vmax=vmax)
         plt.title("All cadences")
@@ -120,6 +134,8 @@ if __name__ == '__main__':
         
         png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                   observatory=observatory, name='radec-dark' + full_str)
+        if(test):
+            png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
         matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
         allocate.plot_fields(darkorbright='dark', full=full, vmin=vmin, vmax=vmax)
         plt.title("Dark cadences")
@@ -129,6 +145,8 @@ if __name__ == '__main__':
         
         png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                   observatory=observatory, name='radec-bright' + full_str)
+        if(test):
+            png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
         matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
         allocate.plot_fields(darkorbright='bright', full=full, vmin=vmin, vmax=vmax)
         plt.title("Bright cadences")
@@ -138,6 +156,8 @@ if __name__ == '__main__':
         
         png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                   observatory=observatory, name='radec-labeled' + full_str)
+        if(test):
+            png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
         matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
         allocate.plot_fields(label=True, full=full, vmin=vmin, vmax=vmax)
         plt.title("All cadences")
@@ -157,6 +177,8 @@ if __name__ == '__main__':
                 field_cadence_base=field_cadence_base) + full_str
             png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                       observatory=observatory, name=name)
+            if(test):
+                png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
             indx = np.where(base_cadences == field_cadence_base)[0]
             print(len(indx))
             matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
@@ -172,6 +194,8 @@ if __name__ == '__main__':
                 field_cadence_base=field_cadence_base) + full_str
             png_file = sdss_path.full('rsAllocationPng', plan=plan,
                                       observatory=observatory, name=name)
+            if(test):
+                png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
             indx = np.where(cadence_mask[:, icad] > 0)[0]
             print(len(indx))
             matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
