@@ -150,6 +150,7 @@ if __name__ == '__main__':
     col_dec = 'deccen'
     col_radius = 'radius'
     col_type = 'type'
+    col_name = 'name'
 
     # take subset of fields that have type == 'AllSkySloane'
     ok = np.array([t in types_to_rotate for t in fdata[col_type]])
