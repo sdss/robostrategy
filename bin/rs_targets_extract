@@ -105,8 +105,19 @@ if __name__ == '__main__':
     for carton in cartons:
         name = carton['carton']
         version = carton['plan']
-        nt = nt + robostrategy.targets.get_targets(name, version,
-                                                   justcount=True, c2c=c2c)
+        tmp_targets_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
+                                        'allocations', plan, 'targets',
+                                        'rsTargetsCarton-{plan}-{obs}-{carton}-{version}.fits')
+        tmp_targets_file = tmp_targets_file.format(plan=plan,
+                                                   obs=observatory,
+                                                   carton=name,
+                                                   version=version)
+        if((os.path.exists(tmp_targets_file) == False) |
+           (noclobber == False)):
+            nt = nt + robostrategy.targets.get_targets(name, version,
+                                                       justcount=True, c2c=c2c)
+        else:
+            nt = nt + len(fitsio.read(tmp_targets_file))
 
     targets = np.zeros(nt, dtype=robostrategy.targets.target_dtype)
 
