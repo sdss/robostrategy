@@ -155,19 +155,17 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
+    if('Rotate' in rsParams.cfg['Fields']):
+        rotate = True
+        paname = rsParams.cfg['Fields']['Rotate']
+    else:
+        rotate = False
+        paname = ''
+
     if('BrightOnlyBright' in rsParams.cfg['Allocation']):
         bright_only_bright = True
     else:
         bright_only_bright = False
-
-    fraction_rm_obs = 'FractionRM{o}'.format(o=observatory.upper())
-    if(fraction_rm_obs in rsParams.cfg['Allocation']):
-        fraction_rm = np.float32(rsParams.cfg.get('Allocation', fraction_rm_obs))
-    elif('FractionRM' in rsParams.cfg['Allocation']):
-        fraction_rm = np.float32(rsParams.cfg.get('Allocation', 'FractionRM'))
-    else:
-        fraction_rm = 1.
-
 
     if('AirmassLimits' in rsParams.cfg['Allocation']):
         airmass_limits_str = rsParams.cfg.get('Allocation', 'AirmassLimits').split()
@@ -180,6 +178,32 @@ if __name__ == '__main__':
         airmass_pad = np.float32(rsParams.cfg.get('Allocation', 'AirmassPad'))
     else:
         airmass_pad = 0.2
+
+    print("Reading fields ...", flush=True)
+    fields_file = sdss_path.full('rsFields', plan=plan,
+                                 observatory=observatory)
+    if(rotate):
+        fields_file = fields_file.replace('rsFields', 'rsFieldsRotated')
+    fields_array = fitsio.read(fields_file)
+
+    fraction_rm_obs = 'FractionRM{o}'.format(o=observatory.upper())
+    fraction_rm = dict()
+    for cname in rsParams.cfg['Allocation']:
+        if((fraction_rm_obs + '_') in cname):
+            rmname = cname.split('_')[-1]
+            fraction_rm[rmname] = np.float32(rsParams.cfg.get('Allocation', cname))
+    if(len(fraction_rm) == 0):
+        rmnames = fields_array['name'][fields_array['type'] == 'RM']
+        if(fraction_rm_obs in rsParams.cfg['Allocation']):
+            for rmname in rmnames:
+                fraction_rm[rmname] = np.float32(rsParams.cfg.get('Allocation', fraction_rm_obs))
+        elif('FractionRM' in rsParams.cfg['Allocation']):
+            for rmname in rmnames:
+                fraction_rm[rmname] = np.float32(rsParams.cfg.get('Allocation', 'FractionRM'))
+        else:
+            for rmname in rmnames:
+                fraction_rm[rmname] = 1.
+    print(fraction_rm)
 
     print("Reading options ...", flush=True)
     options_file = sdss_path.full('rsOptions', plan=plan,
@@ -312,10 +336,13 @@ if __name__ == '__main__':
                    (field_slots['cadence'] == 'dark_100x8'))[0]
     print("Dealing with {n} RM fields".format(n=len(irm)))
     for crm in irm:
-        filled_sb = np.int32((1. - fraction_rm) * field_slots['needed_sb'][crm, :])
-        print("   fieldid {fid} gets {n} filled of {m}".format(fid=field_slots['fieldid'][crm],
-                                                               n=filled_sb,
-                                                               m=field_slots['needed_sb'][crm, :]))
+        ifield = np.where(fields_array['fieldid'] == field_slots['fieldid'][crm])[0][0]
+        name = fields_array['name'][ifield]
+        filled_sb = np.int32((1. - fraction_rm[name]) * field_slots['needed_sb'][crm, :])
+        print("   fieldid {fid} ({name}) gets {n} filled of {m}".format(fid=field_slots['fieldid'][crm],
+                                                                        name=name,
+                                                                        n=filled_sb,
+                                                                        m=field_slots['needed_sb'][crm, :]))
         field_slots['filled_sb'][crm, :] = filled_sb
 
     slots_file = sdss_path.full('rsFieldSlots', plan=plan,
