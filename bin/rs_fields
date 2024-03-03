@@ -51,7 +51,8 @@ if __name__ == '__main__':
                     ('racen', np.float64),
                     ('deccen', np.float64),
                     ('radius', np.float32),
-                    ('type', np.dtype('a30'))]
+                    ('type', np.dtype('a30')),
+                    ('name', np.dtype('a30'))]
     fields_north_array = np.zeros(0, dtype=fields_dtype)
     fields_south_array = np.zeros(0, dtype=fields_dtype)
 
@@ -210,6 +211,7 @@ if __name__ == '__main__':
         tmp_fields_rm['deccen'] = in_rm['DECCEN']
         tmp_fields_rm['radius'] = in_rm['RADIUS']
         tmp_fields_rm['type'] = 'RM'
+        tmp_fields_rm['name'] = in_rm['FIELD_NAME']
         ilite = np.where(in_rm['CADENCE'] == 'bhm_rm_lite5_100x8')[0]
         tmp_fields_rm['type'][ilite] = 'RMlite'
         print(in_rm['OBSERVATORY'])
