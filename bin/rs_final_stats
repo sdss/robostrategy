@@ -91,8 +91,18 @@ if __name__ == '__main__':
                                               'rsAllocationFinal-{p}-{o}.fits'.format(p=plan, o=obs)))
             fieldids = np.unique(fields['fieldid'])
             for fieldid in fieldids:
-                targets = fitsio.read('final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid), ext='TARGET')
-                robots = fitsio.read('final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid), ext='ROBOTS')
+                rsfile = 'final/rsFieldAssignmentsFinal-{p}-{o}-{f}.fits'.format(p=plan, o=obs, f=fieldid)
+                if(os.path.exists(rsfile) == False):
+                    print("Missing file {f}".format(f=rsfile))
+                    ifield = np.where(fields['fieldid'] == fieldid)[0][0]
+                    if(fields['cadence'][ifield] != 'none'):
+                        raise ValueError("Valid cadence but no rsFieldAssignments file!")
+                    else:
+                        print("   (cadence is 'none')")
+                    continue
+                    
+                targets = fitsio.read(rsfile, ext='TARGET')
+                robots = fitsio.read(rsfile, ext='ROBOTS')
                 iboss = np.where((robots['rsid'] >= 0) &
                                  (robots['fiberType'] == 'BOSS'))
                 iapogee = np.where((robots['rsid'] >= 0) &
