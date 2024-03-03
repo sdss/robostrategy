@@ -210,6 +210,8 @@ if __name__ == '__main__':
 
         for ifield in np.arange(len(fields_array)):
             curr_cadence_name = fields_array['cadence'][ifield].decode()
+            if(curr_cadence_name == 'none'):
+                continue
             curr_cadence = cadencelist.cadences[curr_cadence_name]
             rs_nexp_total = curr_cadence.nexp_total
             iexpnd = fields_array['iexpnd'][ifield]
@@ -326,8 +328,9 @@ if __name__ == '__main__':
         ib1 = np.where(fields_array['cadence'] == b'bright_single_1x1')[0]
         fields_array['cadence'][ib1] = b'bright_1x1'
 
-        fields_array['cadence'] = np.array([x.decode() + '_' + version
-                                            for x in fields_array['cadence']])
+        for i, fc in enumerate(fields_array['cadence']):
+            if(fc != 'none'):
+                fields_array['cadence'][i] = fc
 
         fields_array_hdu = fits.BinTableHDU(fields_array)
         fields_hdu = fits.BinTableHDU(fields)
