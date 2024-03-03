@@ -195,14 +195,20 @@ if __name__ == '__main__':
             header = None
             targets = None
             assignments = None
-
-        if(int(header['NEXP']) > 500):
-            print("fieldid {f}: Assuming this is RM field, with cadence {fc}".format(f=fieldid, fc=header['FCADENCE']), flush=True)
-            isrm = True
-        else:
-            isrm = False
+            ifield = np.where(allocate.field_array['fieldid'] == fieldid)[0][0]
+            if(allocate.field_array['cadence'][ifield] != 'none'):
+                raise ValueError("Valid cadence but no rsFieldAssignments file!")
+            else:
+                print("   (cadence is 'none')")
 
         if(assignments is not None):
+
+            if(int(header['NEXP']) > 500):
+                print("fieldid {f}: Assuming this is RM field, with cadence {fc}".format(f=fieldid, fc=header['FCADENCE']), flush=True)
+                isrm = True
+            else:
+                isrm = False
+
             isin = np.array([r in rsid2indx for r in targets['rsid']],
                             dtype=bool)
             iin = np.where(isin)[0]
