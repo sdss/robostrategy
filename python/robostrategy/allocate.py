@@ -673,6 +673,7 @@ class AllocateLST(object):
 
         print(total)
         print(ttime)
+        print(total - ttime)
 
         # Decide on which cadences to pick.
         field_array_dtype = [('fieldid', np.int32),
@@ -716,9 +717,17 @@ class AllocateLST(object):
                       flush=True)
                 slots_totals = slots_totals + ccadence['allocation']
                 cadence_totals[indx] = ccadence['allocation'].sum()
+            field_total = cadence_totals.sum()
+            for indx, cadence in zip(np.arange(ncadence),
+                                     self.allocinfo[fieldid]):
+                ccadence = self.allocinfo[fieldid][cadence]
+                if((cadence_totals[indx] > 0.1 * field_total) &
+                   (cadence_totals[indx] < (ccadence['needed'] - ccadence['filled']) * 0.8)):
+                    print(" {c} assigned {m} ... but needed {n}".format(c=cadence,
+                                                                        m=cadence_totals[indx],
+                                                                        n=ccadence['needed'] - ccadence['filled']))
             print("fieldid {fid} {s}".format(fid=fieldid, s=slots_totals),
                   flush=True)
-            field_total = cadence_totals.sum()
             field_array['cadence'][findx] = 'none'
             field_array['slots_exposures'][findx] = (
                 np.zeros((self.slots.nlst, self.slots.nskybrightness),
@@ -726,7 +735,7 @@ class AllocateLST(object):
             field_array['slots_time'][findx] = (
                 np.zeros((self.slots.nlst, self.slots.nskybrightness),
                          dtype=np.float32))
-            if(field_total > 0.):
+            if(field_total > 1.e-3):
                 cadence_totals = cadence_totals / field_total
                 cadence_cumulative = cadence_totals.cumsum()
                 choose = np.random.random()
