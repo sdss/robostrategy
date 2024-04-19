@@ -103,7 +103,8 @@ def assign_update(indx):
             print(field_status_file)
             status = fitsio.read(field_status_file, ext='TARGET')
             status_field = fitsio.read(field_status_file, ext='FIELD')
-            iobs = np.where(status['mjd'] > 0)[0]
+            #iobs = np.where(status['mjd'] > 0)[0]
+            iobs = np.where(status['status'] > 0)[0]
             if(len(iobs) > 0):
                 print("fieldid {f}:   status found in {e}".format(f=fieldid,
                                                                   e=np.unique(status['field_exposure'][iobs])),
