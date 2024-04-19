@@ -136,6 +136,7 @@ if __name__ == '__main__':
         healpy.mollview(
             np.arcsinh(ngot_map),
             title='$\sinh^{-1}$(Number of targets gotten) ' + cadence,
+            min=-0.5, max=4.1,
             rot=(270., 0., 0.))
         ngot_png_file = sdss_path.full(
             'rsAssignmentsPng', name='ngot-cadence-{c}'.format(c=cadence),
