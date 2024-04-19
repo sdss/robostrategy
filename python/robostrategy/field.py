@@ -6164,16 +6164,18 @@ class Field(object):
         # option we have to "complete" the cadence.
         original_iexps = np.unique(observed_status['field_exposure'])
         for original_iexp in original_iexps:
+            #iobs = np.where((observed_status['field_exposure'] == original_iexp) &
+            #                (observed_status['mjd'] != 0))[0]
             iobs = np.where((observed_status['field_exposure'] == original_iexp) &
-                            (observed_status['mjd'] != 0))[0]
+                            (observed_status['status'] != 0))[0]
             iallocated = np.where(original_exposures_done == original_iexp)[0]
             if(len(iallocated) > 0):
                 ialloc = allocated_exposures_done[iallocated[0]]
 
             if((len(iobs) == 0) & (len(iallocated) > 0)):
-                raise ValueError("No observed status for original exposure listed as done")
+                raise ValueError("fieldid {fid}: No observed status for original exposure listed as done".format(fid=self.fieldid))
             if((len(iobs) > 0) & (len(iallocated) == 0)):
-                raise ValueError("No original exposure for exposure with objects with done status")
+                raise ValueError("fieldid {fid}: No original exposure for exposure with objects with done status".format(fid=self.fieldid))
             if(len(iobs) > 0):
                 if(self.verbose):
                     print("fieldid {fid}: Accounting for completion of original exposure={iexp}, allocated exposure={ialloc}".format(fid=self.fieldid, iexp=original_iexp, ialloc=ialloc), flush=True)
