@@ -86,6 +86,7 @@ def make_maps(completeness_file, stage, vmin=None, vmax=None):
 
     tmp_nexps = make_map(hdr, nexps)
     tmp_vmin, tmp_vmax = clean_minmax(tmp_nexps)
+    tmp_vmin = - 0.6
     if(vmin is None):
         vmin = tmp_vmin
     if(vmax is None):
