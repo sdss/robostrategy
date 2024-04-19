@@ -28,6 +28,7 @@ import fitsio
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 noclobber = False
+incomplete = True
 
 
 def spares_file_name(fieldid=None):
@@ -99,6 +100,10 @@ def count_spares(indx):
         if(fieldid in replacements):
             field_target_file = field_target_file.replace('final/rsFieldAssignmentsFinal',
                                                           'catchup/rsFieldAssignmentsCatchup{v}'.format(v=replacements[fieldid].upper()))
+
+    if((os.path.exists(field_target_file) is False) & incomplete):
+        print(" ... not done, skipping!", flush=True)
+        return
 
     f = field.Field(filename=field_target_file, verbose=True, allgrids=False)
 
@@ -281,6 +286,11 @@ if __name__ == '__main__':
     for indx in ikeep:
         fieldid = fieldids[indx]
         spares_file = spares_file_name(fieldid=fieldid)
+
+        if((os.path.exists(spares_file) is False) & incomplete):
+            print(" ... {fid} not done, skipping!".format(fid=fieldid), flush=True)
+            continue
+
         cspares = fitsio.read(spares_file)
 
         try:
