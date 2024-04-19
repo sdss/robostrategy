@@ -256,23 +256,42 @@ def field_options(ifield):
                 assign_entries[indx - minn] = assign_entry
 
             if(assign_entries['ngot'].max() == 0):
+                print("fieldid {fid}: Keeping the first because nobody got nothing".format(fid=fieldid), flush=True)
                 ikeep = 0
             else:
                 if(ifgotcarton != -1):
+                    print("fieldid {fid}: ifgotcarton set".format(fid=fieldid), flush=True)
                     ngot_pct = assign_entries['ngot_pct'][:, ifgotcarton]
                 else:
+                    print("fieldid {fid}: ifgotcarton not set".format(fid=fieldid), flush=True)
                     ngot_pct = np.array([0.])
                 if(ngot_pct.max() > 0):
+                    vgot = assign_entries['valuegot']
                     fgot = ngot_pct / ngot_pct.max()
-                    fgot_unique, iunique = np.unique(fgot,
-                                                     return_index=True)
-                    indx = np.where((fgot_unique >= fgot_minimum) &
-                                    (fgot_unique <= fgot_maximum))[0]
+                    #fgot_unique, iunique = np.unique(fgot,
+                                                     #return_index=True)
+                    indx = np.where((fgot >= fgot_minimum) &
+                                    (fgot <= fgot_maximum))[0]
                     if(len(indx) > 0):
-                        ikeep = iunique[indx]
+                        print("fieldid {fid}: some passed".format(fid=fieldid))
+                        isort = np.argsort(vgot[indx], kind='stable')
+                        vgot_unique, iunique = np.unique(vgot[indx[isort]],
+                                                         return_index=True)
+                        iunique = indx[isort[iunique]]
                     else:
-                        ikeep = [iunique[-1]]
+                        print("fieldid {fid}: none passed".format(fid=fieldid))
+                        isort = np.argsort(vgot[indx], kind='stable')
+                        vgot_unique, iunique = np.unique(vgot[indx[isort]],
+                                                         return_index=True)
+                        iunique = indx[isort[iunique[-1]]]
+                        
+                    print("fieldid {fid}: cadences {iu}".format(fid=fieldid, iu=assign_entries['cadence']), flush=True)
+                    print("fieldid {fid}: valuegot {iu}".format(fid=fieldid, iu=assign_entries['valuegot']), flush=True)
+                    print("fieldid {fid}: fgot {iu}".format(fid=fieldid, iu=fgot), flush=True)
+                    print("fieldid {fid}: iunique {iu}".format(fid=fieldid, iu=iunique), flush=True)
+                    ikeep = iunique
                 else:
+                    print("fieldid {fid}: keep em all".format(fid=fieldid), flush=True)
                     ikeep = np.arange(len(assign_entries))
 
             assign_array = np.append(assign_array, assign_entries[ikeep])
