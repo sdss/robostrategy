@@ -29,6 +29,8 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 clobber = False
+incomplete = True
+
 
 def field_plot(fieldid):
     fieldplotdir = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
@@ -40,6 +42,10 @@ def field_plot(fieldid):
                                             fieldid=fieldid)
     field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
                                                             'final/rsFieldAssignmentsFinal')
+
+    if((os.path.exists(field_assignments_file) is False) & incomplete):
+        print(" ... not done, skipping!", flush=True)
+        return
 
     hdr = fitsio.read_header(field_assignments_file, ext=0)
     nexp = np.int32(hdr['NEXP'])
