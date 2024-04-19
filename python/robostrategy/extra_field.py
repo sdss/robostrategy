@@ -242,7 +242,8 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         # are UNSATISFIED and do those first
         iextra1 = np.where((self.targets['carton'] == 'mwm_bin_rv_long_apogee') &
                            (self.assignments['satisfied'] == 0))[0]
-        isrv_carton = ['bin_rv' in carton for carton in self.targets['carton']]
+        isrv_carton = np.array(['bin_rv' in carton for carton in self.targets['carton']],
+                               dtype=bool)
         iextra2 = np.where((isrv_carton) & (self.assignments['satisfied'] > 0))[0]
         iextra = np.append(iextra1,iextra2)
 
