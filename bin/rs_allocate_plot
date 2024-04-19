@@ -69,6 +69,8 @@ if __name__ == '__main__':
             else:
                 base_cadence = c
             base_cadences.append(base_cadence)
+        else:
+            base_cadences.append(c)
     base_cadences = np.array(base_cadences)
     print(np.unique(base_cadences))
 
@@ -180,7 +182,6 @@ if __name__ == '__main__':
             if(test):
                 png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
             indx = np.where(base_cadences == field_cadence_base)[0]
-            print(len(indx))
             matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
             cvmin[icad], cvmax[icad] = allocate.plot_fields(indx=indx, full=full,
                                                             vmin=cvmin[icad],
