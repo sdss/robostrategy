@@ -1,0 +1,123 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_gather_status
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import numpy as np
+import fitsio
+import sdss_access.path
+import robostrategy.allocate
+import robostrategy.header
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+assignment_status_dtype = np.dtype([('fieldid', np.int32),
+                                    ('field_exposure', np.int8),
+                                    ('status', np.int8),
+                                    ('mjd', np.float64),
+                                    ('catalogid', np.int64),
+                                    ('catalogdb_plan', str, 20),
+                                    ('carton', str, 60),
+                                    ('fiberType', str, 6)])
+                                    
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Gather per-object current status information')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-f', '--from-plan', dest='fromplan',
+                        type=str, help='name of plan to start from', required=False,
+                        default=None)
+    parser.add_argument('-n', '--new-allocation', dest='new_allocation',
+                        help='treat as a new allocation run, so fieldids are from old plan',
+                        required=False, default=False, action='store_true')
+
+    args = parser.parse_args()
+    plan = args.plan
+    fromplan = args.fromplan
+    observatory = args.observatory
+    new_allocation = args.new_allocation
+
+    if(new_allocation):
+        aplan = fromplan
+    else:
+        aplan = plan
+
+    allocate_file = sdss_path.full('rsAllocation', plan=aplan,
+                                   observatory=observatory)
+    allocate_file = allocate_file.replace('rsAllocation',
+                                          'final/rsAllocationFinal')
+
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+                               return_index=True)
+
+    fieldids = np.unique(fieldids)
+
+    assignment_status = None
+    fromplan_field = None
+    ias = 0
+    for fieldid in fieldids:
+        print(fieldid)
+        assignment_status_file = sdss_path.full('rsFieldTargets',
+                                                plan=plan, observatory=observatory,
+                                                fieldid=fieldid)
+        assignment_status_file = assignment_status_file.replace('targets/rsFieldTargets',
+                                                                'final/rsFieldStatus')
+        if(os.path.exists(assignment_status_file) is False):
+            continue
+
+        tmp_assignment_status = fitsio.read(assignment_status_file, ext='TARGET')
+        hdr = fitsio.read_header(assignment_status_file)
+        if('FROMPLAN' in hdr):
+            tmp_fromplan = hdr['FROMPLAN']
+            if(fromplan_field is None):
+                fromplan_field = tmp_fromplan
+            else:
+                if(fromplan_field != tmp_fromplan):
+                    raise ValueError("Inconsistency in FROMPLANs found in status files")
+
+        if(assignment_status is None):
+            assignment_status = np.zeros(5000000, dtype=assignment_status_dtype)
+        elif(ias + len(tmp_assignment_status) > len(assignment_status)):
+            new_assignment_status = np.zeros(5000000, dtype=assignment_status_dtype)
+            assignment_status = np.append(assignment_status, new_assignment_status)
+
+        append_assignment_status = np.zeros(len(tmp_assignment_status),
+                                            dtype=assignment_status_dtype)
+        for n in assignment_status.dtype.names:
+            append_assignment_status[n] = tmp_assignment_status[n]
+
+        assignment_status[ias:ias + len(append_assignment_status)] = append_assignment_status
+        ias = ias + len(append_assignment_status)
+
+    if(fromplan is None):
+        fromplan = fromplan_field
+    
+    outfile = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'allocations',
+                           plan, 'rsAssignmentStatus-{p}-{o}.fits'.format(p=plan, o=observatory))
+    hdr = robostrategy.header.rsheader()
+    if(fromplan is not None):
+        hdr.append({'name':'FROMPLAN',
+                    'value':fromplan,
+                    'comment':'plan this status is based on'})
+    fitsio.write(outfile, assignment_status, header=hdr, clobber=True)
+    print('DONE: rs_gather_assignment_status', flush=True)
