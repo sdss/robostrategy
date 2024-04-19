@@ -50,6 +50,7 @@ status_field_dtype = [('fieldid', np.int32),
                       ('field_pk', np.int64),
                       ('field_exposure', np.int32),
                       ('design_id', np.int32),
+                      ('mjd', np.float64),
                       ('status', str, 20)]
 
 
@@ -259,6 +260,7 @@ def get_status_by_fieldid(plan=None, fieldid=None):
                        (status_array['status'] > 0))[0]
         if(len(igd) > 0):
             tmp_status_field['status'] = 'done'
+            tmp_status_field['mjd'] = status_array['mjd'][igd]
         status_field = np.append(status_field, tmp_status_field)
 
     isort = np.argsort(status_field['field_exposure'])
