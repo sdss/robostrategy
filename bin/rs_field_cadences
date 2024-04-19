@@ -170,14 +170,18 @@ if __name__ == '__main__':
         if(darkPlane & (np.abs(fields_b[ifield]) < darkPlaneLat)):
             field_cadences = ['mixed2_single_n2x1']
 
+        forcedField = False
         if(forceTessOB):
             if('manual_mwm_tess_ob' in f['carton'][iwithin]):
                 if('bright_8x4' in field_cadences):
                     field_cadences = ['bright_8x4']
+                    forcedField = True
                 if('bright_8x2' in field_cadences):
                     field_cadences = ['bright_8x2']
+                    forcedField = True
                 if('bright_8x1' in field_cadences):
                     field_cadences = ['bright_8x1']
+                    forcedField = True
 
         if(nostatus is False):
             # If any exposures are done, make sure at least one of the current
@@ -215,6 +219,31 @@ if __name__ == '__main__':
                         if(ok2):
                             atleastone = True
                             break
+
+                # If this field isn't being forced then always add the option that we just
+                # keep what has already been done
+                if(forcedField == False):
+                    print("fieldid {fid}: Checking for exactly completed cadence".format(fid=fieldid))
+                    # Check all cadences with the right number of exposures
+                    for complete_cadence in cadencelist.cadences:
+                        nepochs = cadencelist.cadences[complete_cadence].nepochs
+                        nexp_total = cadencelist.cadences[complete_cadence].nexp_total
+                        if(len(current_exposures_done) == nexp_total):
+                            # If the cadence can be used and all its epochs are satisfied, keep
+                            # This call takes the current exposures and asks whether they
+                            # will satisfy cadence under consideration if taken in the
+                            # same order
+                            print(current_cadence)
+                            print(complete_cadence)
+                            print(current_exposures_done)
+                            ok1, epochs_done1 = robostrategy.allocate.option_epochs_done(
+                                option_cadence=current_cadence,
+                                current_cadence=complete_cadence,
+                                current_exposures_done=np.arange(len(current_exposures_done), dtype=np.int32))
+                            if(ok1 &
+                               (len(epochs_done1) == cadencelist.cadences[complete_cadence].nepochs)):
+                                print("fieldid {fid}: Adding exactly completed cadence: {h}".format(fid=fieldid, h=complete_cadence), flush=True)
+                                field_cadences.append(complete_cadence)
 
                 if(atleastone == False):
                     if(current_cadence in rsParams.cfg['ConvertToHybridCadences']):
