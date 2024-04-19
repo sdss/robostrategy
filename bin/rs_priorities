@@ -69,7 +69,7 @@ if __name__ == '__main__':
         targets_file = targets_file.replace('rsTargets', 'rsTargetsOpen')
     if(filler):
         targets_file = targets_file.replace('rsTargets', 'rsTargetsFiller')
-    targets = fitsio.read(targets_file)
+    targets = fitsio.read(targets_file, columns=['carton', 'priority', 'cadence'])
 
     priorities = np.unique(targets['priority'])
     combos = []
