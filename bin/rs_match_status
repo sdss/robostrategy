@@ -28,6 +28,8 @@ offset_min_skybrightness = None
 plan = None
 catchup = False
 catchup_version = None
+test = False
+use_sdss_ids = True
 
 
 def match_to_old(indx):
@@ -54,6 +56,9 @@ def match_to_old(indx):
         field_status_v1_file = field_status_v1_file.replace('Match',
                                                             'MatchCatchup{v}'.format(v=catchup_version.upper()))
 
+    if(test):
+        field_status_v1_file = field_status_v1_file.replace('Match', 'MatchTest')
+
     field_targets_file = sdss_path.full('rsFieldTargets',
                                         plan=plan, observatory=observatory,
                                         fieldid=rs_fieldid)
@@ -73,7 +78,10 @@ def match_to_old(indx):
         return
 
     print("fieldid {fid}: Matching ids".format(fid=fieldid), flush=True)
-    catalogids_v1, catalogids_v0p5 = robostrategy.targets.match_v1_to_v0p5(catalogids_v1=targets['catalogid'])
+    if(use_sdss_ids):
+        catalogids_v1, catalogids_v0p5, sdss_ids = robostrategy.targets.match_v1_to_v0p5(catalogids_v1=targets['catalogid'])
+    else:
+        catalogids_v1, catalogids_v0p5 = robostrategy.targets.match_v1_to_v0p5(catalogids_v1=targets['catalogid'], use_sdss_ids=False)
 
     iexps = np.unique(status['field_exposure'])
 
@@ -81,8 +89,14 @@ def match_to_old(indx):
     v0p5_for_v1 = dict()
     for catalogid in targets['catalogid']:
         v0p5_for_v1[catalogid] = np.zeros(0, dtype=np.int64)
-    for catalogid_v1, catalogid_v0p5 in zip(catalogids_v1, catalogids_v0p5):
-        v0p5_for_v1[catalogid_v1] = np.append(v0p5_for_v1[catalogid_v1], catalogid_v0p5)
+    if(use_sdss_ids):
+        sdss_id_for_v1 = dict()
+        for catalogid_v1, catalogid_v0p5, sdss_id in zip(catalogids_v1, catalogids_v0p5, sdss_ids):
+            v0p5_for_v1[catalogid_v1] = np.append(v0p5_for_v1[catalogid_v1], catalogid_v0p5)
+            sdss_id_for_v1[catalogid_v1] = sdss_id
+    else:
+        for catalogid_v1, catalogid_v0p5 in zip(catalogids_v1, catalogids_v0p5):
+            v0p5_for_v1[catalogid_v1] = np.append(v0p5_for_v1[catalogid_v1], catalogid_v0p5)
 
     print("fieldid {fid}: Building status dict".format(fid=fieldid), flush=True)
     istatus_for_v0p5 = dict()
@@ -125,7 +139,10 @@ def match_to_old(indx):
         if(n in targets.dtype.names):
             status_v1[n] = targets[n][itarget_all]
 
-    print("fieldid {fid}: Writing results".format(fid=fieldid), flush=True)
+    if(test): 
+        print("fieldid {fid}: Writing results to test file".format(fid=fieldid), flush=True)
+    else:
+        print("fieldid {fid}: Writing results".format(fid=fieldid), flush=True)
     hdr = robostrategy.header.rsheader()
     fitsio.write(field_status_v1_file, status_v1, header=hdr, extname='TARGET', clobber=True)
     fitsio.write(field_status_v1_file, status_field, extname='FIELD', clobber=False)
@@ -155,6 +172,12 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-t', '--test', dest='test',
+                        help='test case', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-I', '--no-sdss-id', dest='no_use_sdss_ids',
+                        help='do not use sdss_id', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
@@ -172,10 +195,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     plan = args.plan
+    test = args.test
     observatory = args.observatory
     start = args.start
     end = args.end
     clobber = args.clobber
+    use_sdss_ids = (args.no_use_sdss_ids == False)
     nomultiprocess = args.nomultiprocess
     catchup_version = args.catchup_version
     new_allocation = args.new_allocation
