@@ -165,7 +165,7 @@ if __name__ == '__main__':
     if(final):
         targets_file = targets_file.replace('rsTargets', 'final/rsTargetsFinal')
 
-    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'EQUIV']
+    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'EQUIV', 'OTHER']
     nstages = len(stages)
 
     targets = fitsio.read(targets_file)
@@ -178,6 +178,7 @@ if __name__ == '__main__':
                                               ('nexps_open_lco', np.int32),
                                               ('nexps_filler_lco', np.int32),
                                               ('nexps_complete_lco', np.int32),
+                                              ('nexps_other_lco', np.int32),
                                               ('nexps_equiv_lco', np.int32),
                                               ('nepochs_lco', np.int32),
                                               ('assigned_lco', np.int32),
@@ -192,6 +193,7 @@ if __name__ == '__main__':
                                               ('nexps_open_apo', np.int32),
                                               ('nexps_filler_apo', np.int32),
                                               ('nexps_complete_apo', np.int32),
+                                              ('nexps_other_apo', np.int32),
                                               ('nexps_equiv_apo', np.int32),
                                               ('nepochs_apo', np.int32),
                                               ('assigned_apo', np.int32),
@@ -206,6 +208,7 @@ if __name__ == '__main__':
                                               ('nexps_open', np.int32),
                                               ('nexps_filler', np.int32),
                                               ('nexps_complete', np.int32),
+                                              ('nexps_other', np.int32),
                                               ('nexps_equiv', np.int32),
                                               ('nepochs', np.int32),
                                               ('assigned', np.int32),
@@ -222,6 +225,7 @@ if __name__ == '__main__':
                                               ('nexps_open', np.int32),
                                               ('nexps_filler', np.int32),
                                               ('nexps_complete', np.int32),
+                                              ('nexps_other', np.int32),
                                               ('nexps_equiv', np.int32),
                                               ('nepochs', np.int32),
                                               ('assigned', np.int32),
