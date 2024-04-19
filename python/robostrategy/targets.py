@@ -241,7 +241,7 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
     return(tmp_targets)
 
 
-def match_v1_to_v0p5(catalogids_v1=None, all=False):
+def match_v1_to_v0p5(catalogids_v1=None, all=False, use_sdss_ids=True):
     """Find catalogids in v0.5 corresponding to v1
     
     Parameters
@@ -253,6 +253,9 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
     all : bool
         if set True, return all v0.5 catalogids (not just one)
 
+    use_sdss_ids : bool
+        assume sdss_id_stacked table exists
+
     Returns
     -------
 
@@ -261,6 +264,9 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
 
     catalogids_v0p5 : ndarray of np.int64
         catalogids in v0.5 (-1 if not found)
+
+    sdss_ids : ndarray of np.int64
+        corresponding sdss_ids (-1 if not found)
 
     Notes
     -----
@@ -275,11 +281,20 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
     has the version names hard-coded into tables
 """
     if(len(catalogids_v1) == 0):
-        return(np.zeros(0, dtype=np.int64),
-               np.zeros(0, dtype=np.int64))
+        if(use_sdss_ids):
+            return(np.zeros(0, dtype=np.int64),
+                   np.zeros(0, dtype=np.int64),
+                   np.zeros(0, dtype=np.int64))
+        else:
+            return(np.zeros(0, dtype=np.int64),
+                   np.zeros(0, dtype=np.int64))
     
     # Construct query
-    sql_template = """SELECT catalogid1, catalogid2 FROM catalogdb.catalog_ver25_to_ver31_full_unique JOIN (VALUES {v}) AS ver31(catalogid) ON catalogdb.catalog_ver25_to_ver31_full_unique.catalogid2 = ver31.catalogid;
+    if(use_sdss_ids):
+        sql_template = """SELECT catalogid25, catalogid31, sdss_id FROM catalogdb.sdss_id_stacked JOIN (VALUES {v}) AS ver31(catalogid) ON catalogdb.sdss_id_stacked.catalogid31 = ver31.catalogid;
+"""
+    else:
+        sql_template = """SELECT catalogid1, catalogid2 FROM catalogdb.catalog_ver25_to_ver31_full_unique JOIN (VALUES {v}) AS ver31(catalogid) ON catalogdb.catalog_ver25_to_ver31_full_unique.catalogid2 = ver31.catalogid;
 """
     values = ""
     ucatalogids_v1 = np.unique(catalogids_v1)
@@ -292,6 +307,9 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
         # Set up output
         out_catalogids_v1 = catalogids_v1
         out_catalogids_v0p5 = np.zeros(len(catalogids_v1), dtype=np.int64) - 1
+        if(use_sdss_ids):
+            out_sdss_ids = np.zeros(len(catalogids_v1), dtype=np.int64) - 1
+            
         indxs = dict()
         for cid_v1 in ucatalogids_v1:
             indxs[cid_v1] = np.where(catalogids_v1 == cid_v1)[0]
@@ -299,17 +317,26 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
         # Run query
         cursor = database.execute_sql(sql_command)
         for row in cursor.fetchall():
+            if(row[0] == None):
+                continue
             catalogid_v1 = row[1]
             catalogid_v0p5 = row[0]
             out_catalogids_v0p5[indxs[catalogid_v1]] = catalogid_v0p5
+            if(use_sdss_ids):
+                sdss_id = row[2]
+                out_sdss_ids[indxs[catalogid_v1]] = sdss_id
     else:
         cursor = database.execute_sql(sql_command)
-        out_catalogids_v1 = np.zeros(len(catalogids_v1), dtype=np.int64)
-        out_catalogids_v0p5 = np.zeros(len(catalogids_v1), dtype=np.int64)
+        out_catalogids_v1 = np.zeros(len(catalogids_v1), dtype=np.int64) - 1
+        out_catalogids_v0p5 = np.zeros(len(catalogids_v1), dtype=np.int64) - 1
+        if(use_sdss_ids):
+            out_sdss_ids = np.zeros(len(catalogids_v1), dtype=np.int64) - 1
         i = 0
         for row in cursor.fetchall():
             out_catalogids_v1[i] = row[1]
             out_catalogids_v0p5[i] = row[0]
+            if(use_sdss_ids):
+                out_sdss_ids[i] = row[2]
             i = i + 1
             if(i >= len(out_catalogids_v1)):
                 out_catalogids_v1 = np.append(out_catalogids_v1,
@@ -318,10 +345,18 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
                 out_catalogids_v0p5 = np.append(out_catalogids_v0p5,
                                                 np.zeros(len(out_catalogids_v0p5),
                                                          dtype=np.int64) - 1)
+                if(use_sdss_ids):
+                    out_sdss_ids = np.append(out_sdss_ids,
+                                             np.zeros(len(out_sdss_ids),
+                                                      dtype=np.int64) - 1)
         out_catalogids_v1 = out_catalogids_v1[0:i]
         out_catalogids_v0p5 = out_catalogids_v0p5[0:i]
+        out_sdss_ids = out_sdss_ids[0:i]
         
-    return(out_catalogids_v1, out_catalogids_v0p5)
+    if(use_sdss_ids):
+        return(out_catalogids_v1, out_catalogids_v0p5, out_sdss_ids)
+    else:
+        return(out_catalogids_v1, out_catalogids_v0p5)
 
 
 def catalogids_are_targets(catalogids=None):
