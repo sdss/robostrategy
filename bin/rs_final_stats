@@ -137,7 +137,7 @@ if __name__ == '__main__':
                 stats_dtype.append((quant + obs, datatype))
             quant = 'nexps'
             datatype = np.int32
-            for stage in ['', '_direct', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
+            for stage in ['', '_direct', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                 stats_dtype.append((quant + stage + obs, datatype))
 
         completeness_file = os.path.basename(sdss_path.full('rsCompleteness',
@@ -164,7 +164,7 @@ if __name__ == '__main__':
             iscovered = (targets['covered' + obs] > 0)
             isextra = (targets['extra' + obs] > 0)
 
-            stages = ['srd', 'reassign', 'open', 'filler', 'complete']
+            stages = ['srd', 'reassign', 'open', 'filler', 'complete', 'other']
             for i, carton in enumerate(cartons):
                 isincarton = (targets['carton'] == carton)
                 ncarton = (isincarton).sum()
@@ -187,10 +187,10 @@ if __name__ == '__main__':
                 cstats['fsatisfied' + obs][i] = fsatisfied
                 cstats['nepochs' + obs][i] = targets['nepochs' + obs][isincarton].sum()
         
-                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                     cstats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isincarton].sum()
                 cstats['nexps_direct' + obs][i] = 0
-                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                     cstats['nexps_direct' + obs][i] = cstats['nexps_direct' + obs][i] +  cstats['nexps' + stage + obs][i]
 
         fitsio.write(stats_file, cstats, clobber=False, extname='CARTON')
@@ -212,7 +212,7 @@ if __name__ == '__main__':
             iscovered = (targets['covered' + obs] > 0)
             isextra = (targets['extra' + obs] > 0)
 
-            stages = ['srd', 'reassign', 'open', 'filler', 'complete']
+            stages = ['srd', 'reassign', 'open', 'filler', 'complete', 'other']
             for i, program in enumerate(programs):
                 isinprogram = (targets['program'] == program)
                 nprogram = (isinprogram).sum()
@@ -235,10 +235,10 @@ if __name__ == '__main__':
                 pstats['fsatisfied' + obs][i] = fsatisfied
                 pstats['nepochs' + obs][i] = targets['nepochs' + obs][isinprogram].sum()
         
-                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                     pstats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isinprogram].sum()
                 pstats['nexps_direct' + obs][i] = 0
-                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                     pstats['nexps_direct' + obs][i] = pstats['nexps_direct' + obs][i] +  pstats['nexps' + stage + obs][i]
 
         fitsio.write(stats_file, pstats, clobber=False, extname='PROGRAM')
@@ -260,7 +260,7 @@ if __name__ == '__main__':
             iscovered = (targets['covered' + obs] > 0)
             isextra = (targets['extra' + obs] > 0)
 
-            stages = ['srd', 'reassign', 'open', 'filler', 'complete']
+            stages = ['srd', 'reassign', 'open', 'filler', 'complete', 'other']
             for i, category in enumerate(categorys):
                 isincategory = (targets['category'] == category)
                 ncategory = (isincategory).sum()
@@ -283,10 +283,10 @@ if __name__ == '__main__':
                 xstats['fsatisfied' + obs][i] = fsatisfied
                 xstats['nepochs' + obs][i] = targets['nepochs' + obs][isincategory].sum()
         
-                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                     xstats['nexps' + stage + obs][i] = targets['nexps' + stage + obs][isincategory].sum()
                 xstats['nexps_direct' + obs][i] = 0
-                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                     xstats['nexps_direct' + obs][i] = xstats['nexps_direct' + obs][i] +  xstats['nexps' + stage + obs][i]
 
 
@@ -301,7 +301,7 @@ if __name__ == '__main__':
                 for quant in ['ncatalogid']:
                     stats_dtype.append((quant + isscience + obs, datatype))
                 quant = 'nexps'
-                for stage in ['_direct', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete']:
+                for stage in ['_direct', '_equiv', '_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                     stats_dtype.append((quant + stage + isscience + obs, datatype))
 
         fiberTypes = ['BOSS', 'APOGEE']
@@ -320,7 +320,7 @@ if __name__ == '__main__':
                     fstats['ncatalogid' + isscience + obs][i] = ncatalogid
                     fstats['nexps_direct' + isscience + obs][i] = 0
                     fstats['nexps_equiv' + isscience + obs][i] = targets['nexps_equiv'][istype].sum()
-                    for stage in ['_srd', '_reassign', '_open', '_filler', '_complete']:
+                    for stage in ['_srd', '_reassign', '_open', '_filler', '_complete', '_other']:
                         fstats['nexps' + stage + isscience + obs][i] = targets['nexps' + stage + obs][istype].sum()
                         fstats['nexps_direct' + isscience + obs][i] = (fstats['nexps_direct' + isscience + obs][i] +
                                                                        fstats['nexps' + stage + isscience + obs][i])
@@ -385,7 +385,7 @@ if __name__ == '__main__':
         for n in s.dtype.names:
             stats_dict['robots'][fiberType][n] = s[n]
 
-    stats_dict['stages'] = ['srd', 'reassign', 'open', 'filler', 'complete']
+    stats_dict['stages'] = ['srd', 'reassign', 'open', 'filler', 'complete', 'other']
 
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("robostrategy"),
