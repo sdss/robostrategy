@@ -92,6 +92,8 @@ def make_maps(completeness_file, ttype, ttype_pretty):
     nmap = make_map(hdr, ngot)
     vmin, tmp_vmax = clean_minmax(nmap)
 
+    vmin = -0.6
+
     print("Targets")
     if(big):
         title = ttype_pretty
