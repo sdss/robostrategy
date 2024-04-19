@@ -42,7 +42,7 @@ if __name__ == '__main__':
     observatory = 'both'
     nside = 32
 
-    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'EQUIV']
+    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'EQUIV', 'OTHER']
     nstages = len(stages)
 
     completeness_file = sdss_path.full('rsCompleteness', plan=plan,
