@@ -113,6 +113,7 @@
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
+    <th><b>Exposures (Observed)</b></th>
     <th><b>Exposures (Equiv)</b></th>
     </tr>
 </thead>
@@ -164,6 +165,7 @@
 <td align='right'>{{cartons[c].nexps_open}}</td>
 <td align='right'>{{cartons[c].nexps_filler}}</td>
 <td align='right'>{{cartons[c].nexps_complete}}</td>
+<td align='right'>{{cartons[c].nexps_other}}</td>
 <td align='right'>{{cartons[c].nexps_equiv}}</td>
 {% endfor %}
 </tbody>
@@ -190,6 +192,7 @@
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
+    <th><b>Exposures (Observed)</b></th>
     <th><b>Exposures (Equiv)</b></th>
     </tr>
 </thead>
@@ -213,6 +216,7 @@
 <td align='right'>{{programs[p].nexps_open}}</td>
 <td align='right'>{{programs[p].nexps_filler}}</td>
 <td align='right'>{{programs[p].nexps_complete}}</td>
+<td align='right'>{{programs[p].nexps_other}}</td>
 <td align='right'>{{programs[p].nexps_equiv}}</td>
 {% endfor %}
 </tbody>
@@ -239,6 +243,7 @@
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
+    <th><b>Exposures (Observed)</b></th>
     <th><b>Exposures (Equiv)</b></th>
     </tr>
 </thead>
@@ -262,6 +267,7 @@
 <td align='right'>{{categorys[c].nexps_open}}</td>
 <td align='right'>{{categorys[c].nexps_filler}}</td>
 <td align='right'>{{categorys[c].nexps_complete}}</td>
+<td align='right'>{{categorys[c].nexps_other}}</td>
 <td align='right'>{{categorys[c].nexps_equiv}}</td>
 {% endfor %}
 </tbody>
@@ -294,6 +300,7 @@
 <td align='right'>{{fiberTypes[f].nexps_open_science}}</td>
 <td align='right'>{{fiberTypes[f].nexps_filler_science}}</td>
 <td align='right'>{{fiberTypes[f].nexps_complete_science}}</td>
+<td align='right'>{{fiberTypes[f].nexps_other_science}}</td>
 <td align='right'>{{fiberTypes[f].nexps_equiv_science}}</td>
 {% endfor %}
 </tbody>
