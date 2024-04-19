@@ -405,10 +405,16 @@ class AllocateLST(object):
                     print("Inconsistency; no cadence.")
                     print("curr_cadences = {cc}".format(cc=curr_cadences))
                     print("fcadence = {fc}".format(fc=fcadence))
-                    return()
+                    return(2)
                 if(len(ic) > 1):
-                    print("Inconsistency; more than one cadence.")
-                    return()
+                    print("Inconsistency; more than one cadence, choosing last one.")
+                    print(" fieldid = {fc}".format(fc=fieldid))
+                    print(" fcadence = {fc}".format(fc=fcadence))
+                    print(" values = {fc}".format(fc=curr_options['valuegot'][ic]))
+                    if(len(np.unique(curr_options['valuegot'])) > 1):
+                        print("Inconsistency catastrophic because multiple values imputed")
+                    ic = ic[-1:]
+
                 curr_slots = curr_slots[ic]
                 curr_options = curr_options[ic]
                 curr_cadences = curr_cadences[ic]
@@ -603,7 +609,11 @@ class AllocateLST(object):
                 field_constraints.append(field_constraint)
             else:
                 if(field_minimum_float[fieldid] > 0.):
-                    raise ValueError("No allowed cadences for field with required observations")
+                    if(0):
+                        raise ValueError("No allowed cadences for field with required observations")
+                    else:
+                        print("IGNORE FOR NOW: No allowed cadences for field with required observations")
+                        field_minimum_float[fieldid] = 0.
 
         # Constrain sum of each slot to be less than total. Here the
         # units are still in numbers of exposures, but we multiply by
@@ -705,8 +715,11 @@ class AllocateLST(object):
             ifield = np.where(fieldid == self.fields['fieldid'])[0]
             field_array['racen'][findx] = self.fields['racen'][ifield]
             field_array['deccen'][findx] = self.fields['deccen'][ifield]
+
+            # Calculate the total number of slots assigned to each cadence
             ncadence = len(self.allocinfo[fieldid])
             cadence_totals = np.zeros(ncadence, dtype=np.float32)
+            cadence_needed = np.zeros(ncadence, dtype=np.float32)
             slots_totals = np.zeros((self.slots.nlst,
                                      self.slots.nskybrightness), dtype=np.float32)
             for indx, cadence in zip(np.arange(ncadence),
@@ -717,46 +730,73 @@ class AllocateLST(object):
                       flush=True)
                 slots_totals = slots_totals + ccadence['allocation']
                 cadence_totals[indx] = ccadence['allocation'].sum()
+                cadence_needed[indx] = ccadence['needed']
             field_total = cadence_totals.sum()
-            for indx, cadence in zip(np.arange(ncadence),
-                                     self.allocinfo[fieldid]):
-                ccadence = self.allocinfo[fieldid][cadence]
-                if((cadence_totals[indx] > 0.1 * field_total) &
-                   (cadence_totals[indx] < (ccadence['needed'] - ccadence['filled']) * 0.8)):
-                    print(" {c} assigned {m} ... but needed {n}".format(c=cadence,
-                                                                        m=cadence_totals[indx],
-                                                                        n=ccadence['needed'] - ccadence['filled']))
             print("fieldid {fid} {s}".format(fid=fieldid, s=slots_totals),
                   flush=True)
-            field_array['cadence'][findx] = 'none'
+
+            # Now choose one of the cadence
+            chosen_cadence = 'none'
             field_array['slots_exposures'][findx] = (
                 np.zeros((self.slots.nlst, self.slots.nskybrightness),
                          dtype=np.float32))
             field_array['slots_time'][findx] = (
                 np.zeros((self.slots.nlst, self.slots.nskybrightness),
                          dtype=np.float32))
-            if(field_total > 1.e-3):
-                cadence_totals = cadence_totals / field_total
-                cadence_cumulative = cadence_totals.cumsum()
+
+            if(minimize_time):
+                if(len(self.allocinfo[fieldid]) > 1):
+                    raise ValueError("fieldid {fid}: more than one cadence for a field in minimize_time!")
+                if(len(self.allocinfo[fieldid]) == 1):
+                    chosen_cadence = list(self.allocinfo[fieldid].keys())[0]
+            elif(field_total > 0.1):
+                print("fieldid {fid}: field_total big enough".format(fid=fieldid), flush=True)
+                
+                # If the total number of slots assigned is significant,
+                # choose one of the cadences
+                fractional_cadence_totals = cadence_totals / field_total
+                if(fractional_cadence_totals.max() > 0.9):
+                    icadence = fractional_cadence_totals.argmax()
+                    chosen_cadence = list(self.allocinfo[fieldid].keys())[icadence]
+                    print("fieldid {fid}: provisionally choosing {c}, more than 0.9".format(fid=fieldid, c=chosen_cadence))
+                else:
+                    cadence_cumulative = fractional_cadence_totals.cumsum()
+                    choose = np.random.random()
+                    icadence = np.where(cadence_cumulative > choose)[0][0]
+                    chosen_cadence = list(self.allocinfo[fieldid].keys())[icadence]
+                    print("fieldid {fid}: provisionally choosing {c} based on {ch}".format(fid=fieldid, c=chosen_cadence, ch=choose))
+
+                # But only with a probability equal to how much time is available
+                # relative to that needed
+                chosen_needed = (self.allocinfo[fieldid][chosen_cadence]['needed'] -
+                                 self.allocinfo[fieldid][chosen_cadence]['filled'])
                 choose = np.random.random()
-                icadence = np.where(cadence_cumulative > choose)[0][0]
-                cadence = list(self.allocinfo[fieldid].keys())[icadence]
-                ii = np.where(cadence_totals > 0)[0]
-                if((len(ii) > 1) & (cadence_totals.max() < 0.9)):
-                    print("Multiples for f={fid}".format(fid=fieldid))
-                    print(self.allocinfo[fieldid].keys())
-                    print(cadence_totals)
-                    print(cadence_cumulative)
-                    print(choose)
-                    print(icadence)
-                    print(cadence)
-                field_array['cadence'][findx] = cadence
-                field_array['needed'][findx] = self.allocinfo[fieldid][cadence]['needed']
-                field_array['needed_sb'][findx] = self.allocinfo[fieldid][cadence]['needed_sb']
-                field_array['filled_sb'][findx] = self.allocinfo[fieldid][cadence]['filled_sb']
-                field_array['filled'][findx] = self.allocinfo[fieldid][cadence]['filled']
-                field_array['allocated_exposures_done'][findx] = self.allocinfo[fieldid][cadence]['allocated_exposures_done']
-                field_array['original_exposures_done'][findx] = self.allocinfo[fieldid][cadence]['original_exposures_done']
+                print("fieldid {fid}: chance to pick is {c:0.4f}".format(fid=fieldid,
+                                                                         c=field_total / chosen_needed * 1.02), flush=True)
+                if(choose >= field_total / chosen_needed * 1.02):
+                    chosen_cadence = 'none'
+            else:
+                print("fieldid {fid}: field_total not big enough".format(fid=fieldid), flush=True)
+
+                # If the total number of slots is not signficant, pick a cadence
+                # that doesn't require any more observations
+                for current_cadence in self.allocinfo[fieldid]:
+                    if(np.max(np.array(self.allocinfo[fieldid][current_cadence]['needed_sb']) -
+                              np.array(self.allocinfo[fieldid][current_cadence]['filled_sb'])) == 0):
+                        chosen_cadence = current_cadence
+                        break
+                
+            field_array['cadence'][findx] = chosen_cadence
+
+            print("fieldid {fid}: chosen cadence is {cc}".format(fid=fieldid, cc=chosen_cadence), flush=True)
+
+            if(chosen_cadence != 'none'):
+                field_array['needed'][findx] = self.allocinfo[fieldid][chosen_cadence]['needed']
+                field_array['needed_sb'][findx] = self.allocinfo[fieldid][chosen_cadence]['needed_sb']
+                field_array['filled_sb'][findx] = self.allocinfo[fieldid][chosen_cadence]['filled_sb']
+                field_array['filled'][findx] = self.allocinfo[fieldid][chosen_cadence]['filled']
+                field_array['allocated_exposures_done'][findx] = self.allocinfo[fieldid][chosen_cadence]['allocated_exposures_done']
+                field_array['original_exposures_done'][findx] = self.allocinfo[fieldid][chosen_cadence]['original_exposures_done']
                 slots_totals_total = slots_totals.sum()
                 if(slots_totals_total > 0):
                     normalize = ((field_array['needed_sb'][findx, :].sum() -
