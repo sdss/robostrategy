@@ -112,18 +112,21 @@ if __name__ == '__main__':
         infile = '{base}-{p}-{o}.fits'.format(o=obs, p=plan, base=base)
         tmp_spares = fitsio.read(infile)
         fields_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'),
-                                   'allocations', plan,
-                                   'rsFieldsRotated-{p}-{o}.fits'.format(o=obs, p=plan))
-        tmp_fields = fitsio.read(fields_file)
+                                   'allocations', plan, 'final',
+                                   'rsAllocationFinal-{p}-{o}.fits'.format(o=obs, p=plan))
+        tmp_fields = fitsio.read(fields_file, ext=3)
+        tmp_fid, ispares, ifields = np.intersect1d(tmp_spares['fieldid'],
+                                                   tmp_fields['fieldid'],
+                                                   return_indices=True)
         if(spares is None):
-            spares = tmp_spares
-            fields = tmp_fields
+            spares = tmp_spares[ispares]
+            fields = tmp_fields[ifields]
         else:
-            spares = np.append(spares, tmp_spares)
-            fields = np.append(fields, tmp_fields)
+            spares = np.append(spares, tmp_spares[ispares])
+            fields = np.append(fields, tmp_fields[ifields])
 
     types = np.array([t[0:2] for t in fields['type']])
-    ikeep = np.where(types != 'RM')[0]
+    ikeep = np.where((types != 'RM') & (spares['nboss_spare'] < 300000))[0]
     spares = spares[ikeep]
 
     for fiberType in ['boss', 'apogee']:
