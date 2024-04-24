@@ -121,7 +121,7 @@ if __name__ == '__main__':
     completeness_file = completeness_file.replace('rsCompleteness',
                                                   'final/rsCompletenessStagesFinal')
 
-    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE']
+    stages = ['SRD', 'REASSIGN', 'OPEN', 'FILLER', 'COMPLETE', 'OTHER']
     for stage in stages:
         vmax = None
         make_maps(completeness_file, stage, vmax=vmax)
