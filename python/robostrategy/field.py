@@ -6164,8 +6164,6 @@ class Field(object):
         # option we have to "complete" the cadence.
         original_iexps = np.unique(observed_status['field_exposure'])
         for original_iexp in original_iexps:
-            #iobs = np.where((observed_status['field_exposure'] == original_iexp) &
-            #                (observed_status['mjd'] != 0))[0]
             iobs = np.where((observed_status['field_exposure'] == original_iexp) &
                             (observed_status['status'] != 0))[0]
             iallocated = np.where(original_exposures_done == original_iexp)[0]
@@ -6942,6 +6940,12 @@ Carton completion:
 
         napogee_unused : ndarray of np.int32
             If return_unused is True, number of unused APOGEE fibers in each exposure
+
+        Notes
+        -----
+
+        Counts only exposures that are not locked; i.e. does not include
+        old observations.
 """
         hasApogee = np.array([self.mastergrid.robotDict[self.robotIDs[x]].hasApogee
                               for x in range(500)], dtype=bool)
@@ -6957,6 +6961,8 @@ Carton completion:
             # Count the ones with literally no assignment
             for iexp in np.arange(self.field_cadence.nexp_total,
                                   dtype=np.int32):
+                if(self.exposure_locked[iexp]):
+                    continue
                 ina_apogee = np.where(self._robot2indx[iapogee, iexp] < 0)[0]
                 ina_boss = np.where(self._robot2indx[:, iexp] < 0)[0]
                 nun_apogee[iexp] = len(ina_apogee)
@@ -6968,12 +6974,16 @@ Carton completion:
                                     self.required_calibrations[calibration])
                 iz = np.where(nsp[calibration] < 0)[0]
                 nsp[calibration][iz] = 0
+                il = np.where(self.exposure_locked)[0]
+                nsp[calibration][il] = 0
 
             for bosscalib in ['standard_boss', 'sky_boss']:
                 nsp[bosscalib + '_wapogee'] = np.zeros(self.field_cadence.nexp_total,
                                                        dtype=np.int32)
                 for iexp in np.arange(self.field_cadence.nexp_total,
                                       dtype=np.int32):
+                    if(self.exposure_locked[iexp]):
+                        continue
                     ia = np.where((self._robot2indx[:, iexp] >= 0) &
                                   hasApogee)[0]
                     if(len(ia) > 0):
