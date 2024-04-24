@@ -28,6 +28,7 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
+incomplete = True
 
 
 if __name__ == '__main__':
@@ -41,9 +42,6 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
-    parser.add_argument('-i', '--incomplete', dest='incomplete',
-                        help='skip fields which do not exist', required=False,
-                        default=False, action='store_true')
     parser.add_argument('-v', '--catchup-version', dest='catchup_version',
                         help='update to these catchup versions (comma separated list)',
                         default=None, required=False, type=str)
@@ -51,7 +49,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
-    incomplete = args.incomplete
     catchup_version = args.catchup_version
     if(catchup_version is not None):
         catchup = True
