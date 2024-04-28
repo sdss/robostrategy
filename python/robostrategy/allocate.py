@@ -825,6 +825,7 @@ class AllocateLST(object):
             nfilled_value = np.log10(nfilled)
             nfilled_value_max = np.log10(nfilled_max)
             colorbar_label = '$\log_{10} N$'
+            vmin = -0.1
         else:
             nfilled_value = nfilled
             nfilled_value_max = nfilled_max
@@ -834,7 +835,7 @@ class AllocateLST(object):
             (xx, yy) = self._convert_radec(m, self.field_array['racen'][ii],
                                            self.field_array['deccen'][ii])
             plt.scatter(xx, yy, s=4, c=nfilled_value, vmax=nfilled_value_max,
-                        cmap='Blues', **kwargs)
+                        cmap='Blues', vmin=vmin, **kwargs)
             if(colorbar):
                 cb = plt.colorbar()
                 cb.set_label(colorbar_label)
