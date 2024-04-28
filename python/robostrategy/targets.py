@@ -241,7 +241,7 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
     return(tmp_targets)
 
 
-def match_v1_to_v0p5(catalogids_v1=None, all=False):
+def match_v1_to_v0p5(catalogids_v1=None, all=False, use_sdss_ids=False):
     """Find catalogids in v0.5 corresponding to v1
     
     Parameters
@@ -277,6 +277,9 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False):
     if(len(catalogids_v1) == 0):
         return(np.zeros(0, dtype=np.int64),
                np.zeros(0, dtype=np.int64))
+
+    if(use_sdss_ids is True):
+        raise ValueError("sdss_id not implements in matching in this version")
     
     # Construct query
     sql_template = """SELECT catalogid1, catalogid2 FROM catalogdb.catalog_ver25_to_ver31_full_unique JOIN (VALUES {v}) AS ver31(catalogid) ON catalogdb.catalog_ver25_to_ver31_full_unique.catalogid2 = ver31.catalogid;
