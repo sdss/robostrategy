@@ -4,12 +4,15 @@ import peewee
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdssdb.peewee.sdss5db.opsdb as opsdb
 import robostrategy.targets
+import roboscheduler.cadence
 
 from sdssdb.peewee.sdss5db import database
 database.set_profile('operations')
 
 
 target_dtype = robostrategy.targets.target_dtype
+
+cadencelist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
 
 def get_design_targets(designid=None):
@@ -108,7 +111,7 @@ def get_design_targets(designid=None):
     return(tmp_targets)
 
 
-def field_status(fieldid=None, plan=None, observatory=None):
+def field_status(fieldid=None, field_pk=None, plan=None, observatory=None, other_info=False):
     """Extract field status from the db
     
     Parameters
@@ -117,11 +120,17 @@ def field_status(fieldid=None, plan=None, observatory=None):
     fieldid : int
         field identifier
 
+    field_pk : int
+        field_pk
+
     plan : str
         which robostrategy plan
 
     observatory : str
         which observatory ('apo' or 'lco')
+
+    other_info : bool
+        whether to return other information (MJD)
 
     Returns
     -------
@@ -135,43 +144,62 @@ def field_status(fieldid=None, plan=None, observatory=None):
     designid_status : ndarray of str
         one of 'not started', 'started', 'done'
 
+    field_exposure : ndarray of np.int32
+        exposure numbers in field
+
+    other_info : ndarray
+        structure with other info
+
     Notes
     -----
 
+    If field_pk 
+
     Designs are returned in order of field_exposure
 """
-    dinfo = (targetdb.Field.select(targetdb.Field.field_id,
-                                   targetdb.Field.racen,
-                                   targetdb.Field.deccen,
-                                   targetdb.Version.plan,
-                                   targetdb.Cadence.label.alias('cadence'),
-                                   targetdb.Observatory.label.alias('observatory'),
-                                   targetdb.DesignToField.field_exposure,
-                                   opsdb.CompletionStatus.label.alias('status'),
-                                   targetdb.Design.design_id)
-             .join(targetdb.Version).switch(targetdb.Field)
-             .join(targetdb.Cadence).switch(targetdb.Field)
-             .join(targetdb.Observatory).switch(targetdb.Field)
-             .join(targetdb.DesignToField, peewee.JOIN.LEFT_OUTER)
-             .join(targetdb.Design)
-             .join(opsdb.DesignToStatus)
-             .join(opsdb.CompletionStatus)
-             .where((targetdb.Field.field_id == fieldid) &
-                    (targetdb.Observatory.label == observatory.upper()) &
-                    (targetdb.Version.plan == plan)).dicts())
-    
+    dinfo_joins = (targetdb.Field.select(targetdb.Field.field_id,
+                                         targetdb.Field.racen,
+                                         targetdb.Field.deccen,
+                                         targetdb.Version.plan,
+                                         targetdb.Cadence.label.alias('cadence'),
+                                         targetdb.Observatory.label.alias('observatory'),
+                                         targetdb.DesignToField.field_exposure,
+                                         opsdb.DesignToStatus.mjd,
+                                         opsdb.CompletionStatus.label.alias('status'),
+                                         targetdb.Design.design_id)
+                   .join(targetdb.Version).switch(targetdb.Field)
+                   .join(targetdb.Cadence).switch(targetdb.Field)
+                   .join(targetdb.Observatory).switch(targetdb.Field)
+                   .join(targetdb.DesignToField, peewee.JOIN.LEFT_OUTER)
+                   .join(targetdb.Design)
+                   .join(opsdb.DesignToStatus)
+                   .join(opsdb.CompletionStatus))
+
+    if(field_pk is not None):
+        dinfo = dinfo_joins.where((targetdb.Field.pk == int(field_pk)) &
+                                  (targetdb.Observatory.label == observatory.upper()) &
+                                  (targetdb.Version.plan == plan)).dicts()
+    else:
+        dinfo = dinfo_joins.where((targetdb.Field.field_id == int(fieldid)) &
+                                  (targetdb.Observatory.label == observatory.upper()) &
+                                  (targetdb.Version.plan == plan)).dicts()
+
     designid = np.zeros(len(dinfo), dtype=np.int32)
     designid_status = np.array(['not started'] * len(dinfo))
     field_exposure = np.zeros(len(dinfo), dtype=np.int32)
+    mjd = np.zeros(len(dinfo), dtype=np.float64)
     for i, d in enumerate(dinfo):
         designid[i] = d['design_id']
         designid_status[i] = d['status']
         field_exposure[i] = d['field_exposure']
+        if(d['mjd'] is not None):
+            mjd[i] = d['mjd']
 
     isort = np.argsort(field_exposure)
     designid = designid[isort]
     designid_status = designid_status[isort]
     field_exposure = field_exposure[isort]
+    mjd = mjd[isort]
 
     if(np.all(designid_status == 'done')):
         status = 'done'
@@ -180,4 +208,172 @@ def field_status(fieldid=None, plan=None, observatory=None):
     else:
         status = 'not started'
 
-    return(status, designid, designid_status, field_exposure)
+    if(other_info):
+        other_dtype = np.dtype([('mjd', np.float64)])
+        other = np.zeros(len(field_exposure), dtype=other_dtype)
+        other['mjd'] = mjd
+        
+        return(status, designid, designid_status, field_exposure, other)
+    else:
+        return(status, designid, designid_status, field_exposure)
+
+
+def fieldlist(plan=None, observatory=None, cadence_info=True, status_info=True,
+              exp_info=False):
+    """Extract list of field information for a given plan
+    
+    Parameters
+    ----------
+
+    plan : str
+        which robostrategy plan
+
+    observatory : str
+        which observatory ('apo' or 'lco')
+
+    cadence_info : bool
+        include cadence info
+
+    status_info : bool
+        include status info
+
+    exp_info : bool
+        return individual exposure info
+
+    Returns
+    -------
+
+    fieldlist : ndarray
+        information on all fields in plan for this observatory
+
+    explist : ndarray
+        information on all observations associated with the fields
+"""
+    dinfo = (targetdb.Field.select(targetdb.Field.field_id,
+                                   targetdb.Field.pk,
+                                   targetdb.Field.racen,
+                                   targetdb.Field.deccen,
+                                   targetdb.Field.position_angle,
+                                   targetdb.Field.slots_exposures,
+                                   targetdb.Version.plan,
+                                   targetdb.Cadence.label.alias('cadence'),
+                                   targetdb.Observatory.label.alias('observatory'))
+             .join(targetdb.Version).switch(targetdb.Field)
+             .join(targetdb.Cadence).switch(targetdb.Field)
+             .join(targetdb.Observatory).switch(targetdb.Field)
+             .where((targetdb.Observatory.label == observatory.upper()) &
+                    (targetdb.Version.plan == plan)).dicts())
+
+    fieldlist_dtype = [('fieldid', np.int32),
+                       ('field_pk', np.int32),
+                       ('racen', np.float64),
+                       ('deccen', np.float64),
+                       ('position_angle', np.float32),
+                       ('slots_exposures', np.int32, (24, 2)),
+                       ('plan', str, 50),
+                       ('cadence', str, 50),
+                       ('observatory', str, 3)]
+
+    if(cadence_info | status_info):
+        cadencelist.fromdb(use_label_root=False, version='v2')
+
+    if(cadence_info):
+        fieldlist_dtype.append(('nexp_total', np.int32))
+        fieldlist_dtype.append(('nepochs', np.int32))
+
+    if(status_info):
+        fieldlist_dtype.append(('status', np.str, 20))
+        fieldlist_dtype.append(('nexp_done', np.int32))
+        fieldlist_dtype.append(('nepochs_done', np.int32))
+        fieldlist_dtype.append(('mjd_min', np.float32))
+        fieldlist_dtype.append(('mjd_max', np.float32))
+
+    if(exp_info):
+        explist_dtype = [('fieldid', np.int32),
+                         ('field_pk', np.int32),
+                         ('racen', np.float64),
+                         ('deccen', np.float64),
+                         ('position_angle', np.float32),
+                         ('plan', str, 50),
+                         ('first_plan', str, 50),
+                         ('cadence', str, 50),
+                         ('observatory', str, 3),
+                         ('field_exposure', np.int32),
+                         ('epoch', np.int32),
+                         ('design_id', np.int32),
+                         ('mjd', np.float64),
+                         ('status', bool)]
+
+    fieldlist = np.zeros(len(dinfo), dtype=np.dtype(fieldlist_dtype))
+
+    nexp_all = 0
+    
+    for i, d in enumerate(dinfo):
+        fieldlist['fieldid'][i] = d['field_id']
+        fieldlist['field_pk'][i] = d['pk']
+        fieldlist['racen'][i] = d['racen']
+        fieldlist['deccen'][i] = d['deccen']
+        fieldlist['position_angle'][i] = d['position_angle']
+        fieldlist['slots_exposures'][i] = d['slots_exposures']
+        fieldlist['plan'][i] = d['plan']
+        fieldlist['cadence'][i] = d['cadence']
+        fieldlist['observatory'][i] = d['observatory']
+        nexp_all += cadencelist.cadences[fieldlist['cadence'][i]].nexp_total
+
+    if(exp_info):
+        explist = np.zeros(nexp_all, dtype=np.dtype(explist_dtype))
+
+    nexp_all = 0
+    for i, d in enumerate(dinfo):
+        if(cadence_info):
+            fieldlist['nexp_total'][i] = cadencelist.cadences[fieldlist['cadence'][i]].nexp_total
+            fieldlist['nepochs'][i] = cadencelist.cadences[fieldlist['cadence'][i]].nepochs
+    
+        if(status_info | exp_info):
+            (status, designids, designid_status, field_exposure, other) = field_status(field_pk=fieldlist['field_pk'][i],
+                                                                                       plan=plan,
+                                                                                       observatory=observatory,
+                                                                                       other_info=True)
+            fieldlist['status'][i] = status
+            idone = np.where(designid_status == 'done')[0]
+            fieldlist['nexp_done'][i] = len(idone)
+            if(len(idone) > 0):
+                fieldlist['mjd_min'][i] = other['mjd'][idone].min()
+                fieldlist['mjd_max'][i] = other['mjd'][idone].max()
+                c = cadencelist.cadences[fieldlist['cadence'][i]]
+                fieldlist['nepochs_done'][i] = len(np.unique(c.epochs[idone]))
+
+        if(exp_info):
+            if(len(idone) > 0):
+                tmp_explist = np.zeros(len(idone), dtype=np.dtype(explist_dtype))
+                tmp_explist['fieldid'] = fieldlist['fieldid'][i]
+                tmp_explist['field_pk'] = fieldlist['field_pk'][i]
+                tmp_explist['racen'] = fieldlist['racen'][i]
+                tmp_explist['deccen'] = fieldlist['deccen'][i]
+                tmp_explist['position_angle'] = fieldlist['position_angle'][i]
+                tmp_explist['plan'] = fieldlist['plan'][i]
+                tmp_explist['cadence'] = fieldlist['cadence'][i]
+                tmp_explist['observatory'] = fieldlist['observatory'][i]
+                tmp_explist['field_exposure'] = field_exposure[idone]
+                tmp_explist['status'] = (designid_status[idone] == 'done')
+                tmp_explist['mjd'] = other['mjd'][idone]
+                tmp_explist['field_exposure'] = field_exposure[idone]
+                tmp_explist['design_id'] = designids[idone]
+                for idesignid, designid in enumerate(designids[idone]):
+                    plans_dict = (targetdb.Design.select(targetdb.Version.plan, targetdb.Version.pk)
+                                  .join(targetdb.DesignToField)
+                                  .join(targetdb.Field)
+                                  .join(targetdb.Version)
+                                  .where(targetdb.Design.design_id == designid)
+                                  .order_by(targetdb.Version.pk)
+                                  .limit(1)).dicts()
+                    tmp_explist['first_plan'][idesignid] = plans_dict[0]['plan']
+
+                explist[nexp_all:nexp_all + len(tmp_explist)] = tmp_explist
+                nexp_all += len(tmp_explist)
+
+    if(exp_info):
+        explist = explist[0:nexp_all]
+        return(fieldlist, explist)
+    else:
+        return(fieldlist)
