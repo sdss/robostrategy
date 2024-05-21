@@ -10,14 +10,9 @@
 import argparse
 import os
 import sys
-import re
-import collections
 import numpy as np
 import jinja2
-import fitsio
-import sdss_access.path
-
-sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+import robostrategy.qa
 
 
 tstr = """
@@ -70,102 +65,12 @@ if __name__ == '__main__':
     if(per_exposure is not None):
         if(per_exposure != 'all'):
             per_exposure_cartons = per_exposure.split(',')
+        else:
+            per_exposure_cartons = 'all'
 
-    field_target_file = sdss_path.full('rsFieldAssignments',
-                                       plan=plan, observatory=observatory,
-                                       fieldid=fieldid)
-    field_target_file = field_target_file.replace('targets/rsFieldAssignments',
-                                                  'final/rsFieldAssignmentsFinal')
-
-    hdr = fitsio.read_header(field_target_file)
-    targets = fitsio.read(field_target_file, ext='TARGET')
-    assignments = fitsio.read(field_target_file, ext='ASSIGN')
-    robots = fitsio.read(field_target_file, ext='ROBOTS')
-
-    field_cadence = hdr['FCADENCE']
-
-    # Look up required calibrations
-    required_calibrations = collections.OrderedDict()
-    for name in hdr:
-        m = re.match('^RCNAME([0-9]*)$', name)
-        if(m is not None):
-            num = 'RCNUM{d}'.format(d=m.group(1))
-            if(num in hdr):
-                if(hdr[num].strip() != ''):
-                    required_calibrations[hdr[name]] = np.array([np.int32(np.float32(x))
-                                                                 for x in hdr[num].split()],
-                                                                dtype=np.int32)
-                else:
-                    required_calibrations[hdr[name]] = np.zeros(0, dtype=np.int32)
-
-    # Count calibrations
-    calibrations = collections.OrderedDict()
-    for c in required_calibrations:
-        ical = np.where(targets['category'] == c)[0]
-        assigned = (assignments['equivRobotID'][ical, :] >= 0)
-        calibrations[c] = np.sum(assigned, axis=0)
-    
-    tdict = dict()
-    tdict['field_cadence'] = field_cadence
-    tdict['calibration_order'] = required_calibrations.keys()
-    tdict['required_calibrations'] = required_calibrations
-    tdict['calibrations'] = calibrations
-
-    iboss = np.where((targets['fiberType'] == 'BOSS') &
-                     (assignments['assigned']) &
-                     (targets['category'] == 'science'))[0]
-    tdict['nboss_science'] = len(iboss)
-    iapogee = np.where((targets['fiberType'] == 'APOGEE') &
-                       (assignments['assigned']) &
-                       (targets['category'] == 'science'))[0]
-    tdict['napogee_science'] = len(iapogee)
-
-    nexp_total = assignments['robotID'].shape[1]
-    nperexposure = np.zeros(nexp_total, dtype=int)
-    for iexp in range(nexp_total):
-        iin = np.where((assignments['robotID'][:, iexp] >= 1) &
-                       (targets['category'] == 'science'))[0]
-        nperexposure[iexp] = len(iin)
-
-    nhasapogee = np.zeros(nexp_total, dtype=int)
-    nhasapogeeisapogee = np.zeros(nexp_total, dtype=int)
-    nnoapogee = np.zeros(nexp_total, dtype=int)
-    for iexp in range(nexp_total):
-        igot = np.where(robots['itarget'][:, iexp] >= 0)[0]
-        itarget = robots['itarget'][igot, iexp]
-        isci = igot[np.where(targets['category'][itarget] == 'science')[0]]
-        iapogee = igot[np.where((targets['category'][itarget] == 'science') &
-                                (targets['fiberType'][itarget] == 'APOGEE'))[0]]
-        nhasapogee[iexp] = (robots['hasApogee'][isci] > 0).sum()
-        nhasapogeeisapogee[iexp] = (robots['hasApogee'][iapogee] > 0).sum()
-        nnoapogee[iexp] = (robots['hasApogee'][isci] == 0).sum()
-
-    tdict['nperexposure_science'] = list(nperexposure)
-    tdict['nperexposure_hasapogee'] = list(nhasapogee)
-    tdict['nperexposure_hasapogee_isapogee'] = list(nhasapogeeisapogee)
-    tdict['nperexposure_noapogee'] = list(nnoapogee)
-
-    cartons = np.unique(targets['carton'])
-    tdict['cartons'] = dict()
-    for carton in cartons:
-        isscience = (targets['category'] == 'science')
-        incarton = (targets['carton'] == carton)
-        within = (targets['within'] != 0)
-        issatisfied = (assignments['satisfied'] > 0)
-        icarton = np.where(incarton & isscience & within)[0]
-        igot = np.where(incarton & issatisfied & isscience)[0]
-        n_per_exposure = (assignments['equivRobotID'][icarton, :] >= 0).sum(axis=0)
-        nexposures = (assignments['equivRobotID'][icarton, :] >= 0).sum()
-        if(len(icarton) > 0):
-            tdict['cartons'][carton] = dict()
-            tdict['cartons'][carton]['nwithin'] = len(icarton)
-            tdict['cartons'][carton]['nsatisfied'] = len(igot)
-            tdict['cartons'][carton]['nexposures'] = nexposures
-            if((carton in per_exposure_cartons) | (per_exposure == 'all')):
-                tdict['cartons'][carton]['per_exposure'] = True
-                tdict['cartons'][carton]['n_per_exposure'] = n_per_exposure
-            else:
-                tdict['cartons'][carton]['per_exposure'] = False
+    tdict = robostrategy.qa.field_assignments_dict(plan=plan, observatory=observatory,
+                                                   fieldid=fieldid,
+                                                   per_exposure_cartons=per_exposure_cartons)
 
     env = jinja2.Environment()
     template = env.from_string(tstr)

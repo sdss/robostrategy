@@ -367,3 +367,82 @@ def plot_targets(targets=None, assignments=None, iexp=0,
         ax.set_ylabel('Y (mm)')
 
     return(fig, ax)
+
+    
+def convert_radec(m, ra, dec):
+    return m(((360. - ra) + 180.) % 360., dec, inverse=False)
+
+
+def plot_fieldlist_status(fieldlist=None, color=None, projection=None, s=10, **kwargs):
+    """Make field plot with current status"""
+
+    fieldids, indx, inv = np.unique(fieldlist['fieldid'], return_index=True, return_inverse=True)
+
+    racen = fieldlist['racen'][indx]
+    deccen = fieldlist['deccen'][indx]
+    nexp_total = np.zeros(len(fieldids), dtype=np.int32)
+    nepochs = np.zeros(len(fieldids), dtype=np.int32)
+    nexp_done = np.zeros(len(fieldids), dtype=np.int32)
+    nepochs_done = np.zeros(len(fieldids), dtype=np.int32)
+    for iinv, cinv in enumerate(inv):
+        nexp_total[cinv] = nexp_total[cinv] + fieldlist['nexp_total'][iinv]
+        nepochs[cinv] = nepochs[cinv] + fieldlist['nepochs'][iinv]
+        nexp_done[cinv] = nexp_done[cinv] + fieldlist['nexp_done'][iinv]
+        nepochs_done[cinv] = nepochs_done[cinv] + fieldlist['nepochs_done'][iinv]
+    
+    if(projection == 'moll'):
+        lon_0 = 270.
+        m = basemap.Basemap(projection='moll', lon_0=lon_0, resolution='c',
+                            celestial=True)
+    elif(projection == 'ortho_north'):
+        lon_0 = 0.
+        lat_0 = 90.
+        m = basemap.Basemap(projection='ortho', lon_0=lon_0, lat_0=lat_0, resolution='c',
+                            celestial=True)
+    elif(projection == 'ortho_south'):
+        lon_0 = 0.
+        lat_0 = - 90.
+        m = basemap.Basemap(projection='ortho', lon_0=lon_0, lat_0=lat_0, resolution='c',
+                            celestial=True)
+    else:
+        raise ValueError("projection not supported: {p}".format(p=projection))
+    
+    # draw parallels and meridians.
+    m.drawparallels(np.arange(-90., 120., 30.),
+                    linewidth=0.5,
+                    labels=[0, 0, 0, 0],
+                    labelstyle='+/-')
+    m.drawmeridians(np.arange(0., 420., 60.), linewidth=0.5)
+    m.drawmapboundary(fill_color='#f0f0f0')
+
+    if(color == 'nexp_total'):
+        color = nexp_total
+        vmin = 0.
+        vmax = 99.
+    elif(color == 'nexp_done'):
+        color = nexp_done
+        vmin = 0.
+        vmax = 99.
+    elif(color == 'fexp_done'):
+        color = np.float32(nexp_done) / np.float32(nexp_total)
+        vmin = 0.
+        vmax = 1.
+    elif(color == 'nepochs'):
+        color = nepochs
+        vmin = 0.
+        vmax = 99.
+    elif(color == 'nepochs_done'):
+        color = nepochs_done
+        vmin = 0.
+        vmax = 99.
+    elif(color == 'fepochs_done'):
+        color = np.float32(nepochs_done) / np.float32(nepochs)
+        vmin = 0.
+        vmax = 1.
+    else:
+        raise ValueError("color not supported: {p}".format(p=color))
+
+    (xx, yy) = convert_radec(m, racen, deccen)
+    plt.scatter(xx, yy, s=s, c=color, vmin=vmin, vmax=vmax,
+                cmap='Blues', **kwargs)
+    plt.colorbar()

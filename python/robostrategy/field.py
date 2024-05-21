@@ -6162,10 +6162,10 @@ class Field(object):
         # assign it as done. We gather the information for all observations here because
         # in the next section of code we may COUNT those as done if it is the only
         # option we have to "complete" the cadence.
-        original_iexps = np.unique(observed_status['field_exposure'])
+        idone = np.where(observed_status['status'] != 0)[0]
+        original_iexps = np.unique(observed_status['field_exposure'][idone])
         for original_iexp in original_iexps:
-            iobs = np.where((observed_status['field_exposure'] == original_iexp) &
-                            (observed_status['status'] != 0))[0]
+            iobs = np.where(observed_status['field_exposure'] == original_iexp)[0]
             iallocated = np.where(original_exposures_done == original_iexp)[0]
             if(len(iallocated) > 0):
                 ialloc = allocated_exposures_done[iallocated[0]]

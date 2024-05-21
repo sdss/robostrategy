@@ -56,6 +56,24 @@ def designQueryMjd(plan=None):
     return(mjds, design_ids, field_ids, cadences, field_exposures)
 
 
+def countExposures(designid=None):
+    import peewee
+    import sdssdb.peewee.sdss5db.opsdb as opsdb
+
+    Design = targetdb.Design
+    Configuration = opsdb.Configuration
+    Exposure = opsdb.Exposure
+    
+    # Count BOSS exposures
+    dquery = (Exposure.select(Exposure.exposure_no)
+              .join(Configuration)
+              .join(Design)
+              .where(Design.design_id == designid,
+                     Exposure.exposure_no < 10000000)).dicts()
+
+    return(len(dquery))
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -117,12 +135,16 @@ if __name__ == '__main__':
     nbright = np.zeros(len(umjds), dtype=np.int32)
     ndark = np.zeros(len(umjds), dtype=np.int32)
 
+    nexpbright = np.zeros(len(umjds), dtype=np.int32)
+    nexpdark = np.zeros(len(umjds), dtype=np.int32)
+
     for indx, cmjd in enumerate(umjds):
         imjd = np.where(mjds == cmjd)[0]
         ccadences = cadences[imjd]
         cfield_exposures = field_exposures[imjd]
         cfield_ids = field_ids[imjd]
-        for fcadence, field_exposure, field_id in zip(ccadences, cfield_exposures, cfield_ids):
+        cdesign_ids = design_ids[imjd]
+        for fcadence, field_exposure, field_id, design_id in zip(ccadences, cfield_exposures, cfield_ids, cdesign_ids):
             ialloc = np.where(allocate['fieldid'] == field_id)[0]
             if(len(ialloc) == 0):
                 cadence = fcadence
@@ -145,15 +167,25 @@ if __name__ == '__main__':
             else:
                 nbright[indx] = nbright[indx] + 1 
 
+            nexp = countExposures(designid=design_id)
+            if(isdark):
+                nexpdark[indx] = ndark[indx] + nexp 
+            else:
+                nexpbright[indx] = nbright[indx] + nexp 
+            
     print(ndark.sum())
     print(nbright.sum())
 
     done_dtype = np.dtype([('mjd', np.int32),
                            ('nbright', np.int32),
-                           ('ndark', np.int32)])
+                           ('ndark', np.int32),
+                           ('nexpbright', np.int32),
+                           ('nexpdark', np.int32)])
     done = np.zeros(len(umjds), dtype=done_dtype)
     done['mjd'] = umjds
     done['nbright'] = nbright
     done['ndark'] = ndark
+    done['nexpbright'] = nexpbright
+    done['nexpdark'] = nexpdark
 
     fitsio.write('done-count-{o}.fits'.format(o=observatory), done, clobber=True)
