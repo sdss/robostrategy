@@ -65,10 +65,13 @@ def get_and_write_status(indx):
 
     status, status_field = merge_status(status_dict, status_field_dict)
     
-    print("Write status information", flush=True)
-    hdr = robostrategy.header.rsheader()
-    fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
-    fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
+    if(status_field is not None):
+        print("fieldid {fid}: Write status information".format(fid=fieldid), flush=True)
+        hdr = robostrategy.header.rsheader()
+        fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
+        fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
+    else:
+        print("fieldid {fid}: No status informationn to write".format(fid=fieldid), flush=True)
 
     print("fieldid {f}: Done".format(f=fieldid), flush=True)
     return
@@ -149,7 +152,7 @@ def get_status(indx, fromplan=None):
             raise ValueError("Inconsistency between assignment_status and design_to_status: no status info in former, but designs done in latter")
 
     if(status is not None):
-        print("Verifying consistency of status and status_field", flush=True)
+        print("fieldid {fid}: Verifying consistency of status and status_field".format(fid=fieldid), flush=True)
         idone = np.where(status['status'] > 0)[0]
         field_exposures = np.unique(status['field_exposure'][idone])
         for field_exposure in field_exposures:
@@ -162,7 +165,7 @@ def get_status(indx, fromplan=None):
             if(status_field['status'][istatus_field] != 'done'):
                 raise ValueError("assignments are marked done in a non-done exposure")
 
-        print("Verifying consistency of assignment_status and design_to_status", flush=True)
+        print("fieldid {fid}: Verifying consistency of assignment_status and design_to_status".format(fid=fieldid), flush=True)
         all_field_exposures = np.append(status['field_exposure'], d2s_field_exposures)
         field_exposures = np.unique(all_field_exposures)
         for field_exposure in field_exposures:
@@ -170,7 +173,7 @@ def get_status(indx, fromplan=None):
             if(len(istatus_field) == 0):
                 assignment_status_done = False
             elif(len(istatus_field) > 1):
-                raise ValueError("field_exposure appears more than once in status_field")
+                raise ValueError("fieldid {fid}: field_exposure appears more than once in status_field".format(fid=fieldid))
             else:
                 istatus_field = istatus_field[0] 
                 assignment_status_done = (status_field['status'][istatus_field] == 'done')
@@ -178,7 +181,7 @@ def get_status(indx, fromplan=None):
             if(len(id2s) == 0):
                 d2s_done = False
             elif(len(id2s) > 1):
-                raise ValueError("field_exposure appears more than once in design_to_status")
+                raise ValueError("fieldid {fid}: field_exposure appears more than once in design_to_status".format(fid=fieldid))
             else:
                 d2s_done = (d2s_designids_status[id2s[0]] == 'done')
             # Require that assignment_status and design_to_status agree
