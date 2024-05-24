@@ -78,6 +78,8 @@ def merge_status(status_dict, status_field_dict):
     status = None
     status_field = None
     for fromplan in status_dict:
+        if(status_dict[fromplan] is None):
+            continue
         if(status is None):
             status = status_dict[fromplan].copy()
             status_field = status_field_dict[fromplan].copy()
