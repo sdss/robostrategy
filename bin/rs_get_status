@@ -38,7 +38,6 @@ catchup_version = None
 
 def get_and_write_status(indx):
     fieldid = allocate.field_array['fieldid'][indx]
-
     original_fieldid = allocate.field_array['rs_fieldid'][indx]
     ioriginal = np.where(original_allocate.field_array['fieldid'] == original_fieldid)[0]
     full_cadence = original_allocate.field_array['cadence'][ioriginal]
@@ -133,14 +132,17 @@ def get_status(indx, fromplan=None):
     import robostrategy.dbutils
 
     fieldid = allocate.field_array['fieldid'][indx]
+    original_fieldid = allocate.field_array['rs_fieldid'][indx]
+    ioriginal = np.where(original_allocate.field_array['fieldid'] == original_fieldid)[0]
+    full_cadence = original_allocate.field_array['cadence'][ioriginal]
 
     (d2s_status, d2s_designids, d2s_designids_status,
      d2s_field_exposures) = robostrategy.dbutils.field_status(fieldid=fieldid - fieldid_shift,
                                                               plan=fromplan,
                                                               observatory=observatory)
 
-    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
-                                                                     fieldid=fieldid - fieldid_shift)
+    status, tmp_status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
+                                                                         fieldid=fieldid - fieldid_shift)
 
     if(status is None):
         if(np.any(d2s_designids_status == 'done')):
@@ -209,10 +211,10 @@ def get_status(indx, fromplan=None):
             else:
                 d2s_done = (d2s_designids_status[id2s[0]] == 'done')
             # Require that assignment_status and design_to_status agree
-            if((d2s_done == True) & (assignment_status_done == False)):
-                raise ValueError("fieldid {fid}, designid {did}, d2s_designid {d2sdid}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
             if(d2s_done != assignment_status_done):
-                    raise ValueError("fieldid {fid}, designid {did}, d2s_designid {d2sdid}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
+                    raise ValueError("fieldid {fid}, designid {did}, plan {p}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid, p=fromplan))
+            #if((d2s_done == True) & (assignment_status_done == False)):
+                #raise ValueError("fieldid {fid}, designid {did}, d2s_designid {d2sdid}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
             #if((d2s_done == False) & (assignment_status_done == True)):
                 #if(d2s_designids_status[id2s[0]] == 'started'):
                     # Unless design_to_status says "started" and assignment_status is done, then treat as not done
