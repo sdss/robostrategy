@@ -2602,6 +2602,7 @@ class Field(object):
         self._unique_catalogids = np.unique(self.targets['catalogid'])
 
         self.irancalib = np.arange(len(self.targets), dtype=int)
+        np.random.seed(self.fieldid)
         np.random.shuffle(self.irancalib)
 
         # Set up lists of equivalent observation conditions, meaning

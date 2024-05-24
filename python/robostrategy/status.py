@@ -54,7 +54,7 @@ status_field_dtype = [('fieldid', np.int32),
                       ('status', str, 20)]
 
 
-def get_status_by_fieldid(plan=None, fieldid=None):
+def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
     """Read in cartons
 
     Parameters
@@ -65,6 +65,9 @@ def get_status_by_fieldid(plan=None, fieldid=None):
 
     fieldid : np.int32
         field ID to get information for
+
+    exclude_disabled : bool
+        exclude fields which are disabled
 
     Returns
     -------
@@ -88,24 +91,28 @@ def get_status_by_fieldid(plan=None, fieldid=None):
 """
 
     # Get the field information first
-    field_info = (targetdb.Field.select(targetdb.Field.pk.alias('field_pk'),
-                                        targetdb.Field.field_id.alias('fieldid'),
-                                        targetdb.Cadence.label_root.alias('cadence'),
-                                        targetdb.Observatory.label.alias('observatory'),
-                                        targetdb.Version.plan)
-                  .join(targetdb.Observatory).switch(targetdb.Field)
-                  .join(targetdb.Version).switch(targetdb.Field)
-                  .join(targetdb.Cadence).switch(targetdb.Field)
-                  .join(opsdb.FieldToPriority, peewee.JOIN.LEFT_OUTER)
-                  .join(opsdb.FieldPriority, peewee.JOIN.LEFT_OUTER)
-                  .where((targetdb.Field.field_id == fieldid) &
-                         (targetdb.Version.plan == plan) &
-                         ((opsdb.FieldPriority.label != 'disabled') |
-                          (opsdb.FieldPriority.label.is_null(True))))).dicts()
+    field_info_select = (targetdb.Field.select(targetdb.Field.pk.alias('field_pk'),
+                                               targetdb.Field.field_id.alias('fieldid'),
+                                               targetdb.Cadence.label_root.alias('cadence'),
+                                               targetdb.Observatory.label.alias('observatory'),
+                                               targetdb.Version.plan)
+                         .join(targetdb.Observatory).switch(targetdb.Field)
+                         .join(targetdb.Version).switch(targetdb.Field)
+                         .join(targetdb.Cadence).switch(targetdb.Field)
+                         .join(opsdb.FieldToPriority, peewee.JOIN.LEFT_OUTER)
+                         .join(opsdb.FieldPriority, peewee.JOIN.LEFT_OUTER))
+
+    if(exclude_disabled):
+        field_info = field_info_select.where((targetdb.Field.field_id == fieldid) &
+                                             (targetdb.Version.plan == plan) &
+                                             ((opsdb.FieldPriority.label != 'disabled') |
+                                              (opsdb.FieldPriority.label.is_null(True)))).dicts()
+    else:
+        field_info = field_info_select.where((targetdb.Field.field_id == fieldid) &
+                                             (targetdb.Version.plan == plan)).dicts()
 
     field_cadence_dict = dict()
     for f in field_info:
-        print(f)
         field_cadence_dict[f['field_pk']] = f['cadence']
 
     q_status = (targetdb.AssignmentStatus.select(targetdb.AssignmentStatus.pk.alias('assignment_status_pk'),
@@ -170,11 +177,16 @@ def get_status_by_fieldid(plan=None, fieldid=None):
                 .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
                 .join(targetdb.Category).switch(targetdb.Target)
                 .join(catalogdb.Catalog, on=(catalogdb.Catalog.catalogid == targetdb.Target.catalogid))
-                .join(catalogdb.Version)
-                .where((targetdb.Field.field_id == fieldid) &
-                       (targetdb.Version.plan == plan) &
-                       ((opsdb.FieldPriority.label != 'disabled') |
-                        (opsdb.FieldPriority.label.is_null(True))))).dicts()
+                .join(catalogdb.Version))
+
+    if(exclude_disabled):
+        q_status = q_status.where((targetdb.Field.field_id == fieldid) &
+                                  (targetdb.Version.plan == plan) &
+                                  ((opsdb.FieldPriority.label != 'disabled') |
+                                   (opsdb.FieldPriority.label.is_null(True)))).dicts()
+    else:
+        q_status = q_status.where((targetdb.Field.field_id == fieldid) &
+                                  (targetdb.Version.plan == plan)).dicts()
 
     sql_string, sql_params = q_status.sql()
     for sql_param in sql_params:
@@ -187,7 +199,7 @@ def get_status_by_fieldid(plan=None, fieldid=None):
     status_array = np.zeros(len(statuses), dtype=status_dtype)
 
     if(len(status_array) == 0):
-        print("No status information for fieldid={fid}".format(fid=fieldid),
+        print("No status information for fieldid={fid} in plan {p}".format(fid=fieldid, p=plan),
               flush=True)
         return(None, None)
 
@@ -265,5 +277,8 @@ def get_status_by_fieldid(plan=None, fieldid=None):
 
     isort = np.argsort(status_field['field_exposure'])
     status_field = status_field[isort]
+
+    if(len(np.unique(status_field['field_exposure'])) != len(status_field)):
+        raise ValueError("Two entries with same field_exposure in fieldid={fid}".format(fid=fieldid))
 
     return(status_array, status_field)

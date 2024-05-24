@@ -13,6 +13,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import argparse
 import sys
 import multiprocessing
+import collections
 import numpy as np
 import fitsio
 import roboscheduler.cadence as cadence
@@ -25,18 +26,17 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
+verbose = False
 clobber = False
 offset_min_skybrightness = None
 plan = None
-fromplan = None
+fromplans = None
 fieldid_shift = 0
 catchup = False
 catchup_version = None
 
 
-def get_status(indx):
-    import robostrategy.status
-
+def get_and_write_status(indx):
     fieldid = allocate.field_array['fieldid'][indx]
 
     original_fieldid = allocate.field_array['rs_fieldid'][indx]
@@ -60,8 +60,95 @@ def get_status(indx):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_file), flush=True)
         return
 
-    status, tmp_status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
-                                                                         fieldid=fieldid - fieldid_shift)
+    status_dict = collections.OrderedDict()
+    status_field_dict = collections.OrderedDict()
+    for fromplan in fromplans:
+        tmp_status, tmp_status_field = get_status(indx, fromplan=fromplan)
+        status_dict[fromplan] = tmp_status
+        status_field_dict[fromplan] = tmp_status_field
+
+    status, status_field = merge_status(status_dict, status_field_dict)
+    
+    print("Write status information", flush=True)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
+    fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
+
+    print("fieldid {f}: Done".format(f=fieldid), flush=True)
+    return
+
+
+def merge_status(status_dict, status_field_dict):
+    status = None
+    status_field = None
+    for fromplan in status_dict:
+        if(status is None):
+            status = status_dict[fromplan].copy()
+            status_field = status_field_dict[fromplan].copy()
+        else:
+            for i, cs in enumerate(status_field_dict[fromplan]):
+                if(cs['status'] == 'done'):
+                    ifull = np.where(status_field['field_exposure'] == cs['field_exposure'])[0]
+                    if(len(ifull) == 0):
+                        # Merge this new field exposure in
+                        if(verbose):
+                            print("Merging new field exposure {fe}".format(fe=cs['field_exposure']))
+                        status_field = np.append(status_field, cs)
+                        ife = np.where(status_dict[fromplan]['field_exposure'] == cs['field_exposure'])[0]
+                        status = np.append(status, status_dict[fromplan][ife])
+                    elif(len(ifull) > 1):
+                        # Some error has occurred
+                        raise ValueError("Multiple field exposures in status")
+                    else:
+                        if(status_field['design_id'][ifull[0]] != cs['design_id']):
+                            # If this is actually a different designid
+                            if(status_field['status'][ifull[0]] != 'done'):
+                                if(verbose):
+                                    print("Replacing not-done field exposure {fe} with done version from {fp}".format(fe=cs['field_exposure'], fp=fromplan))
+                                # Replace the field_exposure if it isn't done
+                                status_field[ifull[0]] = cs
+                                not_this_exposure = (status['field_exposure'] != cs['field_exposure'])
+                                status = status[not_this_exposure]
+                                ife = np.where(status_dict[fromplan]['field_exposure'] == cs['field_exposure'])[0]
+                                status = np.append(status, status_dict[fromplan][ife])
+                            else:
+                                if(verbose):
+                                    print("Keeping done field exposure {fe}".format(fe=cs['field_exposure']))
+                                # Keep the original if it is done
+                                # (maybe here decide to reassign new one to a different field_exposure)
+                                pass
+                        else:
+                            if(verbose):
+                                print("Not touching same designid")
+                            # If it the same designid then leave it alone (but double check
+                            # that information is the same, because paranoia)
+                            if(status_field['status'][ifull[0]] != cs['status']):
+                                raise ValueError("Different status for same designid!")
+
+    return(status, status_field)
+
+    
+def get_status(indx, fromplan=None):
+    import robostrategy.status
+    import robostrategy.dbutils
+
+    fieldid = allocate.field_array['fieldid'][indx]
+
+    (d2s_status, d2s_designids, d2s_designids_status,
+     d2s_field_exposures) = robostrategy.dbutils.field_status(fieldid=fieldid - fieldid_shift,
+                                                              plan=fromplan,
+                                                              observatory=observatory)
+
+    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
+                                                                     fieldid=fieldid - fieldid_shift)
+
+    if(status is None):
+        if(np.any(d2s_designids_status == 'done')):
+            print(d2s_status)
+            print(d2s_designids)
+            print(d2s_designids_status)
+            print(d2s_field_exposures)
+            raise ValueError("Inconsistency between assignment_status and design_to_status: no status info in former, but designs done in latter")
 
     if(status is not None):
 
@@ -101,17 +188,42 @@ def get_status(indx):
             istatus_field = istatus_field[0] 
             if(status_field['status'][istatus_field] != 'done'):
                 raise ValueError("assignments are marked done in a non-done exposure")
-        
-        print("Write status information", flush=True)
-        hdr = robostrategy.header.rsheader()
-        hdr.append({'name':'FROMPLAN',
-                    'value':fromplan,
-                    'comment':'plan this status is based on'})
-        fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
-        fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
 
-    print("fieldid {f}: Done".format(f=fieldid), flush=True)
-    return
+        print("Verifying consistency of assignment_status and design_to_status", flush=True)
+        all_field_exposures = np.append(status['field_exposure'], d2s_field_exposures)
+        field_exposures = np.unique(all_field_exposures)
+        for field_exposure in field_exposures:
+            istatus_field = np.where(status_field['field_exposure'] == field_exposure)[0]
+            if(len(istatus_field) == 0):
+                assignment_status_done = False
+            elif(len(istatus_field) > 1):
+                raise ValueError("field_exposure appears more than once in status_field")
+            else:
+                istatus_field = istatus_field[0] 
+                assignment_status_done = (status_field['status'][istatus_field] == 'done')
+            id2s = np.where(d2s_field_exposures == field_exposure)[0]
+            if(len(id2s) == 0):
+                d2s_done = False
+            elif(len(id2s) > 1):
+                raise ValueError("field_exposure appears more than once in design_to_status")
+            else:
+                d2s_done = (d2s_designids_status[id2s[0]] == 'done')
+            # Require that assignment_status and design_to_status agree
+            if((d2s_done == True) & (assignment_status_done == False)):
+                raise ValueError("fieldid {fid}, designid {did}, d2s_designid {d2sdid}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
+            if(d2s_done != assignment_status_done):
+                    raise ValueError("fieldid {fid}, designid {did}, d2s_designid {d2sdid}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
+            #if((d2s_done == False) & (assignment_status_done == True)):
+                #if(d2s_designids_status[id2s[0]] == 'started'):
+                    # Unless design_to_status says "started" and assignment_status is done, then treat as not done
+                    #raise ValueError("fieldid {fid}: for designid {did}, design_to_status says done is {x} but assignment_status says done is {y}".format(did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
+#                     status_field['status'][istatus_field] = 'not started'
+ #                    istatus = np.where(status['design_id'] == status_field['design_id'][istatus_field])[0]
+ #                    status['status'][istatus] = 0
+                #else:
+                
+        
+    return(status, status_field)
 
 
 if __name__ == '__main__':
@@ -122,11 +234,11 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
-    parser.add_argument('-f', '--from-plan', dest='fromplan',
-                        type=str, help='name of plan to start from', required=True)
     parser.add_argument('-n', '--new-allocation', dest='new_allocation',
                         help='treat as a new allocation run, so fieldids are from old plan',
                         required=False, default=False, action='store_true')
+    parser.add_argument('-f', '--from-plans', dest='fromplans',
+                        type=str, help='name of plan(s) to start from (put plan to favor first)', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
@@ -142,8 +254,11 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--field-list', dest='fieldlist',
                         type=str, help='field list', required=False,
                         default=None)
+    parser.add_argument('-x', '--verbose', dest='verbose',
+                        help='verbose', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-d', '--fieldid-shift', dest='fieldid_shift',
-                        help='shift in field id to apply', required=False,
+                        help='shift in field id to apply (used to account for commissioning run)', required=False,
                         type=np.int32, default=0)
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
@@ -154,11 +269,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     plan = args.plan
-    fromplan = args.fromplan
+    fromplans_str = args.fromplans
     observatory = args.observatory
     start = args.start
     end = args.end
     clobber = args.clobber
+    verbose = args.verbose
     nomultiprocess = args.nomultiprocess
     fieldid_shift = args.fieldid_shift
     catchup_version = args.catchup_version
@@ -170,11 +286,13 @@ if __name__ == '__main__':
         fieldlist = np.array([np.int32(x) for x in fieldlist_str.split(',')],
                              dtype=np.int32)
 
+    fromplans = fromplans_str.split(',')
+
     if(catchup_version is not None):
         catchup = True
 
     if(new_allocation):
-        aplan = fromplan
+        aplan = fromplans[0]
     else:
         aplan = plan
 
@@ -219,10 +337,10 @@ if __name__ == '__main__':
 
     if(nomultiprocess):
         for i in ikeep:
-            get_status(i)
+            get_and_write_status(i)
     else:
         with multiprocessing.Pool(8) as pool:
-            pool.map(get_status, ikeep, 1)
+            pool.map(get_and_write_status, ikeep, 1)
 
     print('DONE: rs_get_status', flush=True)
     print(time.ctime(time.time()), flush=True)
