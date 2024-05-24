@@ -53,7 +53,7 @@ status_field_dtype = [('fieldid', np.int32),
                       ('status', str, 20)]
 
 
-def get_status_by_fieldid(plan=None, fieldid=None):
+def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
     """Read in cartons
 
     Parameters
@@ -64,6 +64,9 @@ def get_status_by_fieldid(plan=None, fieldid=None):
 
     fieldid : np.int32
         field ID to get information for
+
+    exclude_disabled : bool
+        exclude fields which are disabled
 
     Returns
     -------
@@ -87,94 +90,102 @@ def get_status_by_fieldid(plan=None, fieldid=None):
 """
 
     # Get the field information first
-    field_info = (targetdb.Field.select(targetdb.Field.pk.alias('field_pk'),
-                                        targetdb.Field.field_id.alias('fieldid'),
-                                        targetdb.Cadence.label_root.alias('cadence'),
-                                        targetdb.Observatory.label.alias('observatory'),
-                                        targetdb.Version.plan)
-                  .join(targetdb.Observatory).switch(targetdb.Field)
-                  .join(targetdb.Version).switch(targetdb.Field)
-                  .join(targetdb.Cadence).switch(targetdb.Field)
-                  .join(opsdb.FieldToPriority, peewee.JOIN.LEFT_OUTER)
-                  .join(opsdb.FieldPriority, peewee.JOIN.LEFT_OUTER)
-                  .where((targetdb.Field.field_id == fieldid) &
-                         (targetdb.Version.plan == plan) &
-                         ((opsdb.FieldPriority.label != 'disabled') |
-                          (opsdb.FieldPriority.label.is_null(True))))).dicts()
+    field_info_select = (targetdb.Field.select(targetdb.Field.pk.alias('field_pk'),
+                                               targetdb.Field.field_id.alias('fieldid'),
+                                               targetdb.Cadence.label_root.alias('cadence'),
+                                               targetdb.Observatory.label.alias('observatory'),
+                                               targetdb.Version.plan)
+                         .join(targetdb.Observatory).switch(targetdb.Field)
+                         .join(targetdb.Version).switch(targetdb.Field)
+                         .join(targetdb.Cadence).switch(targetdb.Field)
+                         .join(opsdb.FieldToPriority, peewee.JOIN.LEFT_OUTER)
+                         .join(opsdb.FieldPriority, peewee.JOIN.LEFT_OUTER))
+
+    if(exclude_disabled):
+        field_info = field_info_select.where((targetdb.Field.field_id == fieldid) &
+                                             (targetdb.Version.plan == plan) &
+                                             ((opsdb.FieldPriority.label != 'disabled') |
+                                              (opsdb.FieldPriority.label.is_null(True)))).dicts()
+    else:
+        field_info = field_info_select.where((targetdb.Field.field_id == fieldid) &
+                                             (targetdb.Version.plan == plan)).dicts()
 
     field_cadence_dict = dict()
     for f in field_info:
-        print(f)
         field_cadence_dict[f['field_pk']] = f['cadence']
 
-    if(True):
-        q_status = (targetdb.AssignmentStatus.select(targetdb.AssignmentStatus.pk.alias('assignment_status_pk'),
-                                                     targetdb.AssignmentStatus.status,
-                                                     targetdb.AssignmentStatus.mjd,
-                                                     targetdb.Field.pk.alias('field_pk'),
-                                                     targetdb.Field.field_id.alias('fieldid'),
-                                                     targetdb.Observatory.label.alias('observatory'),
-                                                     targetdb.Version.plan,
-                                                     catalogdb.Version.plan.alias('catalogdb_plan'),
-                                                     targetdb.DesignToField.field_exposure,
-                                                     targetdb.DesignToField.exposure,
-                                                     targetdb.Design.design_id,
-                                                     targetdb.Hole.holeid,
-                                                     targetdb.Target.ra,
-                                                     targetdb.Target.dec,
-                                                     targetdb.Target.pmra,
-                                                     targetdb.Target.pmdec,
-                                                     targetdb.Target.epoch,
-                                                     targetdb.Target.parallax,
-                                                     targetdb.Target.pk.alias('target_pk'),
-                                                     targetdb.Target.catalogid,
-                                                     targetdb.Assignment.carton_to_target.alias('carton_to_target_pk'),
-                                                     targetdb.CartonToTarget.priority,
-                                                     targetdb.CartonToTarget.value,
-                                                     targetdb.CartonToTarget.lambda_eff,
-                                                     targetdb.CartonToTarget.delta_ra,
-                                                     targetdb.CartonToTarget.delta_dec,
-                                                     targetdb.CartonToTarget.can_offset,
-                                                     targetdb.Magnitude.g,
-                                                     targetdb.Magnitude.r,
-                                                     targetdb.Magnitude.i,
-                                                     targetdb.Magnitude.bp,
-                                                     targetdb.Magnitude.gaia_g,
-                                                     targetdb.Magnitude.rp,
-                                                     targetdb.Magnitude.h,
-                                                     targetdb.Magnitude.z,
-                                                     targetdb.Magnitude.j,
-                                                     targetdb.Magnitude.k,
-                                                     targetdb.Carton.carton,
-                                                     targetdb.Carton.pk.alias('carton_pk'),
-                                                     targetdb.Carton.program,
-                                                     targetdb.Mapper.label.alias('mapper'),
-                                                     targetdb.Category.label.alias('category'),
-                                                     targetdb.Cadence.label_root.alias('cadence'),
-                                                     targetdb.Instrument.label.alias('fiberType'))
-                    .join(targetdb.Assignment)
-                    .join(targetdb.Design)
-                    .join(targetdb.DesignToField)
-                    .join(targetdb.Field)
-                    .join(targetdb.Observatory).switch(targetdb.Field)
-                    .join(opsdb.FieldToPriority, peewee.JOIN.LEFT_OUTER)
-                    .join(opsdb.FieldPriority, peewee.JOIN.LEFT_OUTER).switch(targetdb.Field)
-                    .join(targetdb.Version).switch(targetdb.Assignment)
-                    .join(targetdb.Hole).switch(targetdb.Assignment)
-                    .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.Assignment)
-                    .join(targetdb.CartonToTarget)
-                    .join(targetdb.Target, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-                    .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-                    .join(targetdb.Magnitude, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-                    .join(targetdb.Carton, peewee.JOIN.LEFT_OUTER)
-                    .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
-                    .join(targetdb.Category).switch(targetdb.Target)
-                    .join(catalogdb.Catalog, on=(catalogdb.Catalog.catalogid == targetdb.Target.catalogid))
-                    .join(catalogdb.Version)
-                    .where((targetdb.Field.field_id == fieldid) &
-                           (targetdb.Version.plan == plan) &
-                           ((opsdb.FieldPriority.label != 'disabled') |
-                            (opsdb.FieldPriority.label.is_null(True))))).dicts()
+    q_status = (targetdb.AssignmentStatus.select(targetdb.AssignmentStatus.pk.alias('assignment_status_pk'),
+                                                 targetdb.AssignmentStatus.status,
+                                                 targetdb.AssignmentStatus.mjd,
+                                                 targetdb.Field.pk.alias('field_pk'),
+                                                 targetdb.Field.field_id.alias('fieldid'),
+                                                 targetdb.Observatory.label.alias('observatory'),
+                                                 targetdb.Version.plan,
+                                                 catalogdb.Version.plan.alias('catalogdb_plan'),
+                                                 targetdb.DesignToField.field_exposure,
+                                                 targetdb.DesignToField.exposure,
+                                                 targetdb.Design.design_id,
+                                                 targetdb.Hole.holeid,
+                                                 targetdb.Target.ra,
+                                                 targetdb.Target.dec,
+                                                 targetdb.Target.pmra,
+                                                 targetdb.Target.pmdec,
+                                                 targetdb.Target.epoch,
+                                                 targetdb.Target.parallax,
+                                                 targetdb.Target.pk.alias('target_pk'),
+                                                 targetdb.Target.catalogid,
+                                                 targetdb.Assignment.carton_to_target.alias('carton_to_target_pk'),
+                                                 targetdb.CartonToTarget.priority,
+                                                 targetdb.CartonToTarget.value,
+                                                 targetdb.CartonToTarget.lambda_eff,
+                                                 targetdb.CartonToTarget.delta_ra,
+                                                 targetdb.CartonToTarget.delta_dec,
+                                                 targetdb.CartonToTarget.can_offset,
+                                                 targetdb.Magnitude.g,
+                                                 targetdb.Magnitude.r,
+                                                 targetdb.Magnitude.i,
+                                                 targetdb.Magnitude.bp,
+                                                 targetdb.Magnitude.gaia_g,
+                                                 targetdb.Magnitude.rp,
+                                                 targetdb.Magnitude.h,
+                                                 targetdb.Magnitude.z,
+                                                 targetdb.Magnitude.j,
+                                                 targetdb.Magnitude.k,
+                                                 targetdb.Carton.carton,
+                                                 targetdb.Carton.pk.alias('carton_pk'),
+                                                 targetdb.Carton.program,
+                                                 targetdb.Mapper.label.alias('mapper'),
+                                                 targetdb.Category.label.alias('category'),
+                                                 targetdb.Cadence.label_root.alias('cadence'),
+                                                 targetdb.Instrument.label.alias('fiberType'))
+                .join(targetdb.Assignment)
+                .join(targetdb.Design)
+                .join(targetdb.DesignToField)
+                .join(targetdb.Field)
+                .join(targetdb.Observatory).switch(targetdb.Field)
+                .join(opsdb.FieldToPriority, peewee.JOIN.LEFT_OUTER)
+                .join(opsdb.FieldPriority, peewee.JOIN.LEFT_OUTER).switch(targetdb.Field)
+                .join(targetdb.Version).switch(targetdb.Assignment)
+                .join(targetdb.Hole).switch(targetdb.Assignment)
+                .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.Assignment)
+                .join(targetdb.CartonToTarget)
+                .join(targetdb.Target, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+                .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+                .join(targetdb.Magnitude, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+                .join(targetdb.Carton, peewee.JOIN.LEFT_OUTER)
+                .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
+                .join(targetdb.Category).switch(targetdb.Target)
+                .join(catalogdb.Catalog, on=(catalogdb.Catalog.catalogid == targetdb.Target.catalogid))
+                .join(catalogdb.Version))
+
+    if(exclude_disabled):
+        q_status = q_status.where((targetdb.Field.field_id == fieldid) &
+                                  (targetdb.Version.plan == plan) &
+                                  ((opsdb.FieldPriority.label != 'disabled') |
+                                   (opsdb.FieldPriority.label.is_null(True)))).dicts()
+    else:
+        q_status = q_status.where((targetdb.Field.field_id == fieldid) &
+                                  (targetdb.Version.plan == plan)).dicts()
 
     sql_string, sql_params = q_status.sql()
     for sql_param in sql_params:
@@ -187,7 +198,7 @@ def get_status_by_fieldid(plan=None, fieldid=None):
     status_array = np.zeros(len(statuses), dtype=status_dtype)
 
     if(len(status_array) == 0):
-        print("No status information for fieldid={fid}".format(fid=fieldid),
+        print("No status information for fieldid={fid} in plan {p}".format(fid=fieldid, p=plan),
               flush=True)
         return(None, None)
 
@@ -264,5 +275,8 @@ def get_status_by_fieldid(plan=None, fieldid=None):
 
     isort = np.argsort(status_field['field_exposure'])
     status_field = status_field[isort]
+
+    if(len(np.unique(status_field['field_exposure'])) != len(status_field)):
+        raise ValueError("Two entries with same field_exposure in fieldid={fid}".format(fid=fieldid))
 
     return(status_array, status_field)
