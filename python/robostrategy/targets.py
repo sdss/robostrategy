@@ -288,9 +288,6 @@ def match_v1_to_v0p5(catalogids_v1=None, all=False, use_sdss_ids=True):
         else:
             return(np.zeros(0, dtype=np.int64),
                    np.zeros(0, dtype=np.int64))
-
-    if(use_sdss_ids is True):
-        raise ValueError("sdss_id not implements in matching in this version")
     
     # Construct query
     if(use_sdss_ids):
