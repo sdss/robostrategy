@@ -610,9 +610,9 @@ class AllocateLST(object):
             else:
                 if(field_minimum_float[fieldid] > 0.):
                     if(0):
-                        raise ValueError("No allowed cadences for field with required observations")
+                        raise ValueError("fieldid {fid}: No allowed cadences for field with required observations".format(fid=fieldid))
                     else:
-                        print("IGNORE FOR NOW: No allowed cadences for field with required observations")
+                        print("fieldid {fid}: IGNORE FOR NOW: No allowed cadences for field with required observations".format(fid=fieldid))
                         field_minimum_float[fieldid] = 0.
 
         # Constrain sum of each slot to be less than total. Here the
