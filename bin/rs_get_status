@@ -191,7 +191,7 @@ def get_status(indx, fromplan=None):
                 field_exposures = cst['field_exposure'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]]
                 for field_exposure in field_exposures:
                     ifexp = np.where(status_field['field_exposure'] == field_exposure)[0]
-                    status_field['status'][ifexp] = 'not_started'
+                    status_field['status'][ifexp] = 'not started'
                     ifexp = np.where(status['field_exposure'] == field_exposure)[0]
                     status['status'][ifexp] = 0
                     status['mjd'][ifexp] = 0

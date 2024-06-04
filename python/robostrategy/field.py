@@ -6171,7 +6171,7 @@ class Field(object):
                     if((iexp, target['rsid']) in rsid_obs_to_istatus):
                         # Bail if this assignment was equivalently done already
                         # earlier in this loop
-                        if(self.assignments['equivRobotID'][indx, iexp] >= 0):
+                        if(self.assignments['equivRobotID'][isci[indx], iexp] >= 0):
                             continue
                         istatus = rsid_obs_to_istatus[iexp, target['rsid']]
                         if(observed_status['status'][istatus] == 0):
