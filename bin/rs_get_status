@@ -26,6 +26,7 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
+observatory = None
 verbose = False
 clobber = False
 offset_min_skybrightness = None
@@ -34,10 +35,22 @@ fromplans = None
 fieldid_shift = 0
 catchup = False
 catchup_version = None
+debug = False
+
+
+def raise_or_report(fieldid, msg):
+    if(debug):
+        print("fieldid {fid}: ERROR: {msg}".format(fid=fieldid, msg=msg), flush=True)
+    else:
+        raise ValueError("fieldid {fid}: {msg}".format(fid=fieldid, msg=msg))
+    return
 
 
 def get_and_write_status(indx):
     fieldid = allocate.field_array['fieldid'][indx]
+    original_fieldid = allocate.field_array['rs_fieldid'][indx]
+    ioriginal = np.where(original_allocate.field_array['fieldid'] == original_fieldid)[0]
+    full_cadence = original_allocate.field_array['cadence'][ioriginal]
     
     print("fieldid {fid}: Get status".format(fid=fieldid), flush=True)
 
@@ -63,7 +76,7 @@ def get_and_write_status(indx):
         status_dict[fromplan] = tmp_status
         status_field_dict[fromplan] = tmp_status_field
 
-    status, status_field = merge_status(status_dict, status_field_dict)
+    status, status_field = merge_status(fieldid, status_dict, status_field_dict)
     
     if(status_field is not None):
         print("fieldid {fid}: Write status information".format(fid=fieldid), flush=True)
@@ -77,7 +90,7 @@ def get_and_write_status(indx):
     return
 
 
-def merge_status(status_dict, status_field_dict):
+def merge_status(fieldid, status_dict, status_field_dict):
     status = None
     status_field = None
     for fromplan in status_dict:
@@ -99,7 +112,7 @@ def merge_status(status_dict, status_field_dict):
                         status = np.append(status, status_dict[fromplan][ife])
                     elif(len(ifull) > 1):
                         # Some error has occurred
-                        raise ValueError("Multiple field exposures in status")
+                        raise_or_report(fieldid, "Multiple field exposures in status")
                     else:
                         if(status_field['design_id'][ifull[0]] != cs['design_id']):
                             # If this is actually a different designid
@@ -124,24 +137,32 @@ def merge_status(status_dict, status_field_dict):
                             # If it the same designid then leave it alone (but double check
                             # that information is the same, because paranoia)
                             if(status_field['status'][ifull[0]] != cs['status']):
-                                raise ValueError("Different status for same designid!")
+                                raise_or_report(fieldid, "Different status for same designid!")
 
     return(status, status_field)
 
     
 def get_status(indx, fromplan=None):
+    os.environ['OBSERVATORY'] = observatory.upper()
+    
     import robostrategy.status
     import robostrategy.dbutils
 
+    status = None
+    status_field = None
+
     fieldid = allocate.field_array['fieldid'][indx]
+    original_fieldid = allocate.field_array['rs_fieldid'][indx]
+    ioriginal = np.where(original_allocate.field_array['fieldid'] == original_fieldid)[0]
+    full_cadence = original_allocate.field_array['cadence'][ioriginal]
 
     (d2s_status, d2s_designids, d2s_designids_status,
      d2s_field_exposures) = robostrategy.dbutils.field_status(fieldid=fieldid - fieldid_shift,
                                                               plan=fromplan,
                                                               observatory=observatory)
 
-    status, status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
-                                                                     fieldid=fieldid - fieldid_shift)
+    status, tmp_status_field = robostrategy.status.get_status_by_fieldid(plan=fromplan,
+                                                                         fieldid=fieldid - fieldid_shift)
 
     if(status is None):
         if(np.any(d2s_designids_status == 'done')):
@@ -149,21 +170,45 @@ def get_status(indx, fromplan=None):
             print(d2s_designids)
             print(d2s_designids_status)
             print(d2s_field_exposures)
-            raise ValueError("Inconsistency between assignment_status and design_to_status: no status info in former, but designs done in latter")
+            raise_or_report(fieldid, "Inconsistency between assignment_status and design_to_status: no status info in former, but designs done in latter")
 
     if(status is not None):
+        status_field_dtype = np.dtype(tmp_status_field.dtype.descr +
+                                      [('full_cadence', str, 50)])
+        status_field = np.zeros(len(tmp_status_field), dtype=status_field_dtype)
+        for n in tmp_status_field.dtype.names:
+            status_field[n] = tmp_status_field[n]
+        status_field['full_cadence'] = full_cadence
+
+        print("fieldid {fid}: Checking for incomplete epochs".format(fid=fieldid), flush=True)
+        c = cadencelist.cadences[status_field['full_cadence'][0]]
+        for iepoch in np.arange(c.nepochs, dtype=np.int32):
+            isort = np.argsort(status_field['field_exposure'])
+            cst = status_field[isort]
+            ust = np.unique(cst['status'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]])
+            if(len(ust) > 1):
+                print("WARNING: fieldid {fid} epoch {iepoch} is incomplete according to assignment_status, treating all as not done".format(fid=fieldid, iepoch=iepoch))
+                field_exposures = cst['field_exposure'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]]
+                for field_exposure in field_exposures:
+                    ifexp = np.where(status_field['field_exposure'] == field_exposure)[0]
+                    status_field['status'][ifexp] = 'not_started'
+                    ifexp = np.where(status['field_exposure'] == field_exposure)[0]
+                    status['status'][ifexp] = 0
+                    status['mjd'][ifexp] = 0
+                    status['assignment_status_pk'][ifexp] = 0
+
         print("fieldid {fid}: Verifying consistency of status and status_field".format(fid=fieldid), flush=True)
         idone = np.where(status['status'] > 0)[0]
         field_exposures = np.unique(status['field_exposure'][idone])
         for field_exposure in field_exposures:
             istatus_field = np.where(status_field['field_exposure'] == field_exposure)[0]
             if(len(istatus_field) == 0):
-                raise ValueError("field_exposure appears not at all in status_field")
+                raise_or_report(fieldid, "field_exposure appears not at all in status_field")
             if(len(istatus_field) > 1):
-                raise ValueError("field_exposure appears more than once in status_field")
+                raise_or_report(fieldid, "field_exposure appears more than once in status_field")
             istatus_field = istatus_field[0] 
             if(status_field['status'][istatus_field] != 'done'):
-                raise ValueError("assignments are marked done in a non-done exposure")
+                raise_or_report(fieldid, "assignments are marked done in a non-done exposure")
 
         print("fieldid {fid}: Verifying consistency of assignment_status and design_to_status".format(fid=fieldid), flush=True)
         all_field_exposures = np.append(status['field_exposure'], d2s_field_exposures)
@@ -173,7 +218,7 @@ def get_status(indx, fromplan=None):
             if(len(istatus_field) == 0):
                 assignment_status_done = False
             elif(len(istatus_field) > 1):
-                raise ValueError("fieldid {fid}: field_exposure appears more than once in status_field".format(fid=fieldid))
+                raise_or_report(fieldid, "field_exposure appears more than once in status_field")
             else:
                 istatus_field = istatus_field[0] 
                 assignment_status_done = (status_field['status'][istatus_field] == 'done')
@@ -181,23 +226,12 @@ def get_status(indx, fromplan=None):
             if(len(id2s) == 0):
                 d2s_done = False
             elif(len(id2s) > 1):
-                raise ValueError("fieldid {fid}: field_exposure appears more than once in design_to_status".format(fid=fieldid))
+                raise_or_report(fieldid, "field_exposure appears more than once in design_to_status")
             else:
                 d2s_done = (d2s_designids_status[id2s[0]] == 'done')
             # Require that assignment_status and design_to_status agree
-            if((d2s_done == True) & (assignment_status_done == False)):
-                raise ValueError("fieldid {fid}, designid {did}, d2s_designid {d2sdid}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
             if(d2s_done != assignment_status_done):
-                    raise ValueError("fieldid {fid}, designid {did}, d2s_designid {d2sdid}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
-            #if((d2s_done == False) & (assignment_status_done == True)):
-                #if(d2s_designids_status[id2s[0]] == 'started'):
-                    # Unless design_to_status says "started" and assignment_status is done, then treat as not done
-                    #raise ValueError("fieldid {fid}: for designid {did}, design_to_status says done is {x} but assignment_status says done is {y}".format(did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, fid=fieldid))
-#                     status_field['status'][istatus_field] = 'not started'
- #                    istatus = np.where(status['design_id'] == status_field['design_id'][istatus_field])[0]
- #                    status['status'][istatus] = 0
-                #else:
-                
+                raise_or_report(fieldid, "designid {did}, plan {p}: design_to_status says done is {x} but assignment_status says done is {y}".format(d2sdid=d2s_designids[id2s], did=status_field['design_id'][istatus_field], x=d2s_done, y=assignment_status_done, p=fromplan))
         
     return(status, status_field)
 
@@ -210,6 +244,9 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
+    parser.add_argument('-n', '--new-allocation', dest='new_allocation',
+                        help='treat as a new allocation run, so fieldids are from old plan',
+                        required=False, default=False, action='store_true')
     parser.add_argument('-f', '--from-plans', dest='fromplans',
                         type=str, help='name of plan(s) to start from (put plan to favor first)', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
@@ -224,7 +261,10 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
-    parser.add_argument('-l', '--verbose', dest='verbose',
+    parser.add_argument('-l', '--field-list', dest='fieldlist',
+                        type=str, help='field list', required=False,
+                        default=None)
+    parser.add_argument('-x', '--verbose', dest='verbose',
                         help='verbose', required=False,
                         default=False, action='store_true')
     parser.add_argument('-d', '--fieldid-shift', dest='fieldid_shift',
@@ -232,6 +272,9 @@ if __name__ == '__main__':
                         type=np.int32, default=0)
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-E', '--debug', dest='debug',
+                        help='debugging mode, report errors and move on', required=False,
                         default=False, action='store_true')
     parser.add_argument('-v', '--catchup-version', dest='catchup_version',
                         help='catchup version', required=False,
@@ -244,24 +287,44 @@ if __name__ == '__main__':
     start = args.start
     end = args.end
     clobber = args.clobber
+    debug = args.debug
     verbose = args.verbose
     nomultiprocess = args.nomultiprocess
     fieldid_shift = args.fieldid_shift
     catchup_version = args.catchup_version
+    new_allocation = args.new_allocation
+    fieldlist_str = args.fieldlist
+
+    fieldlist = None
+    if(fieldlist_str is not None):
+        fieldlist = np.array([np.int32(x) for x in fieldlist_str.split(',')],
+                             dtype=np.int32)
 
     fromplans = fromplans_str.split(',')
 
     if(catchup_version is not None):
         catchup = True
 
-    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+    if(new_allocation):
+        aplan = fromplans[0]
+    else:
+        aplan = plan
+
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
-    allocate_file = allocate_file.replace('rsAllocation',
-                                          'final/rsAllocationFinal')
+    cadencelist.fromfits(filename=cadences_file, unpickle=False)
+
+    original_allocate_file = sdss_path.full('rsAllocation', plan=aplan,
+                                            observatory=observatory)
+    allocate_file = original_allocate_file.replace('rsAllocation',
+                                                   'final/rsAllocationFinal')
 
     if(catchup):
         allocate_file = allocate_file.replace('final', 'catchup')
         allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
+
+    original_allocate = robostrategy.allocate.AllocateLST(filename=original_allocate_file,
+                                                          observatory=observatory)
 
     allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                  observatory=observatory)
@@ -271,7 +334,19 @@ if __name__ == '__main__':
 
     if(end < 0):
         end = fieldids.max()
-    ikeep = np.where((fieldids >= start) & (fieldids <= end))[0]
+    rkeep = ((fieldids >= start) & (fieldids <= end))
+
+    if(fieldlist is not None):
+        fkeep = np.zeros(len(fieldids), dtype=bool)
+        for fid in fieldlist:
+            ifid = np.where(fieldids == fid)[0]
+            fkeep[ifid] = True
+    else:
+        fkeep = np.ones(len(fieldids), dtype=bool)
+        
+    keep = fkeep & rkeep
+    
+    ikeep = np.where(keep)[0]
     ikeep = indx[ikeep]
 
     if(nomultiprocess):
