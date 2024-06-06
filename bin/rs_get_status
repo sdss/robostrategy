@@ -53,6 +53,20 @@ def raise_or_report(fieldid, msg, warning=False):
 
 
 def validate_consistency(fieldid=None, status=None, status_field=None, warning=False):
+
+    if(status is None):
+        if(status_field is not None):
+            raise ValueError('status is None but status_field is not None')
+        else:
+            return
+
+    if(status_field is None):
+        if(status is not None):
+            raise ValueError('status_field is None but status is not None')
+        else:
+            raise ValueError('Should not reach here')
+            return
+            
     print("fieldid {fid}: Verifying consistency of status and status_field".format(fid=fieldid), flush=True)
     idone = np.where(status['status'] > 0)[0]
     field_exposures = np.unique(status['field_exposure'][idone])
@@ -106,6 +120,24 @@ def get_and_write_status(indx):
         d2s, mjd = robostrategy.dbutils.design_status(design_id=sf['design_id'])
         if(sf['status'] != d2s):
             raise_or_report(fieldid, "design_to_status says {d2s}, assignment_status says {sf}".format(d2s=d2s, sf=sf['status']))
+
+    print("fieldid {fid}: Checking for incomplete epochs".format(fid=fieldid), flush=True)
+    c = cadencelist.cadences[status_field['full_cadence'][0]]
+    for iepoch in np.arange(c.nepochs, dtype=np.int32):
+        isort = np.argsort(status_field['field_exposure'])
+        cst = status_field[isort]
+        ust = np.unique(cst['status'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]])
+        if(len(ust) > 1):
+            print("WARNING: fieldid {fid} epoch {iepoch} is incomplete according to assignment_status, treating all as not done".format(fid=fieldid, iepoch=iepoch))
+            field_exposures = cst['field_exposure'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]]
+            for field_exposure in field_exposures:
+                ifexp = np.where(status_field['field_exposure'] == field_exposure)[0]
+                status_field['status'][ifexp] = 'not started'
+                status_field['mjd'][ifexp] = 0.
+                ifexp = np.where(status['field_exposure'] == field_exposure)[0]
+                status['status'][ifexp] = 0
+                status['mjd'][ifexp] = 0
+                status['assignment_status_pk'][ifexp] = 0
     
     if(status_field is not None):
         print("fieldid {fid}: Write status information".format(fid=fieldid), flush=True)
@@ -212,24 +244,6 @@ def get_status(indx, fromplan=None):
         for n in tmp_status_field.dtype.names:
             status_field[n] = tmp_status_field[n]
         status_field['full_cadence'] = full_cadence
-
-        print("fieldid {fid}: Checking for incomplete epochs".format(fid=fieldid), flush=True)
-        c = cadencelist.cadences[status_field['full_cadence'][0]]
-        for iepoch in np.arange(c.nepochs, dtype=np.int32):
-            isort = np.argsort(status_field['field_exposure'])
-            cst = status_field[isort]
-            ust = np.unique(cst['status'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]])
-            if(len(ust) > 1):
-                print("WARNING: fieldid {fid} epoch {iepoch} is incomplete according to assignment_status, treating all as not done".format(fid=fieldid, iepoch=iepoch))
-                field_exposures = cst['field_exposure'][c.epoch_indx[iepoch]:c.epoch_indx[iepoch + 1]]
-                for field_exposure in field_exposures:
-                    ifexp = np.where(status_field['field_exposure'] == field_exposure)[0]
-                    status_field['status'][ifexp] = 'not started'
-                    status_field['mjd'][ifexp] = 0.
-                    ifexp = np.where(status['field_exposure'] == field_exposure)[0]
-                    status['status'][ifexp] = 0
-                    status['mjd'][ifexp] = 0
-                    status['assignment_status_pk'][ifexp] = 0
 
         print("fieldid {fid}: Checking for early observations".format(fid=fieldid), flush=True)
         c = cadencelist.cadences[status_field['full_cadence'][0]]
