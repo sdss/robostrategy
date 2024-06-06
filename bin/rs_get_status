@@ -116,6 +116,11 @@ def get_and_write_status(indx):
     validate_consistency(fieldid=fieldid, status=status, status_field=status_field,
                          warning=False)
 
+    if(status_field is None):
+        print("fieldid {fid}: No status informationn to write".format(fid=fieldid), flush=True)
+        print("fieldid {f}: Done".format(f=fieldid), flush=True)
+        return
+
     for sf in status_field:
         d2s, mjd = robostrategy.dbutils.design_status(design_id=sf['design_id'])
         if(sf['status'] != d2s):
@@ -139,13 +144,10 @@ def get_and_write_status(indx):
                 status['mjd'][ifexp] = 0
                 status['assignment_status_pk'][ifexp] = 0
     
-    if(status_field is not None):
-        print("fieldid {fid}: Write status information".format(fid=fieldid), flush=True)
-        hdr = robostrategy.header.rsheader()
-        fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
-        fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
-    else:
-        print("fieldid {fid}: No status informationn to write".format(fid=fieldid), flush=True)
+    print("fieldid {fid}: Write status information".format(fid=fieldid), flush=True)
+    hdr = robostrategy.header.rsheader()
+    fitsio.write(field_status_file, status, header=hdr, extname='TARGET', clobber=True)
+    fitsio.write(field_status_file, status_field, extname='FIELD', clobber=False)
 
     print("fieldid {f}: Done".format(f=fieldid), flush=True)
     return
