@@ -425,3 +425,39 @@ def fieldlist(plan=None, observatory=None, cadence_info=True, status_info=True,
         return(fieldlist, explist)
     else:
         return(fieldlist)
+
+
+def design_status(design_id=None):
+    """Extract field status from the db
+    
+    Parameters
+    ----------
+
+    design_id : int
+        design identifier
+
+    Returns
+    -------
+
+
+    status : str
+        one of 'not started', 'started', 'done'
+
+    mjd : np.float32
+        an MJD if done, 0. otherwise
+"""
+    dinfo = (opsdb.DesignToStatus.select(opsdb.DesignToStatus.mjd,
+                                         opsdb.CompletionStatus.label.alias('status'))
+             .join(opsdb.CompletionStatus)
+             .where(opsdb.DesignToStatus.design_id == design_id)).dicts()
+
+    if(len(dinfo) == 0):
+        status = ''
+        mjd = 0.
+    elif(len(dinfo) == 1):
+        status = dinfo[0]['status']
+        mjd = dinfo[0]['mjd']
+    else:
+        raise ValueError("More than one status entries for design_id={did}".format(did=design_id))
+
+    return(status, mjd)

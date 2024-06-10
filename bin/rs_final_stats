@@ -213,14 +213,15 @@ if __name__ == '__main__':
             isextra = (targets['extra' + obs] > 0)
 
             stages = ['srd', 'reassign', 'open', 'filler', 'complete', 'other']
+            catid = targets['catalogid']
             for i, program in enumerate(programs):
                 isinprogram = (targets['program'] == program)
-                nprogram = (isinprogram).sum()
-                ncovered = (isinprogram & iscovered).sum()
-                nincadence = (isinprogram & iscovered & isincadence).sum()
-                nallowed = (isinprogram & iscovered & isincadence & isallowed).sum()
-                nextra = (isinprogram & iscovered & isincadence & isallowed & isextra).sum()
-                nsatisfied = (isinprogram & issatisfied).sum()
+                nprogram = len(np.unique(catid[isinprogram]))
+                ncovered = len(np.unique(catid[(isinprogram & iscovered)]))
+                nincadence = len(np.unique(catid[(isinprogram & iscovered & isincadence)]))
+                nallowed = len(np.unique(catid[(isinprogram & iscovered & isincadence & isallowed)]))
+                nextra = len(np.unique(catid[(isinprogram & iscovered & isincadence & isallowed & isextra)]))
+                nsatisfied = len(np.unique(catid[(isinprogram & issatisfied)]))
                 if(nprogram == 0):
                     fsatisfied = -1.
                 else:

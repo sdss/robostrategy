@@ -17,7 +17,7 @@ status_dtype = [('fieldid', np.int32),  # in field
                 ('field_exposure', np.int32),
                 ('design_id', np.int32),  # from design
                 ('status', np.int32),  # from assignment_status
-                ('mjd', np.float32),
+                ('mjd', np.float64),
                 ('assignment_status_pk', np.int64),
                 ('holeid', np.unicode_, 20),  # from hole
                 ('carton_to_target_pk', np.int64), # from assignment
@@ -50,6 +50,8 @@ status_field_dtype = [('fieldid', np.int32),
                       ('field_pk', np.int64),
                       ('field_exposure', np.int32),
                       ('design_id', np.int32),
+                      ('first_plan', str, 40),
+                      ('design_mode', str, 20),
                       ('mjd', np.float64),
                       ('status', str, 20)]
 
@@ -232,6 +234,7 @@ def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
                     if(n not in problems):
                         problems.append(n)
 
+    # Get first plan that this design_id appears in
     design_ids = np.unique(status_array['design_id'])
     first_plan = dict()
     for design_id in design_ids:
@@ -249,6 +252,14 @@ def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
         ilow = np.argmin(pks)
         first_plan[design_id] = plans[ilow]
 
+    # Get design mode
+    design_ids = np.unique(status_array['design_id'])
+    design_mode = dict()
+    for design_id in design_ids:
+        design_mode_dict = (targetdb.Design.select(targetdb.Design.design_mode_label)
+                            .where(targetdb.Design.design_id == design_id)).dicts()
+        design_mode[design_id] = design_mode_dict[0]['design_mode']
+
     for i, s in enumerate(status_array):
         status_array['first_plan'] = first_plan[s['design_id']]
 
@@ -264,6 +275,8 @@ def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
         tmp_status_field['field_exposure'] = s[2]
         tmp_status_field['design_id'] = s[3]
         tmp_status_field['cadence'] = s[4]
+        tmp_status_field['first_plan'] = first_plan[s[3]]
+        tmp_status_field['design_mode'] = design_mode[s[3]]
         tmp_status_field['status'] = 'not started'
         igd = np.where((status_array['fieldid'] == tmp_status_field['fieldid']) &
                        (status_array['field_pk'] == tmp_status_field['field_pk']) &
