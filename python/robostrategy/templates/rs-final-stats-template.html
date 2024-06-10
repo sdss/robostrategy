@@ -56,7 +56,7 @@
 	</tbody>
 </table>
 
-<h2>Spare Fiber-Exposure Maps (Future Exposures Only)</h2>
+<h2>Spare Fiber-Exposure Maps</h2>
 
 <table style='border: 0px;' cellspacing=0px>
 	<tbody>
@@ -113,7 +113,6 @@
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
-    <th><b>Exposures (Observed)</b></th>
     <th><b>Exposures (Equiv)</b></th>
     </tr>
 </thead>
@@ -165,13 +164,20 @@
 <td align='right'>{{cartons[c].nexps_open}}</td>
 <td align='right'>{{cartons[c].nexps_filler}}</td>
 <td align='right'>{{cartons[c].nexps_complete}}</td>
-<td align='right'>{{cartons[c].nexps_other}}</td>
 <td align='right'>{{cartons[c].nexps_equiv}}</td>
 {% endfor %}
 </tbody>
 </table>
 
 <h2>Statistics by program</h2>
+
+<p>These statistics show the number of unique catalogids observed
+	per program. If an object is observed with both BOSS and APOGEE in
+	a program, it just counts as one object within that program.
+	The epoch counts and equivalent counts are misleading numbers here,
+	so are omitted (they would double-count across cartons). Note that
+  the exposure counts for each program therefore will not be counting
+	the exposures taken for cartons in other programs.</p>
 
 <table style="border: 1px solid black;" cellspacing=0px>
 <thead>
@@ -184,7 +190,6 @@
     <th><b>Allowed</b></th>
     <th><b>In Cadence</b></th>
     <th><b>Covered</b></th>
-    <th><b>Epochs</b></th>
     <th><b>Exposures </b></th>
     <th><b>Exposures (Direct)</b></th>
     <th><b>Exposures (SRD)</b></th>
@@ -192,8 +197,6 @@
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
-    <th><b>Exposures (Observed)</b></th>
-    <th><b>Exposures (Equiv)</b></th>
     </tr>
 </thead>
 <tbody>
@@ -208,7 +211,6 @@
 <td align='right'>{{programs[p].nallowed}}</td>
 <td align='right'>{{programs[p].nincadence}}</td>
 <td align='right'>{{programs[p].ncovered}}</td>
-<td align='right' style="color: blue;">{{programs[p].nepochs}}</td>
 <td align='right' style="color: blue;">{{programs[p].nexps}}</td>
 <td align='right'>{{programs[p].nexps_direct}}</td>
 <td align='right'>{{programs[p].nexps_srd}}</td>
@@ -216,8 +218,6 @@
 <td align='right'>{{programs[p].nexps_open}}</td>
 <td align='right'>{{programs[p].nexps_filler}}</td>
 <td align='right'>{{programs[p].nexps_complete}}</td>
-<td align='right'>{{programs[p].nexps_other}}</td>
-<td align='right'>{{programs[p].nexps_equiv}}</td>
 {% endfor %}
 </tbody>
 </table>
@@ -243,7 +243,6 @@
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
-    <th><b>Exposures (Observed)</b></th>
     <th><b>Exposures (Equiv)</b></th>
     </tr>
 </thead>
@@ -267,7 +266,6 @@
 <td align='right'>{{categorys[c].nexps_open}}</td>
 <td align='right'>{{categorys[c].nexps_filler}}</td>
 <td align='right'>{{categorys[c].nexps_complete}}</td>
-<td align='right'>{{categorys[c].nexps_other}}</td>
 <td align='right'>{{categorys[c].nexps_equiv}}</td>
 {% endfor %}
 </tbody>
@@ -300,7 +298,6 @@
 <td align='right'>{{fiberTypes[f].nexps_open_science}}</td>
 <td align='right'>{{fiberTypes[f].nexps_filler_science}}</td>
 <td align='right'>{{fiberTypes[f].nexps_complete_science}}</td>
-<td align='right'>{{fiberTypes[f].nexps_other_science}}</td>
 <td align='right'>{{fiberTypes[f].nexps_equiv_science}}</td>
 {% endfor %}
 </tbody>
