@@ -56,7 +56,8 @@ def prep_field(indx):
                     fieldid=fieldid, collisionBuffer=collisionBuffer,
                     bright_neighbors=True, allgrids=False)
 
-    if(bright_stars_cache is not None):
+    if((bright_stars_cache is not None) &
+       (field_cadence != 'none')):
         cache_file = sdss_path.full('rsFieldTargets',
                                     plan=bright_stars_cache,
                                     observatory=observatory,
@@ -150,7 +151,7 @@ if __name__ == '__main__':
             prep_field(i)
     else:
         if(bright_stars_cache is None):
-            with multiprocessing.Pool(8) as pool:
+            with multiprocessing.Pool(4) as pool:
                 pool.map(prep_field, ikeep)
         else:
             with multiprocessing.Pool() as pool:
