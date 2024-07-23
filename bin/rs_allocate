@@ -27,6 +27,23 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
+def bhm_spiders_contiguity_value_rescale(ra, dec):
+    length_scale = 20.0
+    value_rescale0 = 1.0
+    max_boost = 3.0
+    dec0_ngc = -20.0
+    dec0_sgc = -45.0
+    
+    lat0 = np.where((ra > 115.0) & (ra < 250.0), dec0_ngc, dec0_sgc)
+    
+    valueRescale = (
+        value_rescale0 *
+        np.maximum(1.0,
+                   max_boost - (max_boost-1) * np.absolute(lat0 - dec)/length_scale)
+    )
+    return valueRescale
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -63,8 +80,12 @@ if __name__ == '__main__':
     if('EpochOverhead' in rsParams.cfg['Allocation']):
         epoch_overhead = np.float32(rsParams.cfg.get('Allocation',
                                                      'EpochOverhead'))
+    elif('EpochOverhead{o}'.format(o=observatory.upper()) in rsParams.cfg['Allocation']):
+        epoch_overhead = np.float32(rsParams.cfg.get('Allocation',
+                                                     'EpochOverhead{o}'.format(o=observatory.upper())))
     else:
         epoch_overhead = 5.
+    print(epoch_overhead)
     epoch_overhead = epoch_overhead / 60.
 
     cadencelist = cadence.CadenceList(skybrightness_only=True)
@@ -142,12 +163,43 @@ if __name__ == '__main__':
             for i in np.arange(len(scales_pct)):
                 print("Carton {c} rescale = {rs}".format(c=focartons[i], rs=scales_pct[i]),
                       flush=True)
+
+            if('bhm_spiders_contiguity' in rsParams.cfg['ValueRescale']):
+                bhm_spiders_contiguity_cartons = rsParams.cfg.get('ValueRescale', 'bhm_spiders_contiguity').split()
+                if(observatory.upper() in bhm_spiders_contiguity_cartons):
+                    for c in bhm_spiders_contiguity_cartons:
+                        indx = np.where(c == focartons)[0]
+                        if(len(indx) > 0):
+                            indx = indx[0]
+                            print("Carton {c} rescale for contiguity".format(c=focartons[indx]),
+                                  flush=True)
+                            crescale = bhm_spiders_contiguity_value_rescale(field_options['racen'],
+                                                                            field_options['deccen'])
+                            field_options['valuegot_pct'][:, indx] = \
+                                field_options['valuegot_pct'][:, indx] * crescale
+
             for indx in np.arange(len(field_options)):
                 field_options['valuegot'][indx] = (
                     field_options['valuegot_pct'][indx, :] *
                     scales_pct).sum()
     except KeyError:
         print("No ValueRescale")
+
+    fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
+    fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
+    if('fgotCarton' in rsParams.cfg['Allocation']):
+        fgot_carton = rsParams.cfg['Allocation']['fgotCarton']
+    else:
+        fgot_carton = 'mwm_galactic_core_dist_apogee'
+    if('fgot_ntarget_minimum' in rsParams.cfg['Assignment']):
+        fgot_ntarget_minimum = np.int32(rsParams.cfg['Assignment']['fgot_ntarget_minimum'])
+    else:
+        fgot_ntarget_minimum = 0
+    fgot_conditions = dict()
+    fgot_conditions['carton'] = fgot_carton
+    fgot_conditions['minimum'] = fgot_minimum
+    fgot_conditions['maximum'] = fgot_maximum
+    fgot_conditions['ntarget_minimum'] = fgot_ntarget_minimum
 
     minimum_ntargets = dict()
     amtstr = 'AllocationMinimumTargetsAt{obs}'.format(obs=observatory.upper())
@@ -210,6 +262,7 @@ if __name__ == '__main__':
                               cartons=focartons,
                               cadences=focadences,
                               minimum_ntargets=minimum_ntargets,
+                              fgot_conditions=fgot_conditions,
                               epoch_overhead=epoch_overhead,
                               verbose=verbose)
 
