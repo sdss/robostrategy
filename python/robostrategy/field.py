@@ -4694,7 +4694,7 @@ class Field(object):
         for cinotsat in inotsat:
             rsid = rsids[cinotsat]
             if(self.veryverbose):
-                print("fieldid {fid}: singlebright {rsid}".format(fid=self.fieldid, rsid=rsid))
+                print("fieldid {fid}: singlebright {rsid} {c}".format(fid=self.fieldid, rsid=rsid, c=self.targets['carton'][indxs[cinotsat]]))
             indx = self.rsid2indx[rsid]
             robotIDs = np.array(tdict[rsid].validRobotIDs, dtype=int)
             np.random.shuffle(robotIDs)
