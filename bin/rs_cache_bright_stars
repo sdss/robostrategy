@@ -33,6 +33,7 @@ noclobber = False
 
 def cache_stars(indx):
     fieldid = allocate['fieldid'][indx]
+
     print("fieldid {f}: Prepping field".format(f=fieldid), flush=True)
 
     print("fieldid {f}: Reading bright stars".format(f=fieldid), flush=True)
@@ -53,8 +54,8 @@ def cache_stars(indx):
                                        fieldid=fieldid)
     cache_file = field_target_file.replace('rsFieldTargets',
                                            'rsBrightStars')
-    cache_file = field_target_file.replace('allocations',
-                                           'bs-cache')
+    cache_file = cache_file.replace('allocations',
+                                    'bs-cache')
 
     robostrategy.field.write_bright_stars(filename=cache_file, bright_stars=bsDict,
                                           clobber=(noclobber == False))
@@ -110,6 +111,7 @@ if __name__ == '__main__':
     np.random.shuffle(ikeep)
     if(nomultiprocess):
         for i in ikeep:
+            print(i)
             cache_stars(i)
     else:
         with multiprocessing.Pool() as pool:
