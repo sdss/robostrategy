@@ -183,7 +183,6 @@ if __name__ == '__main__':
         ierosita = np.where((fn_l > 180.) &
                             (fields_north_array['type'] == b'BHMAqmesWide2'))[0]
         fields_north_array['type'][ierosita] = 'BHMAqmesWide1'
-        print(ierosita)
 
     if('BHMAqmesMedium' in rsParams.cfg['Fields']):
         in_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
