@@ -91,8 +91,12 @@ if __name__ == '__main__':
 
     hybrid_names = []
 
-    original_names = ['bright_2x1', 'bright_3x1', 'bright_4x1', 'bright_6x1',
-                      'bright_8x1', 'bright_12x1', 'bright_18x1']
+    bright_n = [2, 3, 4, 5, 6, 8, 12, 18]
+    bright_names = ['bright_{n}x1'.format(n=n) for n in bright_n]
+    single_n = range(2, 50) 
+    single_names = ['bright_single_{n}x1'.format(n=n) for n in single_n]
+    original_names = bright_names + single_names
+
     nexpper = 2
     ndone_epochs_s = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     for original_name in original_names:
@@ -100,18 +104,19 @@ if __name__ == '__main__':
         for ndone_epochs in ndone_epochs_s:
             nnotdone_epochs = clist.cadences[original_name].nepochs - ndone_epochs
             if(nnotdone_epochs > 0):
-                complete_name = 'bright_{d}x{p}'.format(p=nexpper, d=ndone_epochs)
-                hybrid_names.append(complete_name)
-                print(complete_name, flush=True)
-                make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
-                                        nexpper=nexpper, ndone_epochs=ndone_epochs,
-                                        nepochs=ndone_epochs)
+                for prefix in ['bright', 'bright_single']:
+                    complete_name = '{prefix}_{d}x{p}'.format(prefix=prefix, p=nexpper, d=ndone_epochs)
+                    hybrid_names.append(complete_name)
+                    print(complete_name, flush=True)
+                    make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
+                                            nexpper=nexpper, ndone_epochs=ndone_epochs,
+                                            nepochs=ndone_epochs)
 
-                hybrid_name = 'bright_{d}x{p}+{nd}x1'.format(p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
-                hybrid_names.append(hybrid_name)
-                print(hybrid_name, flush=True)
-                make_hybrid_cadence_new(original_name=original_name, hybrid_name=hybrid_name,
-                                        nexpper=nexpper, ndone_epochs=ndone_epochs)
+                    hybrid_name = '{prefix}_{d}x{p}+{nd}x1'.format(prefix=prefix, p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
+                    hybrid_names.append(hybrid_name)
+                    print(hybrid_name, flush=True)
+                    make_hybrid_cadence_new(original_name=original_name, hybrid_name=hybrid_name,
+                                            nexpper=nexpper, ndone_epochs=ndone_epochs)
 
     original_names = ['bright_2x1', 'bright_3x1', 'bright_4x1', 'bright_6x1', 'bright_8x1']
     nexpper = 4
