@@ -376,12 +376,16 @@ if __name__ == '__main__':
         fieldids = None
 
     rsParams = params.RobostrategyParams(plan=plan)
-    fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
-    fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
+
+    # Change this to implement in allocation
+    #fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
+    #fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
     if('fgotCarton' in rsParams.cfg['Allocation']):
         fgot_carton = rsParams.cfg['Allocation']['fgotCarton']
     else:
         fgot_carton = 'mwm_galactic_core'
+    fgot_minimum = 0.
+    fgot_maximum = 1.
 
     if('Rotate' in rsParams.cfg['Fields']):
         rotate = True
