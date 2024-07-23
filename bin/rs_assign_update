@@ -35,6 +35,7 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
+veryverbose = False
 special_calibration = []
 standard_apogee_nperzone_min = -1
 mags_allowed_brighttime = []
@@ -138,6 +139,7 @@ def assign_update(indx):
         allgrids = True
 
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
+                                veryverbose=veryverbose,
                                 fieldid=fieldid, bright_neighbors=True,
                                 untrim_cadence_version=cadence_version,
                                 noassign=True, input_design_mode=dmodes,
@@ -269,6 +271,9 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-z', '--veryverbose', dest='veryverbose',
+                        help='very verbose', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-A', '--no-assignment-status', dest='noassignmentstatus',
                         help='do not use assignment status', required=False,
                         default=False, action='store_true')
@@ -314,6 +319,7 @@ if __name__ == '__main__':
     reset_bright = args.reset_bright
     limit_pool = args.limit_pool
     catchup_version = args.catchup_version
+    veryverbose = args.veryverbose
 
     if(catchup_version is not None):
         catchup = True
