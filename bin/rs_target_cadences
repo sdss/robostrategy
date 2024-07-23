@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
                                   observatory=observatory)
-    targets_all = fitsio.read(targets_file)
+    targets_all = fitsio.read(targets_file, columns=['cadence', 'carton'])
 
     tcadence_file = targets_file.replace('rsTargets',
                                          'rsTargetCadences')
