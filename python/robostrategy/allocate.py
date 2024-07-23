@@ -257,7 +257,7 @@ class AllocateLST(object):
                  observatory=None, cartons=None, cadences=None,
                  observe_all_fields=[], observe_all_cadences=[],
                  dark_prefer=1., minimum_ntargets={}, epoch_overhead=None,
-                 verbose=False):
+                 fgot_conditions=None, verbose=False):
         self.epoch_overhead = None
         self.verbose = verbose
         if(filename is None):
@@ -281,6 +281,7 @@ class AllocateLST(object):
         self.observe_all_cadences = observe_all_cadences
         self.cadencelist = rcadence.CadenceList()
         self.dark_prefer = dark_prefer
+        self.fgot_conditions = fgot_conditions
         return
 
     def duration_scale(self, cadence=None, skybrightness=None):
@@ -384,15 +385,26 @@ class AllocateLST(object):
         self.allocinfo = collections.OrderedDict()
         self.some_filled = dict()
         self.ncadences = dict()
-        fieldids = np.unique(self.field_slots['fieldid'])
+        fieldids = np.unique(self.fields['fieldid'])
+
+        if(self.fgot_conditions is not None):
+            ifgot_carton = np.where(self.cartons == self.fgot_conditions['carton'])[0][0]
+
         for fieldid in fieldids:
             icurr = np.where(self.field_options['fieldid'] == fieldid)[0]
+            if(len(icurr) == 0):
+                self.allocinfo[fieldid] = collections.OrderedDict()
+                continue
+                
             self.ncadences[fieldid] = len(icurr)
             curr_slots = self.field_slots[icurr]
             curr_options = self.field_options[icurr]
 
             curr_cadences = np.array([x.strip()
                                       for x in curr_slots['cadence']])
+
+            if(self.fgot_conditions is not None):
+                ngot_max = curr_options['ngot_pct'][:, ifgot_carton].max()
 
             if(fix_cadence):
                 ifield = np.where(self.field_array['fieldid'] == fieldid)[0]
@@ -426,6 +438,15 @@ class AllocateLST(object):
                 # Skip not-allowed options
                 if(curr_slot['allowed'] == False):
                     continue
+
+                # Skip option which doesn't have enough of the right carton
+                if(self.fgot_conditions is not None):
+                    ntarget = curr_option['nwithin_pct'][ifgot_carton]
+                    fgot = curr_option['ngot_pct'][ifgot_carton] / ngot_max
+                    if((ntarget > self.fgot_conditions['ntarget_minimum']) &
+                       ((fgot < self.fgot_conditions['minimum']) |
+                        (fgot > self.fgot_conditions['maximum']))):
+                        continue
 
                 minsb = self.cadencelist.cadences[curr_cadence].skybrightness.min()
                 if(minsb < 1.):
