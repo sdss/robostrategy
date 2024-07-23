@@ -250,22 +250,29 @@ if __name__ == '__main__':
                         prefix_c, n_c, m_c = parse_cadence(current_cadence)
                         convert_cadences = rsParams.cfg['ConvertToHybridCadences'][current_cadence].split()
                         hybrid_cadences = []
+                        if(fieldid == 128):
+                            print(field_cadences)
                         for option_cadence in field_cadences:
                             if(option_cadence in convert_cadences):
                                 prefix, n, m = parse_cadence(option_cadence)
-                                ndone = len(current_epochs_done)
-                                nnotdone = n - ndone
-                                if(nnotdone > 0):
-                                    hybrid_cadence = '{prefix}_{d}x{mc}+{nd}x{m}'.format(prefix=prefix,
-                                                                                         d=ndone,
-                                                                                         mc=m_c,
-                                                                                         nd=nnotdone,
-                                                                                         m=m)
-                                    if(hybrid_cadence in cadencelist.cadences):
-                                        print("Adding hybrid cadence: {h}".format(h=hybrid_cadence))
-                                        hybrid_cadences.append(hybrid_cadence)
-                                    else:
-                                        print("Not adding hybrid cadence (not available): fieldid={fid} with cadence={c} and hybrid={h}".format(fid=fieldid, c=current_cadence, h=hybrid_cadence))
+                                if(n == 'n'):
+                                    ns = range(2, 50)
+                                else:
+                                    ns = [n]
+                                for n in ns:
+                                    ndone = len(current_epochs_done)
+                                    nnotdone = n - ndone
+                                    if(nnotdone > 0):
+                                        hybrid_cadence = '{prefix}_{d}x{mc}+{nd}x{m}'.format(prefix=prefix,
+                                                                                             d=ndone,
+                                                                                             mc=m_c,
+                                                                                             nd=nnotdone,
+                                                                                             m=m)
+                                        if(hybrid_cadence in cadencelist.cadences):
+                                            print("Adding hybrid cadence: {h}".format(h=hybrid_cadence))
+                                            hybrid_cadences.append(hybrid_cadence)
+                                        else:
+                                            print("Not adding hybrid cadence (not available): fieldid={fid} with cadence={c} and hybrid={h}".format(fid=fieldid, c=current_cadence, h=hybrid_cadence))
 
                         field_cadences = field_cadences + hybrid_cadences
                         if(len(hybrid_cadences) == 0):
