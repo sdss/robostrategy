@@ -238,11 +238,13 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
         max_extra = 18
 
         # Find gotten RVs and see try to get extra epochs - take any in the RV
-        # bin cartons that were satisfied. Additionally, take any mwm_rv_long that
+        # bin cartons that were satisfied. Additionally, take any mwm_rv_long or
+        # manual_mwm_validation_rv_apogee targets that
         # are UNSATISFIED and do those first
-        iextra1 = np.where((self.targets['carton'] == 'mwm_bin_rv_long_apogee') &
+        iextra1 = np.where(((self.targets['carton'] == 'mwm_bin_rv_long_apogee') | 
+                            (self.targets['carton'] == 'manual_mwm_validation_rv_apogee')) &
                            (self.assignments['satisfied'] == 0))[0]
-        isrv_carton = np.array(['bin_rv' in carton for carton in self.targets['carton']],
+        isrv_carton = np.array(['_rv_' in carton for carton in self.targets['carton']],
                                dtype=bool)
         iextra2 = np.where((isrv_carton) & (self.assignments['satisfied'] > 0))[0]
         iextra = np.append(iextra1,iextra2)
@@ -355,9 +357,10 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                     print(extra_rsids)
                     print(nsuccess)
 
-        # Find NOT-gotten OB core stars and try to get some epochs
+        # Find NOT-gotten OBA core stars and try to get some epochs
         # Note: Do not need to do this on mwm_ob_core_boss_single, which are same targets
-        iextra = np.where((self.targets['carton'] == 'mwm_ob_core_boss') &
+        iextra = np.where(((self.targets['carton'] == 'mwm_ob_core_boss') |  
+                           (self.targets['carton'] == 'mwm_astar_core_boss')) &
                           (self.assignments['satisfied'] == 0))[0]
 
         if len(iextra) > 0:
@@ -418,8 +421,9 @@ class extra_Field(Field):  #inherit all Field-defined stuff.
                 print('Number attempted: {}'.format(len(iextra)))
                 print('Number successful: {}\n'.format(len(nsuccess[nsuccess > 0])))
 
-        # Find gotten OB stars and try to get extra epochs. 
-        iextra = np.where((self.targets['carton'] == 'mwm_ob_core_boss') &
+        # Find gotten OBA stars and try to get extra epochs. 
+        iextra = np.where(((self.targets['carton'] == 'mwm_ob_core_boss') |
+                           (self.targets['carton'] == 'mwm_astar_core_boss')) &
                           (self.assignments['satisfied'] > 0))[0]
         if len(iextra) > 0:
             extra_rsids = self.targets["rsid"][iextra]
