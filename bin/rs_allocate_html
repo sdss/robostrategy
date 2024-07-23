@@ -104,6 +104,14 @@ if __name__ == '__main__':
     alloc_dict['nepoch_all'] = nepoch_all
     alloc_dict['nepoch_dark'] = nepoch_dark
     alloc_dict['nepoch_bright'] = nepoch_bright
+
+    alloc_dict['nallocated_all'] = allocate.field_array['nallocated'].sum()
+    alloc_dict['nallocated_dark'] = allocate.field_array['nallocated_sb'][:, 0].sum()
+    alloc_dict['nallocated_bright'] = allocate.field_array['nallocated_sb'][:, 1].sum()
+
+    alloc_dict['nallocated_full_all'] = allocate.field_array['nallocated_full'].sum()
+    alloc_dict['nallocated_full_dark'] = allocate.field_array['nallocated_full_sb'][:, 0].sum()
+    alloc_dict['nallocated_full_bright'] = allocate.field_array['nallocated_full_sb'][:, 1].sum()
         
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("robostrategy"),
