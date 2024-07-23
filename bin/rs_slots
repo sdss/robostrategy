@@ -76,6 +76,14 @@ if __name__ == '__main__':
         else:
             exptime_dark = np.float32(exposure_times[0])
             exptime_bright = exptime_dark
+    elif('ExposureTime{o}'.format(o=observatory.upper()) in rsParams.cfg['Allocation']):
+        exposure_times = rsParams.cfg.get('Allocation', 'ExposureTime{o}'.format(o=observatory.upper())).split()
+        if(len(exposure_times) > 1):
+            exptime_dark = np.float32(exposure_times[0])
+            exptime_bright = np.float32(exposure_times[1])
+        else:
+            exptime_dark = np.float32(exposure_times[0])
+            exptime_bright = exptime_dark
     else:
         exptime_dark = 15.
         exptime_bright = 15.
@@ -84,6 +92,9 @@ if __name__ == '__main__':
     if('ExposureOverhead' in rsParams.cfg['Allocation']):
         exposure_overhead = np.float32(rsParams.cfg.get('Allocation',
                                                         'ExposureOverhead'))
+    elif('ExposureOverhead{o}'.format(o=observatory.upper()) in rsParams.cfg['Allocation']):
+        exposure_overhead = np.float32(rsParams.cfg.get('Allocation',
+                                                        'ExposureOverhead{o}'.format(o=observatory.upper())))
     else:
         exposure_overhead = 3.
 
