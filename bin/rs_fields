@@ -13,6 +13,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
+import collections
 import argparse
 import os
 import sys
@@ -20,6 +21,8 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import fitsio
+import astropy.io.ascii
+import astropy.coordinates
 import robostrategy
 import robostrategy.sloane as sloane
 import robostrategy.params as params
@@ -171,6 +174,17 @@ if __name__ == '__main__':
             imatch = d2.argmin()
             fields_north_array['type'][imatch] = 'BHMAqmesWide3'
 
+    if('BHMAqmesWide1' in rsParams.cfg['Fields']):
+        fn_coords = astropy.coordinates.SkyCoord(fields_north_array['racen'],
+                                                 fields_north_array['deccen'],
+                                                 unit='deg', frame='icrs')
+        fn_galactic = fn_coords.transform_to('galactic')
+        fn_l = fn_galactic.l.value
+        ierosita = np.where((fn_l > 180.) &
+                            (fields_north_array['type'] == b'BHMAqmesWide2'))[0]
+        fields_north_array['type'][ierosita] = 'BHMAqmesWide1'
+        print(ierosita)
+
     if('BHMAqmesMedium' in rsParams.cfg['Fields']):
         in_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                'data',
@@ -229,6 +243,32 @@ if __name__ == '__main__':
     fields_south_array['fieldid'] = (np.arange(len(fields_south_array),
                                                dtype=np.int32) +
                                      1 + fields_north_array['fieldid'].max())
+
+    if('ExtraTypes' in rsParams.cfg['Fields']):
+        extra_types_str = rsParams.cfg['Fields']['ExtraTypes'].split()
+        extra_types = collections.OrderedDict()
+        for extra_type_str in extra_types_str:
+            k, v = extra_type_str.split(',')
+            extra_types[k] = v
+        for extra_type in extra_types:
+            extra_type_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'), 'data',
+                                           extra_types[extra_type])
+            extra_type_file_type = extra_type_file.split('.')[-1].lower()
+            if(extra_type_file_type == 'fits'):
+                extra_type_fields = fitsio.read(extra_type_file)
+            elif(extra_type_file_type == 'csv'):
+                extra_type_fields = astropy.io.ascii.read(extra_type_file)
+            else:
+                raise ValueError("No such file type for file {f}".format(f=extra_type_file))
+            extra_fieldids = extra_type_fields['fieldid']
+            fid, iextra, inorth = np.intersect1d(extra_fieldids, fields_north_array['fieldid'],
+                                                 return_indices=True)
+            allsky = (fields_north_array['type'][inorth] == b'AllSkySloane')
+            fields_north_array['type'][inorth[allsky]] = extra_type
+            fid, iextra, isouth = np.intersect1d(extra_fieldids, fields_south_array['fieldid'],
+                                                 return_indices=True)
+            allsky = (fields_south_array['type'][isouth] == b'AllSkySloane')
+            fields_south_array['type'][isouth[allsky]] = extra_type
 
     fields_north_file = sdss_path.full('rsFields', plan=plan,
                                        observatory='apo')
