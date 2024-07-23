@@ -59,6 +59,14 @@ if __name__ == '__main__':
                                         plan=plan, observatory=observatory)
     cadence_mask, hdr = fitsio.read(field_cadence_file, header=True)
 
+    tmp_fid, tmp_imask, ifa = np.intersect1d(allocate.fields['fieldid'],
+                                         allocate.field_array['fieldid'],
+                                         return_indices=True)
+    if(len(ifa) != len(allocate.field_array)):
+        raise ValueError("Some fieldids missing")
+    imask = np.zeros(len(allocate.field_array), dtype=np.int32)
+    imask[ifa] = tmp_imask
+
     cadences = [c.strip() for c in allocate.field_array['cadence']]
     base_cadences = []
     for c in cadences:
@@ -197,8 +205,7 @@ if __name__ == '__main__':
                                       observatory=observatory, name=name)
             if(test):
                 png_file = png_file.replace('rsAllocation', 'rsAllocationTest')
-            indx = np.where(cadence_mask[:, icad] > 0)[0]
-            print(len(indx))
+            indx = np.where(cadence_mask[imask, icad] > 0)[0]
             matplotlib.rcParams['figure.figsize'] = (8.0, 4.0)
             allocate.plot_fields(indx=indx, full=full, vmin=cvmin[icad], vmax=cvmax[icad])
             plt.title(field_cadence_base)
