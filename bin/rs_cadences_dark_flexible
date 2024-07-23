@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_cadences_dark_flexible
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import argparse
+import os
+import sys
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.params as params
+import sdss_access.path
+import pickle
+import json
+import re
+
+from sdssdb.peewee.sdss5db import database
+database.set_profile('operations')
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+def copy_cadence(from_cadence, to_cadence, nepochs=None):
+    if(nepochs is None):
+        nepochs = cadencelist.cadences[from_cadence].nepochs
+
+    cadencelist.add_cadence(name=to_cadence,
+                            nepochs=nepochs,
+                            skybrightness=cadencelist.cadences[from_cadence].skybrightness[0:nepochs],
+                            delta=cadencelist.cadences[from_cadence].delta[0:nepochs],
+                            delta_min=cadencelist.cadences[from_cadence].delta_min[0:nepochs],
+                            delta_max=cadencelist.cadences[from_cadence].delta_max[0:nepochs],
+                            nexp=cadencelist.cadences[from_cadence].nexp[0:nepochs],
+                            max_length=cadencelist.cadences[from_cadence].max_length[0:nepochs],
+                            min_moon_sep=cadencelist.cadences[from_cadence].min_moon_sep[0:nepochs],
+                            min_deltav_ks91=cadencelist.cadences[from_cadence].min_deltav_ks91[0:nepochs],
+                            min_twilight_ang=cadencelist.cadences[from_cadence].min_twilight_ang[0:nepochs],
+                            max_airmass=cadencelist.cadences[from_cadence].max_airmass[0:nepochs],
+                            obsmode_pk=cadencelist.cadences[from_cadence].obsmode_pk[0:nepochs])
+    return
+
+def copy_all(new_cadences, old_cadence, new_cadence, nepochs=None):
+    copy_cadence(old_cadence, new_cadence, nepochs=nepochs)
+    cadencelist.cadences[new_cadence].label_root = new_cadence
+    cadencelist.cadences[new_cadence].label_version = ''
+    new_cadences.append(new_cadence)
+    copy_cadence(new_cadence, new_cadence + '_v1', nepochs=nepochs)
+    cadencelist.cadences[new_cadence + '_v1'].label_root = new_cadence
+    cadencelist.cadences[new_cadence + '_v1'].label_version = '_v1'
+    new_cadences.append(new_cadence + '_v1')
+    copy_cadence(new_cadence, new_cadence + '_v2', nepochs=nepochs)
+    new_cadences.append(new_cadence + '_v2')
+    cadencelist.cadences[new_cadence + '_v2'].label_root = new_cadence
+    cadencelist.cadences[new_cadence + '_v2'].label_version = '_v2'
+    return(new_cadences)
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='New dark_flexible')
+
+    args = parser.parse_args()
+
+    cadences_file = sdss_path.full('rsCadences', plan='eta-9', observatory='apo')
+
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
+    cadencelist.reset()
+    cadencelist.fromfits(cadences_file, unpickle=False)
+
+    new_cadences = []
+
+    new_cadences = copy_all(new_cadences, 'dark_flexible_4x1', 'dark_flexible_3x1', nepochs=3)
+
+    cnames = list(cadencelist.cadences.keys())
+
+    for c in cnames:
+        if c not in new_cadences:
+            cadencelist.cadences.pop(c)
+
+    cadencelist.tocsv('dark_flexible_3x1.csv')
+
+    fp = open('dark_flexible_3x1.cfg', 'w')
+    cnames = list(cadencelist.cadences.keys())
+    cnames.sort()
+    for c in cnames:
+        fp.write(cadencelist.cadences[c].epoch_text())
+    fp.close()

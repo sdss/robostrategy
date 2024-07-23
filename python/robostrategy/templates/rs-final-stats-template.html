@@ -114,6 +114,7 @@
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
     <th><b>Exposures (Equiv)</b></th>
+    <th><b>Exposures (Observed)</b></th>
     </tr>
 </thead>
 
@@ -165,6 +166,7 @@
 <td align='right'>{{cartons[c].nexps_filler}}</td>
 <td align='right'>{{cartons[c].nexps_complete}}</td>
 <td align='right'>{{cartons[c].nexps_equiv}}</td>
+<td align='right'>{{cartons[c].nexps_other}}</td>
 {% endfor %}
 </tbody>
 </table>
@@ -190,13 +192,13 @@
     <th><b>Allowed</b></th>
     <th><b>In Cadence</b></th>
     <th><b>Covered</b></th>
-    <th><b>Exposures </b></th>
     <th><b>Exposures (Direct)</b></th>
     <th><b>Exposures (SRD)</b></th>
     <th><b>Exposures (Reassign)</b></th>
     <th><b>Exposures (Open)</b></th>
     <th><b>Exposures (Filler)</b></th>
     <th><b>Exposures (Complete)</b></th>
+    <th><b>Exposures (Observed)</b></th>
     </tr>
 </thead>
 <tbody>
@@ -211,13 +213,13 @@
 <td align='right'>{{programs[p].nallowed}}</td>
 <td align='right'>{{programs[p].nincadence}}</td>
 <td align='right'>{{programs[p].ncovered}}</td>
-<td align='right' style="color: blue;">{{programs[p].nexps}}</td>
 <td align='right'>{{programs[p].nexps_direct}}</td>
 <td align='right'>{{programs[p].nexps_srd}}</td>
 <td align='right'>{{programs[p].nexps_reassign}}</td>
 <td align='right'>{{programs[p].nexps_open}}</td>
 <td align='right'>{{programs[p].nexps_filler}}</td>
 <td align='right'>{{programs[p].nexps_complete}}</td>
+<td align='right'>{{programs[p].nexps_other}}</td>
 {% endfor %}
 </tbody>
 </table>
