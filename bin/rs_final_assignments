@@ -32,31 +32,23 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 def process_field(ifield):
     field = fields[ifield]
-    infile = sdss_path.full('rsFieldAssignments', plan=plan,
-                            observatory=observatory, fieldid=field['rs_fieldid'])
-    if(reassign):
-        infile = infile.replace('rsFieldAssignments', 'rsFieldReassignments')
-    if(opentargets):
-        infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsOpen')
-    if(filler):
-        infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsFiller')
-    if(complete):
-        infile = infile.replace('rsFieldAssignments', 'rsFieldAssignmentsComplete')
-    
-    outfile = sdss_path.full('rsFieldAssignments', plan=plan,
-                             observatory=observatory, fieldid=field['fieldid'])
-    outfile = outfile.replace('targets/rsFieldAssignments', 'final/rsFieldAssignmentsFinal')
-    
-    print("Copying field {rf} to {f}".format(rf=field['rs_fieldid'], 
-                                             f=field['fieldid']))
-    shutil.copyfile(infile, outfile)
+    fieldid = field['fieldid'] + reset - 1
 
-    hdulist = fits.open(outfile, mode='update')
-    hdulist[0].header['FCADENCE'] = hdulist[0].header['FCADENCE'] + '_' + version
-    hdulist[0].header['FIELDID'] = field['fieldid']
-    hdulist[1].data['cadence'] = hdulist[1].data['cadence'] + '_' + version
-    hdulist.flush()
-    hdulist.close()
+    old_cadence = field['cadence'] + '_' + version
+
+    if(old_cadence in rename_dict):
+        outfile = sdss_path.full('rsFieldAssignments', plan=plan,
+                                 observatory=observatory, fieldid=fieldid)
+        outfile = outfile.replace('targets/rsFieldAssignments', 'final/rsFieldAssignmentsFinal')
+        
+        hdulist = fits.open(outfile, mode='update')
+        
+        print("fieldid {fid}: Renaming cadence {old} to {new}".format(fid=fieldid,
+                                                                      old=hdulist[0].header['FCADENCE'],
+                                                                      new=rename_dict[old_cadence]))
+        hdulist[0].header['FCADENCE'] = rename_dict[old_cadence]
+        hdulist.flush()
+        hdulist.close()
     return
 
 
@@ -68,34 +60,18 @@ if __name__ == '__main__':
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
-    parser.add_argument('-O', '--open', dest='opentargets',
-                        help='set to read open target results',
-                        default=False, required=False,
-                        action='store_true')
-    parser.add_argument('-F', '--filler', dest='filler',
-                        help='set to read filler results',
-                        default=False, required=False,
-                        action='store_true')
-    parser.add_argument('-R', '--reassign', dest='reassign',
-                        help='set to use reassignment target results',
-                        default=False, required=False,
-                        action='store_true')
-    parser.add_argument('-K', '--complete', dest='complete',
-                        help='set to use complete target results',
-                        default=False, required=False,
-                        action='store_true')
 
-    observatories = ['apo', 'lco']
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='observatory', required=True)
+
+    parser.add_argument('-r', '--reset', dest='reset',
+                        type=np.int32, help='reset (specific "db" or number)',
+                        required=True)
 
     args = parser.parse_args()
     plan = args.plan
-    opentargets = args.opentargets
-    filler = args.filler
-    reassign = args.reassign
-    complete = args.complete
-
-    if(int(opentargets) + int(reassign) + int(complete) + int(filler) > 1):
-        print("Cannot set more than one stage simultaneously!")
+    observatory = args.observatory
+    reset = args.reset
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -104,20 +80,15 @@ if __name__ == '__main__':
         if('version' in rsParams.cfg['CadenceVersions']):
             version = rsParams.cfg.get('CadenceVersions', 'version')
 
+    if('FinalCadenceRenaming' in rsParams.cfg):
+        rename_dict = rsParams.cfg['FinalCadenceRenaming']
+    else:
+        rename_dict = dict()
 
-    for observatory in observatories:
-        cadencelist = cadence.CadenceList(skybrightness_only=True)
-        cadencelist.reset()
-        cadences_file = sdss_path.full('rsCadences', plan=plan,
-                                       observatory=observatory)
-        cadencelist.fromfits(filename=cadences_file, unpickle=False)
-
-        allocate_file = sdss_path.full('rsAllocationFinal', plan=plan,
-                                       observatory=observatory)
-        fields = fitsio.read(allocate_file, ext=1)
-        ufieldid, iunique = np.unique(fields['fieldid'], return_index=True)
-        fields = fields[iunique]
-
-        with multiprocessing.Pool() as pool:
-            pool.map(process_field, np.arange(len(fields), dtype=int))
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    fields = fitsio.read(allocate_file, ext=1)
+    
+    with multiprocessing.Pool() as pool:
+        pool.map(process_field, np.arange(len(fields), dtype=int))
 

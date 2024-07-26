@@ -320,17 +320,16 @@ if __name__ == '__main__':
                 fields_array['slots_exposures'][ifield, :, :] = new_exp
                 fields_array['slots_time'][ifield, :, :] = new_time
 
-        # HACK to return cadences in the db
-        imixed22 = np.where(fields_array['cadence'] == b'mixed2_single_2x1')[0]
-        fields_array['cadence'][imixed22] = b'dark_2x1'
-        ib2 = np.where(fields_array['cadence'] == b'bright_single_2x1')[0]
-        fields_array['cadence'][ib2] = b'bright_2x1'
-        ib1 = np.where(fields_array['cadence'] == b'bright_single_1x1')[0]
-        fields_array['cadence'][ib1] = b'bright_1x1'
-
         for i, fc in enumerate(fields_array['cadence']):
-            if(fc != 'none'):
-                fields_array['cadence'][i] = fc
+            if(fc != b'none'):
+                fields_array['cadence'][i] = fc.decode() + '_' + version
+
+        if('FinalCadenceRenaming' in rsParams.cfg):
+            cadences = np.array([x.decode() for x in fields_array['cadence']])
+            for cadence_to_rename in rsParams.cfg['FinalCadenceRenaming']:
+                new_cadence_name = rsParams.cfg['FinalCadenceRenaming'][cadence_to_rename]
+                irename = np.where(cadences == cadence_to_rename)[0]
+                fields_array['cadence'][irename] = new_cadence_name
 
         fields_array_hdu = fits.BinTableHDU(fields_array)
         fields_hdu = fits.BinTableHDU(fields)
