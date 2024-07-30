@@ -21,23 +21,23 @@ def make_hybrid_cadence_new(original_name=None, hybrid_name=None, ndone_epochs=N
     nexp = clist.cadences[original_name].nexp[0:nepochs].copy()
     nexp[0:ndone_epochs] = nexpper
 
-    version = ''
-    clist.add_cadence(name=hybrid_name + version,
-                      nepochs=nepochs,
-                      skybrightness=clist.cadences[original_name].skybrightness[0:nepochs],
-                      delta=clist.cadences[original_name].delta[0:nepochs],
-                      delta_min=clist.cadences[original_name].delta_min[0:nepochs],
-                      delta_max=clist.cadences[original_name].delta_max[0:nepochs],
-                      nexp=nexp,
-                      max_length=clist.cadences[original_name].max_length[0:nepochs],
-                      min_moon_sep=clist.cadences[original_name].min_moon_sep[0:nepochs],
-                      min_deltav_ks91=clist.cadences[original_name].min_deltav_ks91[0:nepochs],
-                      min_twilight_ang=clist.cadences[original_name].min_twilight_ang[0:nepochs],
-                      max_airmass=clist.cadences[original_name].max_airmass[0:nepochs],
-                      obsmode_pk=clist.cadences[original_name].obsmode_pk[0:nepochs])
+    for version in ['', '_v2']:
+        clist.add_cadence(name=hybrid_name + version,
+                          nepochs=nepochs,
+                          skybrightness=clist.cadences[original_name].skybrightness[0:nepochs],
+                          delta=clist.cadences[original_name].delta[0:nepochs],
+                          delta_min=clist.cadences[original_name].delta_min[0:nepochs],
+                          delta_max=clist.cadences[original_name].delta_max[0:nepochs],
+                          nexp=nexp,
+                          max_length=clist.cadences[original_name].max_length[0:nepochs],
+                          min_moon_sep=clist.cadences[original_name].min_moon_sep[0:nepochs],
+                          min_deltav_ks91=clist.cadences[original_name].min_deltav_ks91[0:nepochs],
+                          min_twilight_ang=clist.cadences[original_name].min_twilight_ang[0:nepochs],
+                          max_airmass=clist.cadences[original_name].max_airmass[0:nepochs],
+                          obsmode_pk=clist.cadences[original_name].obsmode_pk[0:nepochs])
 
-    clist.cadences[hybrid_name + version].label_root = hybrid_name
-    clist.cadences[hybrid_name + version].label_version = version
+        clist.cadences[hybrid_name + version].label_root = hybrid_name
+        clist.cadences[hybrid_name + version].label_version = version
     
     return
 
@@ -48,22 +48,23 @@ def make_mixed_cadence(original_name=None, new_name=None):
     iepochs = np.arange(nepochs - 1, dtype=np.int32) + 1
     iepochs = np.append([0], iepochs)
 
-    clist.add_cadence(name=new_name + version,
-                      nepochs=nepochs,
-                      skybrightness=clist.cadences[original_name].skybrightness[iepochs],
-                      delta=clist.cadences[original_name].delta[iepochs],
-                      delta_min=clist.cadences[original_name].delta_min[iepochs],
-                      delta_max=clist.cadences[original_name].delta_max[iepochs],
-                      nexp=clist.cadences[original_name].nexp[iepochs],
-                      max_length=clist.cadences[original_name].max_length[iepochs],
-                      min_moon_sep=clist.cadences[original_name].min_moon_sep[iepochs],
-                      min_deltav_ks91=clist.cadences[original_name].min_deltav_ks91[iepochs],
-                      min_twilight_ang=clist.cadences[original_name].min_twilight_ang[iepochs],
-                      max_airmass=clist.cadences[original_name].max_airmass[iepochs],
-                      obsmode_pk=clist.cadences[original_name].obsmode_pk[iepochs])
-
-    clist.cadences[new_name + version].label_root = new_name
-    clist.cadences[new_name + version].label_version = version
+    for version in ['', '_v2']:
+        clist.add_cadence(name=new_name + version,
+                          nepochs=nepochs,
+                          skybrightness=clist.cadences[original_name].skybrightness[iepochs],
+                          delta=clist.cadences[original_name].delta[iepochs],
+                          delta_min=clist.cadences[original_name].delta_min[iepochs],
+                          delta_max=clist.cadences[original_name].delta_max[iepochs],
+                          nexp=clist.cadences[original_name].nexp[iepochs],
+                          max_length=clist.cadences[original_name].max_length[iepochs],
+                          min_moon_sep=clist.cadences[original_name].min_moon_sep[iepochs],
+                          min_deltav_ks91=clist.cadences[original_name].min_deltav_ks91[iepochs],
+                          min_twilight_ang=clist.cadences[original_name].min_twilight_ang[iepochs],
+                          max_airmass=clist.cadences[original_name].max_airmass[iepochs],
+                          obsmode_pk=clist.cadences[original_name].obsmode_pk[iepochs])
+        
+        clist.cadences[new_name + version].label_root = new_name
+        clist.cadences[new_name + version].label_version = version
     
     return
 
@@ -106,11 +107,12 @@ if __name__ == '__main__':
             if(nnotdone_epochs > 0):
                 for prefix in ['bright', 'bright_single']:
                     complete_name = '{prefix}_{d}x{p}'.format(prefix=prefix, p=nexpper, d=ndone_epochs)
-                    hybrid_names.append(complete_name)
-                    print(complete_name, flush=True)
-                    make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
-                                            nexpper=nexpper, ndone_epochs=ndone_epochs,
-                                            nepochs=ndone_epochs)
+                    if(complete_name not in clist.cadences):
+                        hybrid_names.append(complete_name)
+                        print(complete_name, flush=True)
+                        make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
+                                                nexpper=nexpper, ndone_epochs=ndone_epochs,
+                                                nepochs=ndone_epochs)
 
                     hybrid_name = '{prefix}_{d}x{p}+{nd}x1'.format(prefix=prefix, p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
                     hybrid_names.append(hybrid_name)
@@ -126,13 +128,15 @@ if __name__ == '__main__':
             nnotdone_epochs = clist.cadences[original_name].nepochs - ndone_epochs
             if(nnotdone_epochs > 0):
                 complete_name = 'bright_{d}x{p}'.format(p=nexpper, d=ndone_epochs)
-                hybrid_names.append(complete_name)
-                print(complete_name, flush=True)
-                make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
-                                        nexpper=nexpper, ndone_epochs=ndone_epochs,
-                                        nepochs=ndone_epochs)
+                if(complete_name not in clist.cadences):
+                    hybrid_names.append(complete_name)
+                    print(complete_name, flush=True)
+                    make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
+                                            nexpper=nexpper, ndone_epochs=ndone_epochs,
+                                            nepochs=ndone_epochs)
 
                 hybrid_name = 'bright_{d}x{p}+{nd}x1'.format(p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
+                hybrid_names.append(hybrid_name)
                 print(hybrid_name)
                 make_hybrid_cadence_new(original_name=original_name, hybrid_name=hybrid_name,
                                         nexpper=nexpper, ndone_epochs=ndone_epochs)
@@ -145,14 +149,15 @@ if __name__ == '__main__':
             nnotdone_epochs = clist.cadences[original_name].nepochs - ndone_epochs
             if(nnotdone_epochs > 0):
                 complete_name = 'bright_{d}x{p}'.format(p=nexpper, d=ndone_epochs)
-                hybrid_names.append(complete_name)
-                print(complete_name, flush=True)
-                make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
-                                        nexpper=nexpper, ndone_epochs=ndone_epochs,
-                                        nepochs=ndone_epochs)
+                if(complete_name not in clist.cadences):
+                    hybrid_names.append(complete_name)
+                    print(complete_name, flush=True)
+                    make_hybrid_cadence_new(original_name=original_name, hybrid_name=complete_name,
+                                            nexpper=nexpper, ndone_epochs=ndone_epochs,
+                                            nepochs=ndone_epochs)
 
                 hybrid_name = 'bright_{d}x{p}+{nd}x2'.format(p=nexpper, d=ndone_epochs, nd=nnotdone_epochs)
-                print(hybrid_name)
+                hybrid_names.append(hybrid_name)
                 make_hybrid_cadence_new(original_name=original_name, hybrid_name=hybrid_name,
                                         nexpper=nexpper, ndone_epochs=ndone_epochs)
 
@@ -160,7 +165,6 @@ if __name__ == '__main__':
     for c in cadences:
         if('mixed2_' in c):
             new_name = c.replace('mixed2_', 'mixed_')
-            print(new_name)
             make_mixed_cadence(c, new_name)
             hybrid_names.append(new_name)
 
@@ -171,10 +175,8 @@ if __name__ == '__main__':
     cadences = [c for c in clist.cadences]
     for c in cadences:
         if(clist.cadences[c].label_root not in hybrid_names):
+            print("pop {c} {l}".format(c=c, l=clist.cadences[c].label_root))
             clist.cadences.pop(c)
-        else:
-            clist.cadences[c].label = clist.cadences[c].label_root + '_v2'
-            clist.cadences[c].label_version = '_v2'
             
     hybrid_cadences_file = cadences_file.replace('rsCadences', 'rsCadencesHybrid')
     clist.tocsv(filename=hybrid_cadences_file.replace('.fits', '.csv'))
