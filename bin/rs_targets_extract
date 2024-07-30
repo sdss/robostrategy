@@ -117,6 +117,7 @@ if __name__ == '__main__':
             nt = nt + robostrategy.targets.get_targets(name, version,
                                                        justcount=True, c2c=c2c)
         else:
+            print("Counting from carton file {c}".format(c=tmp_targets_file))
             nt = nt + len(fitsio.read(tmp_targets_file))
 
     targets = np.zeros(nt, dtype=robostrategy.targets.target_dtype)
