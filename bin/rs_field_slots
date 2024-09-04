@@ -61,6 +61,12 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
     filled_sb : ndarray of np.int32
         filled exposures for each sky brightness
 
+    current_exposures_done : ndarray of np.int32
+        exposures done in current_cadence
+
+    option_exposures_done : ndarray of np.int32
+        exposures done in option_cadence
+
     Notes
     -----
 
@@ -87,7 +93,7 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
                                                         c=current_cadence), flush=True)
     print(" ...   {e}".format(e=current_exposures_done), flush=True)
 
-    # This checks whether the option under consideration expresses satisfies 
+    # This checks whether the option under consideration satisfies 
     # the conditions that the original cadence had for the exposures that
     # are already done.
     ok, epochs_done = robostrategy.allocate.option_epochs_done(option_cadence=option_cadence,
@@ -139,19 +145,11 @@ if __name__ == '__main__':
     parser.add_argument('-S', '--no-status', dest='nostatus',
                         help='do not use status', required=False,
                         default=False, action='store_true')
-    parser.add_argument('-s', '--start', dest='start',
-                        type=np.int32, help='field to start', required=False,
-                        default=0)
-    parser.add_argument('-e', '--end', dest='end',
-                        type=np.int32, help='field to end', required=False,
-                        default=-1)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     nostatus = args.nostatus
-    start = args.start
-    end = args.end
 
     rsParams = params.RobostrategyParams(plan=plan)
 
