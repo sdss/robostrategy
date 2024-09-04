@@ -129,14 +129,17 @@ def assign_update(indx):
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
-    rmcadences = ['dark_174x8_v1', 'dark_100x8_v1',
+    rmcadences = ['dark_174x8', 'dark_100x8',
+                  'dark_174x8_v1', 'dark_100x8_v1',
                   'dark_174x8_v2', 'dark_100x8_v2']
 
     if(allocate.field_array['cadence'][iallocate] in rmcadences):
         print("fieldid {fid}: Not reassigning RM field, do not make grids".format(fid=fieldid), flush=True)
         allgrids = False
+        noincadence = True
     else:
         allgrids = True
+        noincadence = True
 
     f = extra_field.extra_Field(filename=field_target_file, verbose=True,
                                 veryverbose=veryverbose,
@@ -145,7 +148,8 @@ def assign_update(indx):
                                 noassign=True, input_design_mode=dmodes,
                                 reset_bright=reset_bright,
                                 offset_min_skybrightness=offset_min_skybrightness,
-                                nooffset=nooffset, allgrids=allgrids)
+                                nooffset=nooffset, allgrids=allgrids,
+                                noincadence=noincadence)
     f.fieldid = fieldid
 
     if(f.field_cadence is None):
@@ -304,6 +308,9 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--catchup-version', dest='catchup_version',
                         help='catchup version', required=False,
                         default=None, type=str)
+    parser.add_argument('-r', '--reset-calibration', dest='resetcalibration',
+                        type=str, help='list of calibration requirements', required=False,
+                        default=None)
 
     args = parser.parse_args()
     plan = args.plan
@@ -320,9 +327,28 @@ if __name__ == '__main__':
     limit_pool = args.limit_pool
     catchup_version = args.catchup_version
     veryverbose = args.veryverbose
+    resetcalibration = args.resetcalibration
 
     if(catchup_version is not None):
         catchup = True
+
+    dmodes = mugatu.designmode.allDesignModes()
+    if(resetcalibration is not None):
+        for resetstr in resetcalibration.split(','):
+            modecalib, value = resetstr.split('=')
+            mode, typename, instrname = modecalib.split('_')
+            calibname = typename + "_" + instrname
+            if(typename == 'sky'):
+                nm = 'skies'
+            elif(typename == 'standard'):
+                nm = 'stds'
+            else:
+                raise ValueError("No type {t}".format(t=typename))
+            for d in dmodes: 
+                if(mode in d):
+                    print("Resetting calibration requirement {c} to {v} for {d}".format(c=calibname, v=value, d=d),
+                          flush=True)
+                    dmodes[d].__getattribute__('n_{nm}_min'.format(nm=nm))[instrname.upper()] = np.int32(value)
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -371,8 +397,6 @@ if __name__ == '__main__':
 
     # Rely on this for list of fields
     allocate_final = fitsio.read(allocate_final_file)
-
-    dmodes = mugatu.designmode.allDesignModes() 
 
     fieldids, indx = np.unique(allocate_final['fieldid'], return_index=True)
     neededs = np.zeros(len(fieldids), dtype=int)
