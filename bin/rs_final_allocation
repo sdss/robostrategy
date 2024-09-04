@@ -76,15 +76,15 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='name of observatory', required=False,
                         choices=['lco', 'apo', 'both'], default='both')
-    parser.add_argument('-s', '--split-nocadence', dest='split_nocadence',
-                        help='split off after 18 bright epochs', required=False,
+    parser.add_argument('-S', '--no-split-nocadence', dest='no_split_nocadence',
+                        help='do not split off after 18 bright epochs', required=False,
                         default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     reset = args.reset
     observatory = args.observatory
-    split_nocadence = args.split_nocadence
+    split_nocadence = (args.no_split_nocadence == False)
     
     if(observatory == 'both'):
         observatories = ['apo', 'lco']
@@ -277,6 +277,46 @@ if __name__ == '__main__':
                         print(fields_array['fieldid'][ifield])
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
+                elif(curr_cadence_name[0:12] == 'mixed_single'):
+                    if((iexpst == 0) & (iexpnd == 0)):
+                        fields_array['cadence'][ifield] = 'dark_1x1'
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='dark',
+                                                        ndark=1,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[1] = 0
+                    elif((iexpst == 1) & (iexpnd <= 18)):
+                        fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='bright',
+                                                        ndark=1,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = 0
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
+                    elif(iexpst == 1):
+                        fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='bright',
+                                                        ndark=1,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = 0
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
+                    elif((iexpst >= 19) & (split_nocadence == True)):
+                        fields_array['cadence'][ifield] = 'bright_flexible_{n}x1'.format(n=nexp_total)
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='bright',
+                                                        ndark=1,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = 0
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
+                    else:
+                        print(fields_array['fieldid'][ifield])
+                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        sys.exit(3)
                 elif(curr_cadence_name[0:13] == 'bright_single'):
                     if((iexpst == 0) & (iexpnd <= 17)):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
@@ -319,6 +359,14 @@ if __name__ == '__main__':
                 fields_array['nallocated'][ifield] = fields_array['nallocated_sb'][ifield, :].sum()
                 fields_array['slots_exposures'][ifield, :, :] = new_exp
                 fields_array['slots_time'][ifield, :, :] = new_time
+                iexpdone = np.where((fields_array['allocated_exposures_done'][ifield] >= iexpst) &
+                                    (fields_array['allocated_exposures_done'][ifield] <= iexpnd))[0]
+                aexpdone = fields_array['allocated_exposures_done'][ifield, iexpdone]
+                fields_array['allocated_exposures_done'][ifield, :] = -1
+                fields_array['allocated_exposures_done'][ifield, 0:len(aexpdone)] = aexpdone
+                oexpdone = fields_array['original_exposures_done'][ifield, iexpdone]
+                fields_array['original_exposures_done'][ifield, :] = -1
+                fields_array['original_exposures_done'][ifield, 0:len(oexpdone)] = oexpdone
 
         for i, fc in enumerate(fields_array['cadence']):
             if(fc != b'none'):
