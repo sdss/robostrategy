@@ -710,7 +710,7 @@ class Field(object):
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
                  noassign=False, oldmag=False, reload_design_mode=False,
-                 input_design_mode=None, reset_bright=False,
+                 input_design_mode=None, reset_bright=False, noincadence=False,
                  offset_min_skybrightness=None, nooffset=False):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
@@ -723,6 +723,7 @@ class Field(object):
         self.nooffset = nooffset
         self.preferred_robotids = None
         self.verbose = verbose
+        self.noincadence = noincadence
         self.oldmag = oldmag
         self.veryverbose = veryverbose
         self._trim_cadence_version = trim_cadence_version  # trims field cadence
@@ -2333,16 +2334,21 @@ class Field(object):
                                                       field_skybrightness)
 
         # Determine if it is within the field cadence
-        if(self.verbose):
-            print("fieldid {fieldid}: Check cadences".format(fieldid=self.fieldid), flush=True)
-        for itarget, target_cadence in enumerate(targets['cadence']):
-            if(self.veryverbose):
-                  print("fieldid {fieldid}: Checking {rsid} with cadence {c}".format(fieldid=self.fieldid, rsid=targets['rsid'][itarget], c=targets['cadence'][itarget]))
+        if(self.noincadence is False):
+            if(self.verbose):
+                print("fieldid {fieldid}: Check cadences".format(fieldid=self.fieldid), flush=True)
+            for itarget, target_cadence in enumerate(targets['cadence']):
+                if(self.veryverbose):
+                    print("fieldid {fieldid}: Checking {rsid} with cadence {c}".format(fieldid=self.fieldid, rsid=targets['rsid'][itarget], c=targets['cadence'][itarget]))
                   
-            if(target_cadence in clist.cadences):
-                ok, solns = clist.cadence_consistency(target_cadence,
-                                                      self.field_cadence.name)
-                assignments['incadence'][itarget] = ok
+                if(target_cadence in clist.cadences):
+                    ok, solns = clist.cadence_consistency(target_cadence,
+                                                          self.field_cadence.name)
+                    assignments['incadence'][itarget] = ok
+        else:
+            if(self.verbose):
+                print("fieldid {fieldid}: Do not check cadences".format(fieldid=self.fieldid), flush=True)
+            assignments['incadence'] = True
         
         if(self.verbose):
             print("fieldid {fieldid}: Setup allowed".format(fieldid=self.fieldid), flush=True)
