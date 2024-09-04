@@ -341,6 +341,9 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--fields', dest='fields',
                         type=str, help='fields to run', required=False,
                         default=None)
+    parser.add_argument('-S', '--no-summary', dest='nosummary',
+                        help='do not make summary file', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-C', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
@@ -369,6 +372,7 @@ if __name__ == '__main__':
     noclobber = args.noclobber
     nomultiprocessing = args.nomultiprocessing
     limit_pool = args.limit_pool
+    nosummary = args.nosummary
 
     if(fieldids_str is not None):
         fieldids = [np.int32(x) for x in fieldids_str.split(',')]
@@ -471,6 +475,9 @@ if __name__ == '__main__':
             field_options(ifield)
 
     if(test):
+        sys.exit(0)
+
+    if(nosummary):
         sys.exit(0)
 
     # Concatenate all
