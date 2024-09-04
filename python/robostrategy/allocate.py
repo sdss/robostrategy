@@ -80,15 +80,28 @@ def option_epochs_done(option_cadence=None, current_cadence=None,
 
     print(" ... Calling specific_cadence_consistency()", flush=True)
     ok, epochs_list = clist.specific_cadence_consistency(current_cadence, option_cadence,
-                                                         current_epochs, limit=1000)
+                                                         current_epochs, sequential=True)
     if(not ok):
+        return(False, np.array([], dtype=np.int32))
+
+    # Make sure that if delta is reset we respect that
+    print(" ... Cycling through epochs_list", flush=True)
+    epochs_keep = []
+    for indx, epochs in enumerate(epochs_list):
+        deltazerosame = ((clist.cadences[current_cadence].delta[current_epochs] <= 0) ==
+                         (clist.cadences[option_cadence].delta[epochs] <= 0)).min()
+        if(deltazerosame):
+            epochs_keep.append(epochs)
+    epochs_list = epochs_keep
+
+    if(len(epochs_list) == 0):
         return(False, np.array([], dtype=np.int32))
 
     # Now pick an option which minimizes the number of originally-bright cadences
     # associated with dark epochs
     nbright_in_dark = np.zeros(len(epochs_list), dtype=np.int32)
     lowest = -1
-    print(" ... Cycling through epochs_list", flush=True)
+    print(" ... Cycling through epochs_list to minimize bright-to-dark", flush=True)
     for indx, epochs in enumerate(epochs_list):
         nbright_in_dark[indx] = (clist.cadences[current_cadence].skybrightness[current_epochs] >
                                  clist.cadences[option_cadence].skybrightness[epochs]).sum()
@@ -431,9 +444,11 @@ class AllocateLST(object):
                 curr_options = curr_options[ic]
                 curr_cadences = curr_cadences[ic]
 
-            alloc = collections.OrderedDict()
+            # Count options that will work
+            nworkable = 0
+            max_fgot = - 1.
+            max_cadence = None
             curr_zip = zip(curr_slots, curr_options, curr_cadences)
-            self.some_filled[fieldid] = False
             for curr_slot, curr_option, curr_cadence in curr_zip:
                 # Skip not-allowed options
                 if(curr_slot['allowed'] == False):
@@ -445,8 +460,22 @@ class AllocateLST(object):
                     fgot = curr_option['ngot_pct'][ifgot_carton] / ngot_max
                     if((ntarget > self.fgot_conditions['ntarget_minimum']) &
                        ((fgot < self.fgot_conditions['minimum']) |
-                        (fgot > self.fgot_conditions['maximum']))):
+                        (fgot > self.fgot_conditions['maximum'])) &
+                       (fieldid not in self.fgot_conditions['exempt_fields'])):
+                        if(fgot > max_fgot):
+                            max_fgot = fgot
+                            max_cadence = curr_cadence
                         continue
+
+                nworkable = nworkable + 1
+
+            alloc = collections.OrderedDict()
+            curr_zip = zip(curr_slots, curr_options, curr_cadences)
+            self.some_filled[fieldid] = False
+            for curr_slot, curr_option, curr_cadence in curr_zip:
+                # Skip not-allowed options
+                if(curr_slot['allowed'] == False):
+                    continue
 
                 minsb = self.cadencelist.cadences[curr_cadence].skybrightness.min()
                 if(minsb < 1.):
@@ -474,6 +503,21 @@ class AllocateLST(object):
                 alloc[curr_cadence]['ngot_pct'] = curr_option['ngot_pct'].copy()
                 alloc[curr_cadence]['value'] = float(curr_option['valuegot'] *
                                                      prefer)
+
+                # Skip option which doesn't have enough of the right carton
+                alloc[curr_cadence]['skip'] = False
+                if(self.fgot_conditions is not None):
+                    ntarget = curr_option['nwithin_pct'][ifgot_carton]
+                    fgot = curr_option['ngot_pct'][ifgot_carton] / ngot_max
+                    if((ntarget > self.fgot_conditions['ntarget_minimum']) &
+                       ((fgot < self.fgot_conditions['minimum']) |
+                        (fgot > self.fgot_conditions['maximum'])) &
+                       (fieldid not in self.fgot_conditions['exempt_fields'])):
+                        if((nworkable == 0) & (curr_cadence == max_cadence)): 
+                            print("fieldid {fid}: Not skipping option {c} with nt={nt} and fgot={fg}, because it is best we can do".format(fid=fieldid, c=curr_option['cadence'], fg=fgot, nt=ntarget))
+                        else:
+                            print("fieldid {fid}: Skipping option {c} with nt={nt} and fgot={fg}".format(fid=fieldid, c=curr_option['cadence'], fg=fgot, nt=ntarget))
+                            alloc[curr_cadence]['skip'] = True
 
 
             self.allocinfo[fieldid] = alloc
@@ -532,6 +576,9 @@ class AllocateLST(object):
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
+                if(ccadence['skip']):
+                    continue
+
                 ccadence['nvars'] = 0
                 for ilst in np.arange(self.slots.nlst, dtype=np.int32):
                     for iskybrightness in np.arange(self.slots.nskybrightness, dtype=np.int32):
@@ -559,6 +606,9 @@ class AllocateLST(object):
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
+                if(ccadence['skip']):
+                    continue
+
                 if(cadence in self.observe_all_cadences):
                     minval = float(ccadence['needed'] * 0.95 - ccadence['filled'])
                 else:
@@ -613,6 +663,8 @@ class AllocateLST(object):
                                                      1. + epsilon)
                 for cadence in self.allocinfo[fieldid]:
                     ccadence = self.allocinfo[fieldid][cadence]
+                    if(ccadence['skip']):
+                        continue
 
                     invneeded = 1. / (ccadence['needed'] - ccadence['filled'] + epsprime)
 
@@ -650,6 +702,9 @@ class AllocateLST(object):
                     field_deccen = self.fields['deccen'][ifield]
                     for cadence in self.allocinfo[fieldid]:
                         ccadence = self.allocinfo[fieldid][cadence]
+                        if(ccadence['skip']):
+                            continue
+
                         if(ccadence['slots'][ilst, iskybrightness] > 0):
                             xfactor = self.xfactor(racen=field_racen,
                                                    deccen=field_deccen,
@@ -684,6 +739,9 @@ class AllocateLST(object):
             field_deccen = self.fields['deccen'][ifield]
             for cadence in self.allocinfo[fieldid]:
                 ccadence = self.allocinfo[fieldid][cadence]
+                if(ccadence['skip']):
+                    continue
+
                 ccadence['allocation'] = np.zeros((self.slots.nlst,
                                                    self.slots.nskybrightness),
                                                   dtype=np.float32)
@@ -746,6 +804,9 @@ class AllocateLST(object):
             for indx, cadence in zip(np.arange(ncadence),
                                      self.allocinfo[fieldid]):
                 ccadence = self.allocinfo[fieldid][cadence]
+                if(ccadence['skip']):
+                    continue
+
                 print("fieldid {fid} {c} {t}".format(fid=fieldid, c=cadence,
                                                      t=ccadence['allocation'].sum()),
                       flush=True)
@@ -802,6 +863,7 @@ class AllocateLST(object):
                 # If the total number of slots is not signficant, pick a cadence
                 # that doesn't require any more observations
                 for current_cadence in self.allocinfo[fieldid]:
+                    print("fieldid {fid}: checking if {c} is fulfilled already".format(c=current_cadence, fid=fieldid))
                     if(np.max(np.array(self.allocinfo[fieldid][current_cadence]['needed_sb']) -
                               np.array(self.allocinfo[fieldid][current_cadence]['filled_sb'])) == 0):
                         chosen_cadence = current_cadence
