@@ -195,11 +195,18 @@ if __name__ == '__main__':
         fgot_ntarget_minimum = np.int32(rsParams.cfg['Assignment']['fgot_ntarget_minimum'])
     else:
         fgot_ntarget_minimum = 0
+    if('fgotExemptFields' in rsParams.cfg['Allocation']):
+        fgot_exempt_fields = np.array([np.int32(x)
+                                       for x in rsParams.cfg['Allocation']['fgotExemptFields'].split()])
+        print("Exempting fields from fgot conditions: {x}".format(x=fgot_exempt_fields))
+    else:
+        fgot_exempt_fields = np.zeros(0, dtype=np.int32)
     fgot_conditions = dict()
     fgot_conditions['carton'] = fgot_carton
     fgot_conditions['minimum'] = fgot_minimum
     fgot_conditions['maximum'] = fgot_maximum
     fgot_conditions['ntarget_minimum'] = fgot_ntarget_minimum
+    fgot_conditions['exempt_fields'] = fgot_exempt_fields
 
     minimum_ntargets = dict()
     amtstr = 'AllocationMinimumTargetsAt{obs}'.format(obs=observatory.upper())
