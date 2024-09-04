@@ -59,7 +59,8 @@ if __name__ == '__main__':
     fields_north_array = np.zeros(0, dtype=fields_dtype)
     fields_south_array = np.zeros(0, dtype=fields_dtype)
 
-    if('AllSkySloane' in rsParams.cfg.options('Fields')):
+    if(('AllSkySloane' in rsParams.cfg.options('Fields')) |
+       ('AllSkySparse' in rsParams.cfg.options('Fields'))):
         nsdiv = np.float32(rsParams.cfg.get('Fields', 'NSDiv'))
         if('lcoextend_gp' in rsParams.cfg['Fields']):
             lcoextend_gp = True
@@ -82,6 +83,7 @@ if __name__ == '__main__':
         else:
             nsloane_apo = 7682
         fields_north = sloane.Sloane(n=nsloane_apo, radius=1.49)
+
         if('LCOSloaneNumber' in rsParams.cfg['Fields']):
             nsloane_lco = int(rsParams.cfg['Fields']['LCOSloaneNumber'])
         else:
