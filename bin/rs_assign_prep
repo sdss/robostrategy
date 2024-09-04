@@ -31,6 +31,11 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 noclobber = False
 bright_stars_cache = None
+dms = None
+
+rmcadences = ['dark_174x8', 'dark_100x8',
+              'dark_174x8_v1', 'dark_100x8_v1',
+              'dark_174x8_v2', 'dark_100x8_v2']
 
 def prep_field(indx):
     import robostrategy.field as field
@@ -54,7 +59,8 @@ def prep_field(indx):
 
     f = field.Field(filename=field_target_file, verbose=True,
                     fieldid=fieldid, collisionBuffer=collisionBuffer,
-                    bright_neighbors=True, allgrids=False)
+                    bright_neighbors=True, allgrids=False,
+                    input_design_mode=dms)
 
     if((bright_stars_cache is not None) &
        (field_cadence != 'none')):
@@ -79,6 +85,11 @@ def prep_field(indx):
     print("fieldid {f}: Set field cadence".format(f=fieldid), flush=True)
     icalib = np.where(f.targets['category'] != 'science')[0]
     f.targets['cadence'][icalib] = field_cadence
+    
+    if(allocate['cadence'][indx] in rmcadences):
+        print("fieldid {fid}: Not reassigning RM field, do not set incadence".format(fid=fieldid), flush=True)
+        f.noincadence = True
+
     f.set_field_cadence(field_cadence)
 
     print("fieldid {f}: Write prepped file".format(f=fieldid), flush=True)
@@ -111,6 +122,9 @@ if __name__ == '__main__':
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-r', '--reset-calibration', dest='resetcalibration',
+                        type=str, help='list of calibration requirements', required=False,
+                        default=None)
 
     args = parser.parse_args()
     plan = args.plan
@@ -119,7 +133,29 @@ if __name__ == '__main__':
     end = args.end
     noclobber = args.noclobber
     nomultiprocess = args.nomultiprocess
+    resetcalibration = args.resetcalibration
 
+    if(resetcalibration is not None):
+        import mugatu.designmode
+        dms = mugatu.designmode.allDesignModes()
+        for resetstr in resetcalibration.split(','):
+            modecalib, value = resetstr.split('=')
+            mode, typename, instrname = modecalib.split('_')
+            calibname = typename + "_" + instrname
+            if(typename == 'sky'):
+                nm = 'skies'
+            elif(typename == 'standard'):
+                nm = 'stds'
+            else:
+                raise ValueError("No type {t}".format(t=typename))
+            for d in dms: 
+                if(mode in d):
+                    print("Resetting calibration requirement {c} to {v} for {d}".format(c=calibname, v=value, d=d),
+                          flush=True)
+                    dms[d].__getattribute__('n_{nm}_min'.format(nm=nm))[instrname.upper()] = np.int32(value)
+    else:
+        dms = None
+                
     rsParams = params.RobostrategyParams(plan=plan)
 
     collisionBuffer = 2.
@@ -151,7 +187,7 @@ if __name__ == '__main__':
             prep_field(i)
     else:
         if(bright_stars_cache is None):
-            with multiprocessing.Pool(4) as pool:
+            with multiprocessing.Pool(2) as pool:
                 pool.map(prep_field, ikeep)
         else:
             with multiprocessing.Pool() as pool:
