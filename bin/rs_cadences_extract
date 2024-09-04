@@ -75,18 +75,19 @@ if __name__ == '__main__':
         prog=os.path.basename(sys.argv[0]),
         description='Retrieve cadences from targetdb')
 
-    parser.add_argument('-n', '--ncadence', dest='ncadence',
-                        type=np.int32, help='max number of cadences',
-                        default=100)
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='apo or lco',
                         choices=['apo', 'lco'], required=True)
+    parser.add_argument('-r', '--rm-include', dest='rminclude',
+                        help='include special caching for RM cadences', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    rminclude = args.rminclude
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -141,31 +142,33 @@ if __name__ == '__main__':
     cadences_array = cadencelist.toarray()
     fitsio.write(cadences_file, cadences_array, clobber=True)
 
-    # For cadences with many epochs, we will not solve explicitly for
-    # all of the possibilities in RM fields; instead, we will 
-    # assume very strict target cadences.
-    for cn in cadencelist.cadences:
-        if((cadencelist.cadences[cn].nepochs >= 5) &
-           ('single' not in cn) &
-           ('flexible' not in cn)):
-            cadencelist.cadences[cn].delta_min = cadencelist.cadences[cn].delta - 0.5
-            cadencelist.cadences[cn].delta_max = cadencelist.cadences[cn].delta + 1.
-            print("{cn}: special case for consistency with RM fields".format(cn=cn))
-            c = cadencelist.cadence_consistency(cn, 'dark_174x8')
-            print(c[0])
-            if(schedule_prefix == 'minimal'):
-                c = cadencelist.cadence_consistency(cn, 'dark_138x8')
-                print(c[0])
-            c = cadencelist.cadence_consistency(cn, 'dark_100x8')
-            print(c[0])
-        else:
-            if(('single' not in cn) and
+    if(rminclude):
+        # For cadences with many epochs, we will not solve explicitly for
+        # all of the possibilities in RM fields; instead, we will 
+        # assume very strict target cadences.
+        for cn in cadencelist.cadences:
+            print(cn)
+            if((cadencelist.cadences[cn].nepochs >= 1) &
+               ('single' not in cn) &
                ('flexible' not in cn)):
-                print("{cn}: treat as normal for consistency with RM fields".format(cn=cn))
+                cadencelist.cadences[cn].delta_min = cadencelist.cadences[cn].delta - 0.5
+                cadencelist.cadences[cn].delta_max = cadencelist.cadences[cn].delta + 1.
+                print("{cn}: special case for consistency with RM fields".format(cn=cn))
                 c = cadencelist.cadence_consistency(cn, 'dark_174x8')
+                print(c[0])
                 if(schedule_prefix == 'minimal'):
                     c = cadencelist.cadence_consistency(cn, 'dark_138x8')
+                    print(c[0])
                 c = cadencelist.cadence_consistency(cn, 'dark_100x8')
+                print(c[0])
+            else:
+                if(('single' not in cn) and
+                   ('flexible' not in cn)):
+                    print("{cn}: treat as normal for consistency with RM fields".format(cn=cn))
+                    c = cadencelist.cadence_consistency(cn, 'dark_174x8')
+                    if(schedule_prefix == 'minimal'):
+                        c = cadencelist.cadence_consistency(cn, 'dark_138x8')
+                        c = cadencelist.cadence_consistency(cn, 'dark_100x8')
 
     # Now we allow robostrategy to enforce certain kinds 
     # of cadence consistency rules.
