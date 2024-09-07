@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
-        description='Final assignment based on allocation')
+        description='Summary for each field')
 
     parser.add_argument('-p', '--plan', dest='plan',
                         type=str, help='name of plan', required=True)
