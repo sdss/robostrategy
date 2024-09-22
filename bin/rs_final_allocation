@@ -109,7 +109,16 @@ if __name__ == '__main__':
         fieldid_use = check_fieldids[np.where(exists == False)[0]]
         iuse = 0
     else:
-        reset = np.int32(reset)
+        if(args.reset == None):
+            if(observatory == 'apo'):
+                reset = 100000
+            elif(observatory == 'lco'):
+                reset = 104670
+            else:
+                raise ValueError("Bad observatory {o}".format(o=observatory))
+        else:
+            reset = np.int32(reset)
+
         fieldid_use = reset + np.arange(100000, dtype=np.int32)
         iuse = 0
 
@@ -371,6 +380,10 @@ if __name__ == '__main__':
         for i, fc in enumerate(fields_array['cadence']):
             if(fc != b'none'):
                 fields_array['cadence'][i] = fc.decode() + '_' + version
+
+        for i, fc in enumerate(fields_array['original_cadence']):
+            if(fc != b'none'):
+                fields_array['original_cadence'][i] = fc.decode() + '_' + version
 
         if('FinalCadenceRenaming' in rsParams.cfg):
             cadences = np.array([x.decode() for x in fields_array['cadence']])
