@@ -53,7 +53,7 @@ def assign_update(indx):
     fieldid = allocate_final['fieldid'][indx]
     rs_fieldid = allocate_final['rs_fieldid'][indx]
 
-    iallocate = np.where(allocate.field_array['fieldid'] == rs_fieldid)[0]
+    iallocate = np.where(allocate.field_array['fieldid'] == rs_fieldid)[0][0]
     
     print("fieldid {fid}: Update assignment".format(fid=fieldid), flush=True)
 
@@ -164,10 +164,43 @@ def assign_update(indx):
         print("fieldid {fid}: Not reassigning RM field, just copying".format(fid=fieldid), flush=True)
     else:
 
+        print("fieldid {fid}: Reassign original to allocated exposures".format(fid=fieldid),
+              flush=True)
+        (allowed, filled_sb,
+         original_exposures_done,
+         allocated_exposures_done) = robostrategy.allocate.calculate_filled(fieldid=fieldid,
+                                                                            field_status=status_field,
+                                                                            option_cadence=field_cadence_name,
+                                                                            current_cadence=allocate_final['original_cadence'][iallocate],
+                                                                            slots=slots,
+                                                                            use_rs_fieldid=False)
+
+        if(allowed is False):
+            print("fieldid {fid}: ERROR: current observations now do not fit into cadence; ignoring old observations".format(fid=fieldid))
+            status_field['status'] = 'not started'
+            status['status'] = 0
+        
+        they_differ = False
+        for iexp, original_exposure_done in enumerate(original_exposures_done):
+            if(original_exposure_done != allocate.field_array['original_exposures_done'][iallocate][iexp]):
+                they_differ = True
+                break
+        for iexp, allocated_exposure_done in enumerate(allocated_exposures_done):
+            if(allocated_exposure_done != allocate.field_array['allocated_exposures_done'][iallocate][iexp]):
+                they_differ = True
+                break
+
+        if(they_differ):
+            print("fieldid {fid}: Reassignment disagrees with allocation step's assignment of exposures (using the former)".format(fid=fieldid), flush=True)
+            print("fieldid {fid}:   allocated_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['allocated_exposures_done'][iallocate]))
+            print("fieldid {fid}:   original_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['original_exposures_done'][iallocate]))
+            print("fieldid {fid}:   allocated_exposures_done (reassignment): {a}".format(fid=fieldid, a=allocated_exposures_done))
+            print("fieldid {fid}:   original_exposures_done (reassignment): {a}".format(fid=fieldid, a=original_exposures_done))
+
         print("fieldid {fid}: Set design status".format(fid=fieldid), flush=True)
         f.set_design_status_from_status_field(status_field=status_field,
-                                              allocated_exposures_done=allocate.field_array['allocated_exposures_done'][iallocate],
-                                              original_exposures_done=allocate.field_array['original_exposures_done'][iallocate])
+                                              allocated_exposures_done=allocated_exposures_done,
+                                              original_exposures_done=original_exposures_done)
 
         icsa = list(f.calibration_order).index('standard_apogee')
         f.required_calibrations_per_zone[icsa + 1] = standard_apogee_nperzone_min
@@ -382,6 +415,13 @@ if __name__ == '__main__':
     cadences_file = cadences_file.replace('rsCadences',
                                           'final/rsCadencesFinal')
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
+
+    slots_file = sdss_path.full('rsSlots', plan=plan,
+                                observatory=observatory)
+    slots = robostrategy.slots.Slots(observatory=observatory)
+    slots.fromfits(filename=slots_file)
+    extra = rsParams.cfg.get('Allocation', 'ExtraTimeFactor')
+    slots.slots = slots.slots * np.float32(extra)
 
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
