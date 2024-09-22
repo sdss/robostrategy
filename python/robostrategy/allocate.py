@@ -26,6 +26,111 @@ except ImportError:
     basemap = None
 
 
+def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
+                     current_cadence=None, slots=None, use_rs_fieldid=True):
+    """Calculate filled exposure counts given current status
+
+    Parameters
+    ----------
+
+    fieldid : int
+        field ID
+
+    field_status : ndarray
+        array with status informion
+
+    slots : robostrategy.slots.Slots object
+        information about sky brightness and LST slots
+
+    option_cadence : str
+        cadence we are trying
+
+    current_cadence : str
+        current cadence
+
+    Returns
+    ------
+
+    allowed : bool
+        is this option allowed?
+
+    filled_sb : ndarray of np.int32
+        filled exposures for each sky brightness
+
+    current_exposures_done : ndarray of np.int32
+        exposures done in current_cadence
+
+    option_exposures_done : ndarray of np.int32
+        exposures done in option_cadence
+
+    use_rs_fieldid : bool
+        if True, match on rs_fieldid instead of fieldid
+
+    Notes
+    -----
+
+    If the field hasn't been started, all cadences are allowed.
+
+    If the field has been started, only cadences which include the already-taken cadences
+    are allowed.
+""" 
+    cadencelist = rcadence.CadenceList(skybrightness_only=True)
+
+    if(use_rs_fieldid):
+        ifield = np.where(field_status['rs_fieldid'] == fieldid)[0]
+    else:
+        ifield = np.where(field_status['fieldid'] == fieldid)[0]
+    curr_field_status = field_status[ifield]
+    idone = np.where(curr_field_status['status'] == 'done')
+    current_exposures_done_flag = np.zeros(cadencelist.cadences[current_cadence].nexp_total,
+                                           dtype=bool)
+    current_exposures_done_flag[curr_field_status['field_exposure'][idone]] = True
+    current_exposures_done = np.where(current_exposures_done_flag)[0]
+    filled_sb = np.zeros(slots.nskybrightness, dtype=np.int32)
+
+    if(len(current_exposures_done) == 0):
+        return(True, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
+
+    print(" ... Checking option {o} against {c}".format(o=option_cadence,
+                                                        c=current_cadence), flush=True)
+    print(" ...   {e}".format(e=current_exposures_done), flush=True)
+
+    # This checks whether the option under consideration satisfies 
+    # the conditions that the original cadence had for the exposures that
+    # are already done.
+    ok, epochs_done = robostrategy.allocate.option_epochs_done(option_cadence=option_cadence,
+                                                               current_cadence=current_cadence,
+                                                               current_exposures_done=current_exposures_done)
+
+    if(ok is False):
+        return(False, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
+
+    # Now we check the reverse: does the original cadence satisfy the conditions
+    # that the option under consideration requires.
+    option_exposures_done = np.zeros(0, dtype=np.int32)
+    ocadence = cadencelist.cadences[option_cadence]
+    for epoch in epochs_done:
+        exps = ocadence.epoch_indx[epoch] + np.arange(ocadence.nexp[epoch], dtype=np.int32)
+        option_exposures_done = np.append(option_exposures_done, exps)
+    ok, epochs_done_reverse = robostrategy.allocate.option_epochs_done(option_cadence=current_cadence,
+                                                                       current_cadence=option_cadence,
+                                                                       current_exposures_done=option_exposures_done)
+
+    if(ok is False):
+        return(False, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
+
+    for epoch in epochs_done:
+        isb = -1
+        # well, that's a bit dangerous isn't it
+        # relies on skybrightness in cadence always <= 1
+        while((cadencelist.cadences[option_cadence].skybrightness[epoch] >
+               slots.skybrightness[isb + 1]) &
+              (cadencelist.cadences[option_cadence].skybrightness[epoch] <=
+               slots.skybrightness[isb + 2])):
+            isb = isb + 1
+        filled_sb[isb] = filled_sb[isb] + cadencelist.cadences[option_cadence].nexp[epoch]
+
+    return(True, filled_sb, current_exposures_done, option_exposures_done)
 
 
 def option_epochs_done(option_cadence=None, current_cadence=None,
@@ -493,6 +598,7 @@ class AllocateLST(object):
                 alloc[curr_cadence]['filled'] = curr_slot['filled_sb'].sum()
                 alloc[curr_cadence]['allocated_exposures_done'] = curr_slot['allocated_exposures_done']
                 alloc[curr_cadence]['original_exposures_done'] = curr_slot['original_exposures_done']
+                alloc[curr_cadence]['original_cadence'] = curr_slot['original_cadence']
                 alloc[curr_cadence]['filled'] = curr_slot['filled_sb'].sum()
 
                 # If there have been SOME observations of this field, note
@@ -779,6 +885,7 @@ class AllocateLST(object):
                              ('filled_sb', np.int32, self.slots.nskybrightness),
                              ('allocated_exposures_done', np.int32, 100),
                              ('original_exposures_done', np.int32, 100),
+                             ('original_cadence', np.unicode_, 30),
                              ('xfactor', np.float32,
                               (self.slots.nlst, self.slots.nskybrightness)),
                              ('slots_exposures', np.float32,
@@ -880,6 +987,7 @@ class AllocateLST(object):
                 field_array['filled'][findx] = self.allocinfo[fieldid][chosen_cadence]['filled']
                 field_array['allocated_exposures_done'][findx] = self.allocinfo[fieldid][chosen_cadence]['allocated_exposures_done']
                 field_array['original_exposures_done'][findx] = self.allocinfo[fieldid][chosen_cadence]['original_exposures_done']
+                field_array['original_cadence'][findx] = self.allocinfo[fieldid][chosen_cadence]['original_cadence']
                 slots_totals_total = slots_totals.sum()
                 if(slots_totals_total > 0):
                     normalize = ((field_array['needed_sb'][findx, :].sum() -
@@ -888,6 +996,9 @@ class AllocateLST(object):
                     field_array['slots_exposures'][findx, :, :] = (slots_totals * normalize)
                 else:
                     print("Something weird! slots_totals_total should not be zero here", flush=True)
+            else:
+                any_cadence = list(self.allocinfo[fieldid].keys())[0]
+                field_array['original_cadence'][findx] = self.allocinfo[fieldid][any_cadence]['original_cadence']
 
             field_array['nallocated'][findx] = np.int32(
                 field_array['slots_exposures'][findx, :, :].sum() + 0.001)
