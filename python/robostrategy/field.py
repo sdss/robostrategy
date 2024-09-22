@@ -1778,12 +1778,12 @@ class Field(object):
         ibad = np.where((in_original_exposures_done == True) &
                         (original_design_status['status'] != 'done'))[0]
         if(len(ibad) > 0):
-            raise ValueError("original_exposures_done has exposure without done status")
+            raise ValueError("fieldid {fid}: original_exposures_done has exposure without done status".format(fid=self.fieldid))
 
         ibad = np.where((in_original_exposures_done == False) &
                         (original_design_status['status'] == 'done'))[0]
         if(len(ibad) > 0):
-            raise ValueError("original_exposures_done missing an exposure with done status")
+            raise ValueError("fieldid {fid}: original_exposures_done missing an exposure with done status".format(fid=self.fieldid))
         
         design_status = np.zeros(self.field_cadence.nexp_total, dtype=design_status_dtype)
         design_status['fieldid'] = self.fieldid
