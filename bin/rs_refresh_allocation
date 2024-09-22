@@ -1,0 +1,179 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_refresh_allocation
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import multiprocessing
+import datetime
+import numpy as np
+import fitsio
+import roboscheduler.cadence as cadence
+import robostrategy.extra_field as extra_field
+import robostrategy.allocate
+import robostrategy.params as params
+import mugatu.designmode
+import sdss_access.path
+import time
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+cadencelist = cadence.CadenceList(skybrightness_only=True)
+
+
+def refresh_allocation(indx):
+    fieldid = allocate.field_array['fieldid'][indx]
+    field_cadence_name = allocate.field_array['cadence'][indx]
+
+    if(field_cadence_name == 'none'):
+        print("fieldid {f}: Skipping, no allocation".format(f=fieldid), flush=True)
+        return
+
+    iallocate = np.where(allocate.field_array['fieldid'] == fieldid)[0][0]
+    
+    field_status_file = sdss_path.full('rsFieldTargets',
+                                       plan=plan, observatory=observatory,
+                                       fieldid=fieldid + reset - 1)
+    field_status_file = field_status_file.replace('targets/rsFieldTargets',
+                                                  'final/rsFieldStatusMatch')
+
+    if(os.path.exists(field_status_file)):
+        print("fieldid {f}: Reading assignment status file".format(f=fieldid), flush=True)
+        status = fitsio.read(field_status_file, ext='TARGET')
+        status_field = fitsio.read(field_status_file, ext='FIELD')
+
+        iobs = np.where(status['status'] > 0)[0]
+        if(len(iobs) > 0):
+            print("fieldid {f}:   status found in {e}".format(f=fieldid,
+                                                              e=np.unique(status['field_exposure'][iobs])),
+                  flush=True)
+
+        iobs = np.where(status_field['status'] == 'done')[0]
+        if(len(iobs) > 0):
+            print("fieldid {f}:   designs marked done are {e}".format(f=fieldid,
+                                                                          e=iobs),
+                      flush=True)
+    else:
+        print("fieldid {f}: No assignment status file exists ".format(f=fieldid), flush=True)
+        status = None
+        status_field = None
+
+    (allowed, filled_sb,
+     original_exposures_done,
+     allocated_exposures_done) = robostrategy.allocate.calculate_filled(fieldid=fieldid,
+                                                                        field_status=status_field,
+                                                                        option_cadence=field_cadence_name,
+                                                                        current_cadence=allocate.field_array['original_cadence'][iallocate],
+                                                                        slots=slots,
+                                                                        use_rs_fieldid=False)
+
+    if(allowed is False):
+        print("fieldid {fid}: WARNING! current observations now do not fit into cadence; reverting to old cadence".format(fid=fieldid))
+        allocation.field_array['cadence'][iallocation] = allocation.field_array['original_cadence'][iallocation]
+        idone = np.where(status_field['status'] == 'done')[0]
+        iepochs_done = cadencelist.cadences[current_cadence].epochs[idone]
+        allocation.field_array['original_exposures_done'][iallocation][:] = -1
+        allocation.field_array['original_exposures_done'][iallocation][0:len(idone) - 1] = idone
+        allocation.field_array['allocated_exposures_done'][iallocation] = allocation.field_array['original_exposures_done'][iallocation]
+        ibright = np.where(cadencelist.cadences[current_cadence].skybrightness > 0.5)[0]
+        nbright = cadencelist.cadences[current_cadence].nexp[ibright].sum()
+        idark = np.where(cadencelist.cadences[current_cadence].skybrightness <= 0.5)[0]
+        ndark = cadencelist.cadences[current_cadence].nexp[idark].sum()
+        allocation.field_array['nallocated_full_sb'][iallocation] = np.array([ndark, nbright])
+        allocation.field_array['nallocated_full'][iallocation] = allocation.field_array['nallocated_full_sb'][iallocation].sum()
+        allocation.field_array['needed_sb'][iallocation] = allocation.field_array['nallocated_full_sb'][iallocation]
+        allocation.field_array['needed'][iallocation] = allocation.field_array['nallocated_full_sb'][iallocation].sum()
+        ibright_filled = np.where(cadencelist.cadences[current_cadence].skybrightness[iepochs_done] > 0.5)[0]
+        nbright_filled = len(ibright_filled)
+        idark_filled = np.where(cadencelist.cadences[current_cadence].skybrightness[iepochs_done] > 0.5)[0]
+        ndark_filled = len(idark_filled)
+        allocation.field_array['filled_sb'][iallocation] = np.array([ndark_filled, nbright_filled])
+        allocation.field_array['filled'][iallocation] = allocation.field_array['filled_sb'][iallocation].sum()
+        old_nallocated_sb = allocation.field_array['nallocated_sb'][iallocation]
+        allocation.field_array['nallocated_sb'][iallocation] = allocation.field_array['nallocated_sb_full'][iallocation] - allocation.field_array['filled_sb'][iallocation]
+        allocation.field_array['nallocated'][iallocation] = allocation.field_array['nallocated_sb'][iallocation].sum()
+        if(old_nallocated_sb[0] > 0):
+            dark_scale = allocation.field_array['nallocated_sb'][iallocation][0] / old_nallocated_sb[0]
+        else:
+            dark_scale = 1.
+        if(old_nallocated_sb[1] > 0):
+            bright_scale = allocation.field_array['nallocated_sb'][iallocation][1] / old_nallocated_sb[1]
+        else:
+            bright_scale = 1.
+        allocation.field_array['slots_exposures'][iallocation][:, 0] = \
+            allocation.field_array['slots_exposures'][iallocation][:, 0] * dark_scale
+        allocation.field_array['slots_exposures'][iallocation][:, 1] = \
+            allocation.field_array['slots_exposures'][iallocation][:, 1] * bright_scale
+        allocation.field_array['slots_time'][iallocation][:, 0] = \
+            allocation.field_array['slots_time'][iallocation][:, 0] * dark_scale
+        allocation.field_array['slots_time'][iallocation][:, 1] = \
+            allocation.field_array['slots_time'][iallocation][:, 1] * bright_scale
+        allocation.field_array['xfactor'][iallocation][:, :] = 1.
+        inz = np.where(allocation.field_array['slots_exposures'][iallocation] > 0)
+        allocation.field_array['xfactor'][iallocation][inz] = \
+            allocation.field_array['slots_time'][iallocation][inz] / \
+            allocation.field_array['slots_exposures'][iallocation][inz]
+
+    print("fieldid {f}: Done".format(f=fieldid), flush=True)
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final assignment based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+    parser.add_argument('-r', '--reset', dest='reset',
+                        type=np.int32, help='reset (specific "db" or number)',
+                        default=None, required=False)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    if(args.reset == None):
+        reset = 100000
+    else:
+        reset = args.reset
+
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=True)
+
+    slots_file = sdss_path.full('rsSlots', plan=plan,
+                                observatory=observatory)
+    slots = robostrategy.slots.Slots(observatory=observatory)
+    slots.fromfits(filename=slots_file)
+    extra = rsParams.cfg.get('Allocation', 'ExtraTimeFactor')
+    slots.slots = slots.slots * np.float32(extra)
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
+                                                 observatory=observatory)
+
+    for i in np.arange(len(allocate.field_array), dtype=np.int32):
+        refresh_allocation(i)
+
+    output_allocate_file = allocate_file.replace('rsAllocation', 'rsAllocationRefresh')
+
+    allocate.tofits(filename=output_allocate_file)
+
+    print('DONE: rs_refesh_allocation')
+    print(time.ctime(time.time()))
