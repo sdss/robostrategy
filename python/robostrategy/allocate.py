@@ -501,6 +501,7 @@ class AllocateLST(object):
         construct the linear programming problem.
 """
         self.allocinfo = collections.OrderedDict()
+        self.original_cadences = dict()
         self.some_filled = dict()
         self.ncadences = dict()
         fieldids = np.unique(self.fields['fieldid'])
@@ -517,6 +518,7 @@ class AllocateLST(object):
             self.ncadences[fieldid] = len(icurr)
             curr_slots = self.field_slots[icurr]
             curr_options = self.field_options[icurr]
+            self.original_cadences[fieldid] = curr_slots['original_cadence'][0]
 
             curr_cadences = np.array([x.strip()
                                       for x in curr_slots['cadence']])
@@ -598,7 +600,6 @@ class AllocateLST(object):
                 alloc[curr_cadence]['filled'] = curr_slot['filled_sb'].sum()
                 alloc[curr_cadence]['allocated_exposures_done'] = curr_slot['allocated_exposures_done']
                 alloc[curr_cadence]['original_exposures_done'] = curr_slot['original_exposures_done']
-                alloc[curr_cadence]['original_cadence'] = curr_slot['original_cadence']
                 alloc[curr_cadence]['filled'] = curr_slot['filled_sb'].sum()
 
                 # If there have been SOME observations of this field, note
@@ -987,7 +988,7 @@ class AllocateLST(object):
                 field_array['filled'][findx] = self.allocinfo[fieldid][chosen_cadence]['filled']
                 field_array['allocated_exposures_done'][findx] = self.allocinfo[fieldid][chosen_cadence]['allocated_exposures_done']
                 field_array['original_exposures_done'][findx] = self.allocinfo[fieldid][chosen_cadence]['original_exposures_done']
-                field_array['original_cadence'][findx] = self.allocinfo[fieldid][chosen_cadence]['original_cadence']
+                field_array['original_cadence'][findx] = self.original_cadences[fieldid]
                 slots_totals_total = slots_totals.sum()
                 if(slots_totals_total > 0):
                     normalize = ((field_array['needed_sb'][findx, :].sum() -
@@ -997,8 +998,7 @@ class AllocateLST(object):
                 else:
                     print("Something weird! slots_totals_total should not be zero here", flush=True)
             else:
-                any_cadence = list(self.allocinfo[fieldid].keys())[0]
-                field_array['original_cadence'][findx] = self.allocinfo[fieldid][any_cadence]['original_cadence']
+                field_array['original_cadence'][findx] = self.original_cadences[fieldid]
 
             field_array['nallocated'][findx] = np.int32(
                 field_array['slots_exposures'][findx, :, :].sum() + 0.001)
