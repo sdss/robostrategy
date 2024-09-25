@@ -73,6 +73,9 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--reset', dest='reset',
                         type=str, help='reset (specific "db" or number)',
                         required=True)
+    parser.add_argument('-n', '--refresh', dest='refresh',
+                        help='use rsAllocationRefresh file', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='name of observatory', required=False,
                         choices=['lco', 'apo', 'both'], default='both')
@@ -83,6 +86,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     reset = args.reset
+    refresh = args.refresh
     observatory = args.observatory
     split_nocadence = (args.no_split_nocadence == False)
     
@@ -133,6 +137,9 @@ if __name__ == '__main__':
                                        observatory=observatory)
         allocate_final_file = allocate_file.replace('rsAllocation',
                                                     'final/rsAllocationFinal')
+
+        if(refresh):
+            allocate_file = allocate_file.replace('rsAllocation', 'rsAllocationRefresh')
 
         allocate_hdus = fits.open(allocate_file)
         rs_fields_array = allocate_hdus[1].data
