@@ -49,9 +49,20 @@ noassignmentstatus = False
 nooffset = False
 
 
+def assign_update_wrap(indx):
+    try:
+        assign_update(indx)
+    except Exception as err:
+        fid = fieldids[indx]
+        print(f"fieldid {fid=}: Unexpected {err=}, {type(err)=}")
+        raise
+    return
+        
+
 def assign_update(indx):
-    fieldid = allocate_final['fieldid'][indx]
-    rs_fieldid = allocate_final['rs_fieldid'][indx]
+    fieldid = fieldids[indx]
+    rs_fieldid = rs_fieldids[fieldid]
+    original_cadence = original_cadences[fieldid]
 
     iallocate = np.where(allocate.field_array['fieldid'] == rs_fieldid)[0][0]
     
@@ -164,39 +175,43 @@ def assign_update(indx):
         print("fieldid {fid}: Not reassigning RM field, just copying".format(fid=fieldid), flush=True)
     else:
 
-        print("fieldid {fid}: Reassign original to allocated exposures".format(fid=fieldid),
-              flush=True)
-        (allowed, filled_sb,
-         original_exposures_done,
-         allocated_exposures_done) = robostrategy.allocate.calculate_filled(fieldid=fieldid,
-                                                                            field_status=status_field,
-                                                                            option_cadence=field_cadence_name,
-                                                                            current_cadence=allocate_final['original_cadence'][iallocate],
-                                                                            slots=slots,
-                                                                            use_rs_fieldid=False)
+        if(status_field is None):
+            allocated_exposures_done = None
+            original_exposures_done = None
+        else:
+            print("fieldid {fid}: Reassign original to allocated exposures".format(fid=fieldid),
+                  flush=True)
+            (allowed, filled_sb,
+             original_exposures_done,
+             allocated_exposures_done) = robostrategy.allocate.calculate_filled(fieldid=fieldid,
+                                                                                field_status=status_field,
+                                                                                option_cadence=field_cadence_name,
+                                                                                current_cadence=original_cadence,
+                                                                                slots=slots,
+                                                                                use_rs_fieldid=False)
 
-        if(allowed is False):
-            print("fieldid {fid}: ERROR: current observations now do not fit into cadence; ignoring old observations".format(fid=fieldid))
-            status_field['status'] = 'not started'
-            status['status'] = 0
+            if(allowed is False):
+                print("fieldid {fid}: ERROR: current observations now do not fit into cadence; ignoring old observations".format(fid=fieldid))
+                status_field['status'] = 'not started'
+                status['status'] = 0
         
-        they_differ = False
-        for iexp, original_exposure_done in enumerate(original_exposures_done):
-            if(original_exposure_done != allocate.field_array['original_exposures_done'][iallocate][iexp]):
-                they_differ = True
-                break
-        for iexp, allocated_exposure_done in enumerate(allocated_exposures_done):
-            if(allocated_exposure_done != allocate.field_array['allocated_exposures_done'][iallocate][iexp]):
-                they_differ = True
-                break
+            they_differ = False
+            for iexp, original_exposure_done in enumerate(original_exposures_done):
+                if(original_exposure_done != allocate.field_array['original_exposures_done'][iallocate][iexp]):
+                    they_differ = True
+                    break
+            for iexp, allocated_exposure_done in enumerate(allocated_exposures_done):
+                if(allocated_exposure_done != allocate.field_array['allocated_exposures_done'][iallocate][iexp]):
+                    they_differ = True
+                    break
 
-        if(they_differ):
-            print("fieldid {fid}: Reassignment disagrees with allocation step's assignment of exposures (using the former)".format(fid=fieldid), flush=True)
-            print("fieldid {fid}:   allocated_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['allocated_exposures_done'][iallocate]))
-            print("fieldid {fid}:   original_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['original_exposures_done'][iallocate]))
-            print("fieldid {fid}:   allocated_exposures_done (reassignment): {a}".format(fid=fieldid, a=allocated_exposures_done))
-            print("fieldid {fid}:   original_exposures_done (reassignment): {a}".format(fid=fieldid, a=original_exposures_done))
-
+            if(they_differ):
+                print("fieldid {fid}: Reassignment disagrees with allocation step's assignment of exposures (using the former)".format(fid=fieldid), flush=True)
+                print("fieldid {fid}:   allocated_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['allocated_exposures_done'][iallocate]))
+                print("fieldid {fid}:   original_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['original_exposures_done'][iallocate]))
+                print("fieldid {fid}:   allocated_exposures_done (reassignment): {a}".format(fid=fieldid, a=allocated_exposures_done))
+                print("fieldid {fid}:   original_exposures_done (reassignment): {a}".format(fid=fieldid, a=original_exposures_done))
+                
         print("fieldid {fid}: Set design status".format(fid=fieldid), flush=True)
         f.set_design_status_from_status_field(status_field=status_field,
                                               allocated_exposures_done=allocated_exposures_done,
@@ -437,11 +452,18 @@ if __name__ == '__main__':
 
     # Rely on this for list of fields
     allocate_final = fitsio.read(allocate_final_file)
-
     fieldids, indx = np.unique(allocate_final['fieldid'], return_index=True)
+    rs_fieldids = dict()
+    original_cadences = dict()
+    for i, fieldid in enumerate(fieldids):
+        ifieldid = np.where(allocate_final['fieldid'] == fieldid)[0][0]
+        rs_fieldids[fieldid] = allocate_final['rs_fieldid'][ifieldid]
+        original_cadences[fieldid] = allocate_final['original_cadence'][ifieldid]
+    
     neededs = np.zeros(len(fieldids), dtype=int)
     for i, fieldid in enumerate(fieldids):
-        ifieldid = np.where(allocate.field_array['fieldid'] == fieldid)[0]
+        rs_fieldid = rs_fieldids[fieldid]
+        ifieldid = np.where(allocate.field_array['fieldid'] == rs_fieldid)[0]
         neededs[i] = allocate.field_array['needed'][ifieldid].sum() 
 
     if(end < 0):
@@ -468,15 +490,15 @@ if __name__ == '__main__':
         ikeep = ikeep[not_done]
 
     isort = np.flip(np.argsort(neededs[ikeep]))
-    ikeep = indx[ikeep[isort]]
+    ikeep = ikeep[isort]
 
     if(nomultiprocess):
         for i in ikeep:
-            assign_update(i)
+            assign_update_wrap(i)
     else:
         with multiprocessing.Pool(limit_pool) as pool:
             ikeep = list(ikeep)
-            pool.map(assign_update, ikeep, 1)
+            pool.map(assign_update_wrap, ikeep, 1)
 
     print('DONE: rs_assign_update')
     print(time.ctime(time.time()))
