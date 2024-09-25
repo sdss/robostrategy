@@ -44,7 +44,16 @@ def prep_field(indx):
     print("fieldid {f}: Prepping field".format(f=fieldid), flush=True)
 
     field_cadence = allocate['cadence'][indx].strip()
-    
+
+    if(refresh):
+        field_cadence_refresh = allocate_refresh['cadence'][indx].strip()
+        if(field_cadence == field_cadence_refresh):
+            same_cadence = True
+        else:
+            same_cadence = False
+    else:
+        same_cadence = True
+
     print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
     field_target_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
@@ -54,8 +63,12 @@ def prep_field(indx):
                                                 'rsFieldPrep')
 
     if((noclobber is True) & os.path.isfile(field_prep_file)):
-        print("Fieldid {f} exists already".format(f=fieldid))
-        return
+        if(same_cadence):
+            print("Fieldid {f} exists already".format(f=fieldid))
+            return
+        else:
+            print("Fieldid {f} being overwritten with new cadence".format(f=fieldid))
+            field_cadence = field_cadence_refresh
 
     f = field.Field(filename=field_target_file, verbose=True,
                     fieldid=fieldid, collisionBuffer=collisionBuffer,
@@ -116,6 +129,9 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
+    parser.add_argument('-n', '--refresh', dest='refesh',
+                        help='clobber ONLY when allocation has changed', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-C', '--no-clobber', dest='noclobber',
                         help='do not clobber', required=False,
                         default=False, action='store_true')
@@ -129,6 +145,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
+    refresh = args.refresh
     start = args.start
     end = args.end
     noclobber = args.noclobber
@@ -175,6 +192,10 @@ if __name__ == '__main__':
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                    observatory=observatory)
     allocate = fitsio.read(allocate_file, ext='ALLOCATE')
+
+    if(refresh):
+        allocate_refresh_file = allocate_file.replace('rsAllocation', 'rsAllocationRefresh')
+        allocate_refresh = fitsio.read(allocate_file_refresh, ext='ALLOCATE')
 
     if(end < 0):
         end = allocate['fieldid'].max()
