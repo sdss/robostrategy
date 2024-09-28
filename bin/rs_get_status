@@ -134,6 +134,14 @@ def get_and_write_status(indx):
         if(sf['status'] != d2s):
             raise_or_report(fieldid, "design_to_status says {d2s}, assignment_status says {sf}".format(d2s=d2s, sf=sf['status']))
 
+    if(full_cadence =='none'):
+        idone = np.where(status_field['status'] == 'done')[0]
+        if(len(idone) > 0):
+            raise ValueError("fieldid {fid}: Cadence none but designs done".format(fid=fieldid), flush=True)
+        else:
+            print("fieldid {fid}: No cadence in new allocation, skipping".format(fid=fieldid), flush=True)
+            continue
+
     print("fieldid {fid}: Checking for incomplete epochs".format(fid=fieldid), flush=True)
     c = cadencelist.cadences[status_field['full_cadence'][0]]
     for iepoch in np.arange(c.nepochs, dtype=np.int32):
