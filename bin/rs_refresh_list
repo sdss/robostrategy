@@ -1,0 +1,73 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_refresh_allocation
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import numpy as np
+import fitsio
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final assignment based on allocation')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='apo or lco',
+                        choices=['apo', 'lco'], required=True)
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    status_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'allocations',
+                               plan, 'rsStatus-{p}-{o}.fits'.format(p=plan, o=observatory))
+    status = fitsio.read(status_file)
+    
+    status_alloc_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'allocations',
+                                     plan, 'rsStatusAlloc-{p}-{o}.fits'.format(p=plan, o=observatory))
+    status_alloc = fitsio.read(status_alloc_file)
+
+    fexp = dict()
+
+    for s in status_alloc:
+        fexp[s['fieldid'], s['field_exposure']] = s['status']
+
+    refresh_list = []
+
+    for s in status:
+        key = (s['fieldid'], s['field_exposure'])
+        if(key in fexp):
+            if(fexp[key] == 'done'):
+                if(s['status'] != 'done'):
+                    raise ValueError("fieldid {fid}: status went from done to not".format(fid=s['fieldid']))
+            else:
+                if(s['status'] == 'done'):
+                    refresh_list.append(s['fieldid'])
+        else:
+            if(s['status'] == 'done'):
+                refresh_list.append(s['fieldid'])
+
+    refresh_list = np.array(refresh_list)
+    refresh_list = np.unique(refresh_list)
+        
+    fp = open('refresh-{o}.csv'.format(o=observatory), 'w')
+    fp.write("fieldid\n")
+    for f in refresh_list:
+        fp.write("{fid}\n".format(fid=f))
+    fp.close()
+        
