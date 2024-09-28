@@ -1103,6 +1103,7 @@ class AllocateLST(object):
         self.field_slots = fitsio.read(filename, ext=4)
         self.field_options = fitsio.read(filename, ext=5)
         self.cartons = fitsio.read(filename, ext=6)
+        self.cadences = fitsio.read(filename, ext=7)
         return
 
     def _available_lst(self):
