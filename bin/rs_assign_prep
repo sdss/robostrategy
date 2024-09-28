@@ -62,7 +62,7 @@ def prep_field(indx):
     field_prep_file = field_target_file.replace('rsFieldTargets',
                                                 'rsFieldPrep')
 
-    if((noclobber is True) & os.path.isfile(field_prep_file)):
+    if(((noclobber is True) | (refresh is True)) & os.path.isfile(field_prep_file)):
         if(same_cadence):
             print("Fieldid {f} exists already".format(f=fieldid))
             return
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end', dest='end',
                         type=np.int32, help='field to end', required=False,
                         default=-1)
-    parser.add_argument('-n', '--refresh', dest='refesh',
+    parser.add_argument('-n', '--refresh', dest='refresh',
                         help='clobber ONLY when allocation has changed', required=False,
                         default=False, action='store_true')
     parser.add_argument('-C', '--no-clobber', dest='noclobber',
@@ -195,7 +195,7 @@ if __name__ == '__main__':
 
     if(refresh):
         allocate_refresh_file = allocate_file.replace('rsAllocation', 'rsAllocationRefresh')
-        allocate_refresh = fitsio.read(allocate_file_refresh, ext='ALLOCATE')
+        allocate_refresh = fitsio.read(allocate_refresh_file, ext='ALLOCATE')
 
     if(end < 0):
         end = allocate['fieldid'].max()
