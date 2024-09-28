@@ -227,8 +227,8 @@ def assign_update(indx):
         if((noassignmentstatus is False) & (status is not None)):
             print("fieldid {fid}: Apply observed exposures".format(fid=fieldid), flush=True)
             f.apply_observed_status(observed_status=status,
-                                    allocated_exposures_done=allocate.field_array['allocated_exposures_done'][iallocate],
-                                    original_exposures_done=allocate.field_array['original_exposures_done'][iallocate])
+                                    allocated_exposures_done=allocated_exposures_done,
+                                    original_exposures_done=original_exposures_done)
 
         # For some cartons, allow them even if mags are not allowed
         for carton in mags_allowed_brighttime:
