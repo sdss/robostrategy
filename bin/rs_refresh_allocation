@@ -64,6 +64,7 @@ def refresh_allocation(indx):
         print("fieldid {f}: No assignment status file exists ".format(f=fieldid), flush=True)
         status = None
         status_field = None
+        return
 
     (allowed, filled_sb,
      original_exposures_done,
