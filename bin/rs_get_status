@@ -140,7 +140,7 @@ def get_and_write_status(indx):
             raise ValueError("fieldid {fid}: Cadence none but designs done".format(fid=fieldid), flush=True)
         else:
             print("fieldid {fid}: No cadence in new allocation, skipping".format(fid=fieldid), flush=True)
-            continue
+            return
 
     print("fieldid {fid}: Checking for incomplete epochs".format(fid=fieldid), flush=True)
     c = cadencelist.cadences[status_field['full_cadence'][0]]
