@@ -66,61 +66,63 @@ def refresh_allocation(indx):
         status_field = None
         return
 
+    current_cadence = allocate.field_array['original_cadence'][iallocate]
+
     (allowed, filled_sb,
      original_exposures_done,
-     allocated_exposures_done) = robostrategy.allocate.calculate_filled(fieldid=fieldid,
+     allocated_exposures_done) = robostrategy.allocate.calculate_filled(fieldid=fieldid + reset - 1,
                                                                         field_status=status_field,
                                                                         option_cadence=field_cadence_name,
-                                                                        current_cadence=allocate.field_array['original_cadence'][iallocate],
+                                                                        current_cadence=current_cadence,
                                                                         slots=slots,
                                                                         use_rs_fieldid=False)
 
     if(allowed is False):
         print("fieldid {fid}: WARNING! current observations now do not fit into cadence; reverting to old cadence".format(fid=fieldid))
-        allocation.field_array['cadence'][iallocation] = allocation.field_array['original_cadence'][iallocation]
+        allocate.field_array['cadence'][iallocate] = allocate.field_array['original_cadence'][iallocate]
         idone = np.where(status_field['status'] == 'done')[0]
         iepochs_done = cadencelist.cadences[current_cadence].epochs[idone]
-        allocation.field_array['original_exposures_done'][iallocation][:] = -1
-        allocation.field_array['original_exposures_done'][iallocation][0:len(idone) - 1] = idone
-        allocation.field_array['allocated_exposures_done'][iallocation] = allocation.field_array['original_exposures_done'][iallocation]
+        allocate.field_array['original_exposures_done'][iallocate][:] = -1
+        allocate.field_array['original_exposures_done'][iallocate][0:len(idone)] = idone
+        allocate.field_array['allocated_exposures_done'][iallocate] = allocate.field_array['original_exposures_done'][iallocate]
         ibright = np.where(cadencelist.cadences[current_cadence].skybrightness > 0.5)[0]
         nbright = cadencelist.cadences[current_cadence].nexp[ibright].sum()
         idark = np.where(cadencelist.cadences[current_cadence].skybrightness <= 0.5)[0]
         ndark = cadencelist.cadences[current_cadence].nexp[idark].sum()
-        allocation.field_array['nallocated_full_sb'][iallocation] = np.array([ndark, nbright])
-        allocation.field_array['nallocated_full'][iallocation] = allocation.field_array['nallocated_full_sb'][iallocation].sum()
-        allocation.field_array['needed_sb'][iallocation] = allocation.field_array['nallocated_full_sb'][iallocation]
-        allocation.field_array['needed'][iallocation] = allocation.field_array['nallocated_full_sb'][iallocation].sum()
+        allocate.field_array['nallocated_full_sb'][iallocate] = np.array([ndark, nbright])
+        allocate.field_array['nallocated_full'][iallocate] = allocate.field_array['nallocated_full_sb'][iallocate].sum()
+        allocate.field_array['needed_sb'][iallocate] = allocate.field_array['nallocated_full_sb'][iallocate]
+        allocate.field_array['needed'][iallocate] = allocate.field_array['nallocated_full_sb'][iallocate].sum()
         ibright_filled = np.where(cadencelist.cadences[current_cadence].skybrightness[iepochs_done] > 0.5)[0]
         nbright_filled = len(ibright_filled)
         idark_filled = np.where(cadencelist.cadences[current_cadence].skybrightness[iepochs_done] > 0.5)[0]
         ndark_filled = len(idark_filled)
-        allocation.field_array['filled_sb'][iallocation] = np.array([ndark_filled, nbright_filled])
-        allocation.field_array['filled'][iallocation] = allocation.field_array['filled_sb'][iallocation].sum()
-        old_nallocated_sb = allocation.field_array['nallocated_sb'][iallocation]
-        allocation.field_array['nallocated_sb'][iallocation] = allocation.field_array['nallocated_sb_full'][iallocation] - allocation.field_array['filled_sb'][iallocation]
-        allocation.field_array['nallocated'][iallocation] = allocation.field_array['nallocated_sb'][iallocation].sum()
+        allocate.field_array['filled_sb'][iallocate] = np.array([ndark_filled, nbright_filled])
+        allocate.field_array['filled'][iallocate] = allocate.field_array['filled_sb'][iallocate].sum()
+        old_nallocated_sb = allocate.field_array['nallocated_sb'][iallocate]
+        allocate.field_array['nallocated_sb'][iallocate] = allocate.field_array['nallocated_full_sb'][iallocate] - allocate.field_array['filled_sb'][iallocate]
+        allocate.field_array['nallocated'][iallocate] = allocate.field_array['nallocated_sb'][iallocate].sum()
         if(old_nallocated_sb[0] > 0):
-            dark_scale = allocation.field_array['nallocated_sb'][iallocation][0] / old_nallocated_sb[0]
+            dark_scale = allocate.field_array['nallocated_sb'][iallocate][0] / old_nallocated_sb[0]
         else:
             dark_scale = 1.
         if(old_nallocated_sb[1] > 0):
-            bright_scale = allocation.field_array['nallocated_sb'][iallocation][1] / old_nallocated_sb[1]
+            bright_scale = allocate.field_array['nallocated_sb'][iallocate][1] / old_nallocated_sb[1]
         else:
             bright_scale = 1.
-        allocation.field_array['slots_exposures'][iallocation][:, 0] = \
-            allocation.field_array['slots_exposures'][iallocation][:, 0] * dark_scale
-        allocation.field_array['slots_exposures'][iallocation][:, 1] = \
-            allocation.field_array['slots_exposures'][iallocation][:, 1] * bright_scale
-        allocation.field_array['slots_time'][iallocation][:, 0] = \
-            allocation.field_array['slots_time'][iallocation][:, 0] * dark_scale
-        allocation.field_array['slots_time'][iallocation][:, 1] = \
-            allocation.field_array['slots_time'][iallocation][:, 1] * bright_scale
-        allocation.field_array['xfactor'][iallocation][:, :] = 1.
-        inz = np.where(allocation.field_array['slots_exposures'][iallocation] > 0)
-        allocation.field_array['xfactor'][iallocation][inz] = \
-            allocation.field_array['slots_time'][iallocation][inz] / \
-            allocation.field_array['slots_exposures'][iallocation][inz]
+        allocate.field_array['slots_exposures'][iallocate][:, 0] = \
+            allocate.field_array['slots_exposures'][iallocate][:, 0] * dark_scale
+        allocate.field_array['slots_exposures'][iallocate][:, 1] = \
+            allocate.field_array['slots_exposures'][iallocate][:, 1] * bright_scale
+        allocate.field_array['slots_time'][iallocate][:, 0] = \
+            allocate.field_array['slots_time'][iallocate][:, 0] * dark_scale
+        allocate.field_array['slots_time'][iallocate][:, 1] = \
+            allocate.field_array['slots_time'][iallocate][:, 1] * bright_scale
+        allocate.field_array['xfactor'][iallocate][:, :] = 1.
+        inz = np.where(allocate.field_array['slots_exposures'][iallocate] > 0)
+        allocate.field_array['xfactor'][iallocate][inz] = \
+            allocate.field_array['slots_time'][iallocate][inz] / \
+            allocate.field_array['slots_exposures'][iallocate][inz]
 
     print("fieldid {f}: Done".format(f=fieldid), flush=True)
     return
