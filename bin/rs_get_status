@@ -254,6 +254,7 @@ def get_status(indx, fromplan=None):
             raise_or_report(fieldid, "Inconsistency between assignment_status and design_to_status: no status info in former, but designs done in latter", warning=True)
 
     if(status is not None):
+        
         status_field_dtype = np.dtype(tmp_status_field.dtype.descr +
                                       [('full_cadence', str, 50)])
         status_field = np.zeros(len(tmp_status_field), dtype=status_field_dtype)
