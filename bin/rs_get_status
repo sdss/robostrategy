@@ -90,10 +90,10 @@ def validate_consistency(fieldid=None, status=None, status_field=None, warning=F
     return
 
 def get_and_write_status(indx):
-    fieldid = allocate.field_array['fieldid'][indx]
-    original_fieldid = allocate.field_array['rs_fieldid'][indx]
-    ioriginal = np.where(original_allocate.field_array['fieldid'] == original_fieldid)[0]
-    full_cadence = original_allocate.field_array['cadence'][ioriginal]
+    fieldid = allocate_field_array['fieldid'][indx]
+    original_fieldid = allocate_field_array['rs_fieldid'][indx]
+    ioriginal = np.where(original_allocate_field_array['fieldid'] == original_fieldid)[0]
+    full_cadence = original_allocate_field_array['cadence'][ioriginal]
     
     print("fieldid {fid}: Get status".format(fid=fieldid), flush=True)
 
@@ -102,6 +102,10 @@ def get_and_write_status(indx):
                                        fieldid=fieldid)
     field_status_file = field_status_file.replace('targets/rsFieldTargets',
                                                   'final/rsFieldStatus')
+
+    if(tofile is not None):
+        base = field_status_file.split('/')[-1]
+        field_status_file = base.replace('rsFieldStatus', tofile) 
 
     if(catchup):
         field_status_file = field_status_file.replace('final', 'catchup')
@@ -232,10 +236,10 @@ def get_status(indx, fromplan=None):
     status = None
     status_field = None
 
-    fieldid = allocate.field_array['fieldid'][indx]
-    original_fieldid = allocate.field_array['rs_fieldid'][indx]
-    ioriginal = np.where(original_allocate.field_array['fieldid'] == original_fieldid)[0]
-    full_cadence = original_allocate.field_array['cadence'][ioriginal]
+    fieldid = allocate_field_array['fieldid'][indx]
+    original_fieldid = allocate_field_array['rs_fieldid'][indx]
+    ioriginal = np.where(original_allocate_field_array['fieldid'] == original_fieldid)[0]
+    full_cadence = original_allocate_field_array['cadence'][ioriginal]
 
     (d2s_status, d2s_designids, d2s_designids_status,
      d2s_field_exposures) = robostrategy.dbutils.field_status(fieldid=fieldid - fieldid_shift,
@@ -348,6 +352,9 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--catchup-version', dest='catchup_version',
                         help='catchup version', required=False,
                         default=None, type=str)
+    parser.add_argument('-t', '--to-file', dest='tofile',
+                        help='write to this file base', required=False,
+                        default=None, type=str)
 
     args = parser.parse_args()
     plan = args.plan
@@ -363,6 +370,7 @@ if __name__ == '__main__':
     catchup_version = args.catchup_version
     new_allocation = args.new_allocation
     fieldlist_str = args.fieldlist
+    tofile = args.tofile
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -400,13 +408,11 @@ if __name__ == '__main__':
         allocate_file = allocate_file.replace('final', 'catchup')
         allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
 
-    original_allocate = robostrategy.allocate.AllocateLST(filename=original_allocate_file,
-                                                          observatory=observatory)
+    original_allocate_field_array = fitsio.read(original_allocate_file, ext=1)
 
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
+    allocate_field_array = fitsio.read(allocate_file, ext=1)
 
-    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+    fieldids, indx = np.unique(allocate_field_array['fieldid'],
                                return_index=True)
 
     if(end < 0):
