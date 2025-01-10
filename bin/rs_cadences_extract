@@ -69,6 +69,36 @@ def copy_cadence(from_cadence, to_cadence, nepochs=None):
     return
 
 
+def dark_flexible_cadence(nepochs=None):
+    cadence_name = 'dark_flexible_{n}x1'.format(n=nepochs)
+    skybrightness = np.zeros(nepochs, dtype=np.float32) + 0.35
+    delta = np.zeros(nepochs, dtype=np.float32) -1. 
+    delta_min = np.zeros(nepochs, dtype=np.float32) -1. 
+    delta_max = np.zeros(nepochs, dtype=np.float32) -1. 
+    nexp = np.ones(nepochs, dtype=np.int32)
+    max_length = np.zeros(nepochs, dtype=np.float32) + 0.20
+    min_moon_sep = np.zeros(nepochs, dtype=np.float32) + 35.
+    min_deltav_ks91 = np.zeros(nepochs, dtype=np.float32) - 1.50
+    min_twilight_ang = np.zeros(nepochs, dtype=np.float32) + 15.
+    max_airmass = np.zeros(nepochs, dtype=np.float32) + 1.60
+    obsmode_pk = ['dark_plane'] * nepochs
+
+    cadencelist.add_cadence(name=cadence_name,
+                            nepochs=nepochs,
+                            skybrightness=skybrightness,
+                            delta=delta,
+                            delta_min=delta_min,
+                            delta_max=delta_max,
+                            nexp=nexp,
+                            max_length=max_length,
+                            min_moon_sep=min_moon_sep,
+                            min_deltav_ks91=min_deltav_ks91,
+                            min_twilight_ang=min_twilight_ang,
+                            max_airmass=max_airmass,
+                            obsmode_pk=obsmode_pk)
+    return
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -83,11 +113,19 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--rm-include', dest='rminclude',
                         help='include special caching for RM cadences', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-x', '--hack', dest='hack',
+                        help='add some hack cadences', required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-s', '--special', dest='special',
+                        type=str, help='special case',
+                        required=False, default=None)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     rminclude = args.rminclude
+    hack = args.hack
+    special = args.special
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -136,6 +174,30 @@ if __name__ == '__main__':
     copy_cadence('bright_1x1', 'bright_single_1x1')
     if(schedule_prefix == 'minimal'):
         copy_cadence('dark_174x8', 'dark_138x8', nepochs=138)
+
+    if(hack):
+        copy_cadence('bright_cluster_6x1', 'dark_6x1')
+        cadencelist.cadences['dark_6x1'].skybrightness[:] = 0.35
+        copy_cadence('bright_cluster_5x1', 'dark_5x1')
+        cadencelist.cadences['dark_5x1'].skybrightness[:] = 0.35
+        copy_cadence('bright_cluster_4x1', 'dark_4x1')
+        cadencelist.cadences['dark_4x1'].skybrightness[:] = 0.35
+        copy_cadence('bright_cluster_3x1', 'dark_3x1')
+        cadencelist.cadences['dark_3x1'].skybrightness[:] = 0.35
+
+        for nepochs in (5 + np.arange(30, dtype=np.int32)):
+            dark_flexible_cadence(nepochs=nepochs)
+
+    if(special is not None):
+        if(special == 'no_apogee_skies'):
+            cs = [c for c in cadencelist.cadences]
+            for c in cs:
+                nc = c + '_no_apogee_skies'
+                copy_cadence(c, nc)
+                new_obsmode_pk = []
+                for i, o in enumerate(cadencelist.cadences[nc].obsmode_pk):
+                    new_obsmode_pk.append('{o}_no_apogee_skies'.format(o=o))
+                cadencelist.cadences[nc].obsmode_pk = np.array(new_obsmode_pk)
 
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
