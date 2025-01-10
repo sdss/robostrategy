@@ -28,15 +28,14 @@ offset_min_skybrightness = None
 plan = None
 catchup = False
 catchup_version = None
-test = False
 use_sdss_ids = True
 
 
 def match_to_old(indx):
     import robostrategy.targets
 
-    fieldid = allocate.field_array['fieldid'][indx]
-    rs_fieldid = allocate.field_array['rs_fieldid'][indx]
+    fieldid = allocate_field_array['fieldid'][indx]
+    rs_fieldid = allocate_field_array['rs_fieldid'][indx]
     
     print("fieldid {fid}: Matching starting".format(fid=fieldid), flush=True)
 
@@ -48,6 +47,12 @@ def match_to_old(indx):
     field_status_v1_file = field_status_file.replace('rsFieldStatus',
                                                      'rsFieldStatusMatch')
 
+    if(tofile is not None):
+        base = field_status_file.split('/')[-1]
+        field_status_file = base.replace('rsFieldStatus', tofile) 
+        base = field_status_v1_file.split('/')[-1]
+        field_status_v1_file = base.replace('rsFieldStatus', tofile) 
+
     if(catchup):
         field_status_file = field_status_file.replace('final', 'catchup')
         field_status_file = field_status_file.replace('Status',
@@ -56,12 +61,17 @@ def match_to_old(indx):
         field_status_v1_file = field_status_v1_file.replace('Match',
                                                             'MatchCatchup{v}'.format(v=catchup_version.upper()))
 
-    if(test):
-        field_status_v1_file = field_status_v1_file.replace('Match', 'MatchTest')
-
     field_targets_file = sdss_path.full('rsFieldTargets',
                                         plan=plan, observatory=observatory,
                                         fieldid=rs_fieldid)
+
+    if(os.path.exists(field_targets_file) is False):
+        msg = "fieldid {f}: rsFieldTargets file does not exist".format(f=fieldid)
+        if(skip_unused_fields):
+            print(msg, flush=True)
+            return
+        else:
+            raise ValueError(msg)
 
     if((clobber is False) & os.path.isfile(field_status_v1_file)):
         print("fieldid {f}: Exists already in {file}".format(f=fieldid, file=field_status_v1_file), flush=True)
@@ -139,10 +149,7 @@ def match_to_old(indx):
         if(n in targets.dtype.names):
             status_v1[n] = targets[n][itarget_all]
 
-    if(test): 
-        print("fieldid {fid}: Writing results to test file".format(fid=fieldid), flush=True)
-    else:
-        print("fieldid {fid}: Writing results".format(fid=fieldid), flush=True)
+    print("fieldid {fid}: Writing results".format(fid=fieldid), flush=True)
     hdr = robostrategy.header.rsheader()
     fitsio.write(field_status_v1_file, status_v1, header=hdr, extname='TARGET', clobber=True)
     fitsio.write(field_status_v1_file, status_field, extname='FIELD', clobber=False)
@@ -172,9 +179,6 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--clobber', dest='clobber',
                         help='clobber', required=False,
                         default=False, action='store_true')
-    parser.add_argument('-t', '--test', dest='test',
-                        help='test case', required=False,
-                        default=False, action='store_true')
     parser.add_argument('-I', '--no-sdss-id', dest='no_use_sdss_ids',
                         help='do not use sdss_id', required=False,
                         default=False, action='store_true')
@@ -184,6 +188,9 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--catchup-version', dest='catchup_version',
                         help='catchup version', required=False,
                         default=None, type=str)
+    parser.add_argument('-T', '--skip-unused-fields', dest='skip_unused_fields',
+                        help='skip fields without an rsFieldTargets file', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-l', '--field-list', dest='fieldlist',
                         type=str, help='field list', required=False,
                         default=None)
@@ -192,10 +199,12 @@ if __name__ == '__main__':
                         required=False, default=False, action='store_true')
     parser.add_argument('-f', '--from-plan', dest='fromplan',
                         type=str, help='name of plan to start from', required=True)
+    parser.add_argument('-t', '--to-file', dest='tofile',
+                        help='write to this file base', required=False,
+                        default=None, type=str)
 
     args = parser.parse_args()
     plan = args.plan
-    test = args.test
     observatory = args.observatory
     start = args.start
     end = args.end
@@ -206,6 +215,8 @@ if __name__ == '__main__':
     new_allocation = args.new_allocation
     fromplan = args.fromplan
     fieldlist_str = args.fieldlist
+    tofile = args.tofile
+    skip_unused_fields = args.skip_unused_fields
 
     fieldlist = None
     if(fieldlist_str is not None):
@@ -229,10 +240,9 @@ if __name__ == '__main__':
         allocate_file = allocate_file.replace('final', 'catchup')
         allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
 
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
+    allocate_field_array = fitsio.read(allocate_file, ext=1)
 
-    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+    fieldids, indx = np.unique(allocate_field_array['fieldid'],
                                return_index=True)
 
     if(end < 0):
