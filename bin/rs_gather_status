@@ -55,14 +55,13 @@ if __name__ == '__main__':
     allocate_file = allocate_file.replace('rsAllocation',
                                           'final/rsAllocationFinal')
 
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
+    allocate_field_array = fitsio.read(allocate_file, ext=1)
 
     fieldid_to_rs = dict()
-    for af in allocate.field_array:
+    for af in allocate_field_array:
         fieldid_to_rs[af['fieldid']] = af['rs_fieldid']
 
-    fieldids, indx = np.unique(allocate.field_array['fieldid'],
+    fieldids, indx = np.unique(allocate_field_array['fieldid'],
                                return_index=True)
 
     fieldids = np.unique(fieldids)
