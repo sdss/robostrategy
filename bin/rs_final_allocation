@@ -73,6 +73,9 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--reset', dest='reset',
                         type=str, help='reset (specific "db" or number)',
                         required=False)
+    parser.add_argument('-f', '--offset', dest='offset',
+                        type=np.int32, help='offset for fieldid',
+                        required=False)
     parser.add_argument('-n', '--refresh', dest='refresh',
                         help='use rsAllocationRefresh file', required=False,
                         default=False, action='store_true')
@@ -82,11 +85,16 @@ if __name__ == '__main__':
     parser.add_argument('-S', '--no-split-nocadence', dest='no_split_nocadence',
                         help='do not split off after 18 bright epochs', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-d', '--fix-design_mode', dest='fix_design_mode',
+                        help='fix the design mode in the rsFieldAssignmentsFinal headers if cadences are renamed',
+                        required=False, default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
     reset = args.reset
+    offset = args.offset
     refresh = args.refresh
+    fix_design_mode = args.fix_design_mode
     observatory = args.observatory
     split_nocadence = (args.no_split_nocadence == False)
     
@@ -102,29 +110,6 @@ if __name__ == '__main__':
         if('version' in rsParams.cfg['CadenceVersions']):
             version = rsParams.cfg.get('CadenceVersions', 'version')
 
-    if(reset == 'db'):
-        t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual')
-        base_fieldid = t.find_next_available()
-        check_fieldids = list(base_fieldid + np.arange(100000, dtype=np.int32))
-        t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual',
-                                                        fieldid=check_fieldids)
-        exists = t.check_availability()
-        check_fieldids = np.array(check_fieldids, dtype=np.int32)
-        fieldid_use = check_fieldids[np.where(exists == False)[0]]
-        iuse = 0
-    else:
-        if(args.reset == None):
-            if(observatory == 'apo'):
-                reset = 100000
-            elif(observatory == 'lco'):
-                reset = 104670
-            else:
-                raise ValueError("Bad observatory {o}".format(o=observatory))
-        else:
-            reset = np.int32(reset)
-
-        fieldid_use = reset + np.arange(100000, dtype=np.int32)
-        iuse = 0
 
     for observatory in observatories:
         cadencelist = cadence.CadenceList(skybrightness_only=True)
@@ -145,16 +130,50 @@ if __name__ == '__main__':
         rs_fields_array = allocate_hdus[1].data
         rs_fields = allocate_hdus[3].data
 
-        fields_array_dtype = np.dtype(rs_fields_array.dtype.descr +
-                                      np.dtype([('iexpst', np.int32),
-                                                ('iexpnd', np.int32),
-                                                ('split', np.int32),
-                                                ('rs_fieldid', np.int32)]).descr)
-        fields_dtype = np.dtype(rs_fields.dtype.descr +
-                                np.dtype([('iexpst', np.int32),
-                                          ('iexpnd', np.int32),
-                                          ('split', np.int32),
-                                          ('rs_fieldid', np.int32)]).descr)
+        if(reset == 'db'):
+            t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual')
+            base_fieldid = t.find_next_available()
+            check_fieldids = list(base_fieldid + np.arange(100000, dtype=np.int32))
+            t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual',
+                                                            fieldid=check_fieldids)
+            exists = t.check_availability()
+            check_fieldids = np.array(check_fieldids, dtype=np.int32)
+            fieldid_use = check_fieldids[np.where(exists == False)[0]]
+            iuse = 0
+        elif(offset != None):
+            fieldid_use = offset + rs_fields['fieldid']
+            iuse = 0
+        else:
+            if(args.reset == None):
+                if(observatory == 'apo'):
+                    reset = 100000
+                elif(observatory == 'lco'):
+                    reset = 104670
+                else:
+                    raise ValueError("Bad observatory {o}".format(o=observatory))
+            else:
+                reset = np.int32(reset)
+
+            fieldid_use = reset + np.arange(100000, dtype=np.int32)
+            iuse = 0
+
+        if('iexpst' not in rs_fields_array.dtype.names):
+            fields_array_dtype = np.dtype(rs_fields_array.dtype.descr +
+                                          np.dtype([('iexpst', np.int32),
+                                                    ('iexpnd', np.int32),
+                                                    ('split', np.int32),
+                                                    ('rs_fieldid', np.int32)]).descr)
+        else:
+            fields_array_dtype = rs_fields_array.dtype
+            
+        if('iexpst' not in rs_fields.dtype.names):
+            fields_dtype = np.dtype(rs_fields.dtype.descr +
+                                    np.dtype([('iexpst', np.int32),
+                                              ('iexpnd', np.int32),
+                                              ('split', np.int32),
+                                              ('rs_fieldid', np.int32)]).descr)
+        else:
+            fields_dtype = rs_fields.dtype
         
         fields_array = np.zeros(0, dtype=fields_array_dtype)
         fields = np.zeros(0, dtype=fields_dtype)
@@ -398,9 +417,24 @@ if __name__ == '__main__':
                 new_cadence_name = rsParams.cfg['FinalCadenceRenaming'][cadence_to_rename]
                 irename = np.where(cadences == cadence_to_rename)[0]
                 fields_array['cadence'][irename] = new_cadence_name
+                if(fix_design_mode):
+                    for i in irename:
+                        fieldid = fields_array['fieldid'][i]
+                        field_assigned_file = sdss_path.full('rsFieldAssignments',
+                                                             plan=plan,
+                                                             observatory=observatory,
+                                                             fieldid=fieldid)
+                        field_assigned_file = field_assigned_file.replace('targets/rsFieldAssignments',
+                                                                          'final/rsFieldAssignmentsFinal')
+                        faf = fits.open(field_assigned_file, mode='update')
+                        design_modes = [o for o in cadencelist.cadences[fields_array['cadence'][i].decode()[:-3]].obsmode_pk]
+                        design_modes_str = " ".join(design_modes)
+                        faf[0].header['FCADENCE'] = fields_array['cadence'][i].decode()
+                        faf[0].header['DESMODE'] = design_modes_str
+                        faf.close()
 
-        fields_array_hdu = fits.BinTableHDU(fields_array)
-        fields_hdu = fits.BinTableHDU(fields)
+        fields_array_hdu = fits.BinTableHDU(fields_array, name='ALLOCATE')
+        fields_hdu = fits.BinTableHDU(fields, name='FIELDS')
         allocate_hdus[1] = fields_array_hdu
         allocate_hdus[3] = fields_hdu
         allocate_hdus.writeto(allocate_final_file, overwrite=True)
