@@ -875,7 +875,7 @@ class AllocateLST(object):
         field_array_dtype = [('fieldid', np.int32),
                              ('racen', np.float64),
                              ('deccen', np.float64),
-                             ('cadence', np.unicode_, 30),
+                             ('cadence', np.unicode_, 60),
                              ('nallocated', np.int32),
                              ('nallocated_sb', np.int32, self.slots.nskybrightness),
                              ('nallocated_full', np.int32),
