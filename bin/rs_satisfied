@@ -91,16 +91,19 @@ if __name__ == '__main__':
     if(final):
         allocate_file = allocate_file.replace('rsAllocation',
                                               'final/rsAllocationFinal')
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
+    try:
+        allocate_field_array = fitsio.read(filename=allocate_file, ext='ALLOCATE')
+    except OSError:
+        print("(rsAllocation file has unnamed HDU)")
+        allocate_field_array = fitsio.read(filename=allocate_file, ext=1)
 
     replacements = dict()
     for catchup_version in catchup_versions:
         allocate_file_catchup = allocate_file.replace('final/rsAllocationFinal',
                                                       'catchup/rsAllocationCatchup{v}'.format(v=catchup_version.upper()))
-        allocate_catchup = robostrategy.allocate.AllocateLST(filename=allocate_file_catchup,
-                                                             observatory=observatory)
-        for fieldid in np.unique(allocate_catchup.fields['fieldid']):
+        allocate_catchup_fields = fitsio.read(filename=allocate_file_catchup,
+                                              ext='FIELDS')
+        for fieldid in np.unique(allocate_catchup_fields['fieldid']):
             replacements[fieldid] = catchup_version
 
     targets_file = sdss_path.full('rsTargets', plan=plan,
@@ -157,7 +160,7 @@ if __name__ == '__main__':
         satisfied[xfer] = full_targets[xfer]
 
     count = 0
-    fieldids = np.unique(allocate.field_array['fieldid'])
+    fieldids = np.unique(allocate_field_array['fieldid'])
     for fieldid in fieldids:
         if((fieldid % 10) == 0):
             print(fieldid)
@@ -196,8 +199,8 @@ if __name__ == '__main__':
             header = None
             targets = None
             assignments = None
-            ifield = np.where(allocate.field_array['fieldid'] == fieldid)[0][0]
-            if(allocate.field_array['cadence'][ifield] != 'none'):
+            ifield = np.where(allocate_field_array['fieldid'] == fieldid)[0][0]
+            if(allocate_field_array['cadence'][ifield] != 'none'):
                 raise ValueError("Valid cadence but no rsFieldAssignments file!")
             else:
                 print("   (cadence is 'none')")
