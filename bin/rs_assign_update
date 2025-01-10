@@ -64,7 +64,7 @@ def assign_update(indx):
     rs_fieldid = rs_fieldids[fieldid]
     original_cadence = original_cadences[fieldid]
 
-    iallocate = np.where(allocate.field_array['fieldid'] == rs_fieldid)[0][0]
+    iallocate = np.where(allocate_field_array['fieldid'] == rs_fieldid)[0][0]
     
     print("fieldid {fid}: Update assignment".format(fid=fieldid), flush=True)
 
@@ -144,7 +144,7 @@ def assign_update(indx):
                   'dark_174x8_v1', 'dark_100x8_v1',
                   'dark_174x8_v2', 'dark_100x8_v2']
 
-    if(allocate.field_array['cadence'][iallocate] in rmcadences):
+    if(allocate_field_array['cadence'][iallocate] in rmcadences):
         print("fieldid {fid}: Not reassigning RM field, do not make grids".format(fid=fieldid), flush=True)
         allgrids = False
         noincadence = True
@@ -191,24 +191,35 @@ def assign_update(indx):
                                                                                 use_rs_fieldid=False)
 
             if(allowed is False):
-                print("fieldid {fid}: ERROR: current observations now do not fit into cadence; ignoring old observations".format(fid=fieldid))
-                status_field['status'] = 'not started'
-                status['status'] = 0
+                if(forcepast):
+                    print("fieldid {fid}: WARNING: current observations now do not fit into cadence; just assigning to first few".format(fid=fieldid), flush=True)
+                    idone = np.where((status_field['fieldid'] == fieldid) &
+                                     (status_field['status'] == 'done'))[0]
+                    original_exposures_done = status_field['field_exposure'][idone]
+                    original_exposures_done = np.sort(original_exposures_done)
+                    allocated_exposures_done = np.arange(len(original_exposures_done),
+                                                         dtype=np.int32)
+                    print("fieldid {fid}: WARNING: {o}".format(fid=fieldid, o=original_exposures_done), flush=True)
+                    print("fieldid {fid}: WARNING: {o}".format(fid=fieldid, o=allocated_exposures_done), flush=True)
+                else:
+                    print("fieldid {fid}: ERROR: current observations now do not fit into cadence; ignoring old observations".format(fid=fieldid))
+                    status_field['status'] = 'not started'
+                    status['status'] = 0
         
             they_differ = False
             for iexp, original_exposure_done in enumerate(original_exposures_done):
-                if(original_exposure_done != allocate.field_array['original_exposures_done'][iallocate][iexp]):
+                if(original_exposure_done != allocate_field_array['original_exposures_done'][iallocate][iexp]):
                     they_differ = True
                     break
             for iexp, allocated_exposure_done in enumerate(allocated_exposures_done):
-                if(allocated_exposure_done != allocate.field_array['allocated_exposures_done'][iallocate][iexp]):
+                if(allocated_exposure_done != allocate_field_array['allocated_exposures_done'][iallocate][iexp]):
                     they_differ = True
                     break
 
             if(they_differ):
                 print("fieldid {fid}: Reassignment disagrees with allocation step's assignment of exposures (using the former)".format(fid=fieldid), flush=True)
-                print("fieldid {fid}:   allocated_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['allocated_exposures_done'][iallocate]))
-                print("fieldid {fid}:   original_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate.field_array['original_exposures_done'][iallocate]))
+                print("fieldid {fid}:   allocated_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate_field_array['allocated_exposures_done'][iallocate]))
+                print("fieldid {fid}:   original_exposures_done (allocation): {a}".format(fid=fieldid, a=allocate_field_array['original_exposures_done'][iallocate]))
                 print("fieldid {fid}:   allocated_exposures_done (reassignment): {a}".format(fid=fieldid, a=allocated_exposures_done))
                 print("fieldid {fid}:   original_exposures_done (reassignment): {a}".format(fid=fieldid, a=original_exposures_done))
                 
@@ -347,6 +358,9 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--test', dest='test',
                         help='test, so write to test file', required=False,
                         default=False, action='store_true')
+    parser.add_argument('-u', '--force-past', dest='forcepast',
+                        help='if previous observations do not fit in new cadence, use them anyway', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-M', '--no-multiprocess', dest='nomultiprocess',
                         help='do not use multiprocess', required=False,
                         default=False, action='store_true')
@@ -368,6 +382,7 @@ if __name__ == '__main__':
     end = args.end
     test = args.test
     clobber = args.clobber
+    forcepast = args.forcepast
     nomultiprocess = args.nomultiprocess
     noassignmentstatus = args.noassignmentstatus
     nooffset = args.nooffset
@@ -447,8 +462,7 @@ if __name__ == '__main__':
         allocate_final_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
 
     # Rely on this for field information
-    allocate = robostrategy.allocate.AllocateLST(filename=allocate_file,
-                                                 observatory=observatory)
+    allocate_field_array  = fitsio.read(allocate_file, ext='ALLOCATE')
 
     # Rely on this for list of fields
     allocate_final = fitsio.read(allocate_final_file)
@@ -463,8 +477,8 @@ if __name__ == '__main__':
     neededs = np.zeros(len(fieldids), dtype=int)
     for i, fieldid in enumerate(fieldids):
         rs_fieldid = rs_fieldids[fieldid]
-        ifieldid = np.where(allocate.field_array['fieldid'] == rs_fieldid)[0]
-        neededs[i] = allocate.field_array['needed'][ifieldid].sum() 
+        ifieldid = np.where(allocate_field_array['fieldid'] == rs_fieldid)[0]
+        neededs[i] = allocate_field_array['needed'][ifieldid].sum() 
 
     if(end < 0):
         end = fieldids.max()
