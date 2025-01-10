@@ -457,6 +457,9 @@ class Field(object):
     field_cadence : str
         field cadence (default 'none')
 
+    noapogee : bool
+        No APOGEE fibers
+
     nocalib : bool
         if True, do not account for calibrations (default False)
 
@@ -567,6 +570,9 @@ class Field(object):
 
     mastergrid : RobotGrid object
         robotGrid used to inquire about robots & targets (not for assignment)
+
+    noapogee : bool
+        No APOGEE fibers
 
     nocalib : bool
         if True, do not account for calibrations
@@ -706,7 +712,7 @@ class Field(object):
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=None,
-                 fieldid=1, allgrids=True, nocalib=False, nocollide=False,
+                 fieldid=1, allgrids=True, noapogee=False, nocalib=False, nocollide=False,
                  bright_neighbors=True, verbose=False, veryverbose=False,
                  trim_cadence_version=False, untrim_cadence_version=None,
                  noassign=False, oldmag=False, reload_design_mode=False,
@@ -729,6 +735,7 @@ class Field(object):
         self._trim_cadence_version = trim_cadence_version  # trims field cadence
         self._untrim_cadence_version = untrim_cadence_version  # adds version to target cadence
         self.fieldid = fieldid
+        self.noapogee = noapogee
         self.nocalib = nocalib
         self.nocollide = nocollide
         self.allgrids = allgrids
@@ -1224,6 +1231,8 @@ class Field(object):
             self.collisionBuffer = hdr['CBUFFER']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
             self.nocalib = np.bool(hdr['NOCALIB'])
+        if(('NOAPOGEE' in hdr) & (self.noapogee == False)):
+            self.noapogee = np.bool(hdr['NOAPOGEE'])
         if(('OFFMINSKY' in hdr) & (self.offset_min_skybrightness is None)):
             self.offset_min_skybrightness = np.float32(hdr['OFFMINSKY'])
             if(self.offset_min_skybrightness != self.offset_min_skybrightness):
@@ -1472,9 +1481,14 @@ class Field(object):
         for k in rg.robotDict.keys():
             rg.homeRobot(k)
         if(self.robotHasApogee is None):
-            self.robotHasApogee = np.array([rg.robotDict[x].hasApogee
-                                            for x in rg.robotDict.keys()],
-                                           dtype=bool)
+            if(self.noapogee is False):
+                self.robotHasApogee = np.array([rg.robotDict[x].hasApogee
+                                                for x in rg.robotDict.keys()],
+                                               dtype=bool)
+            else:
+                self.robotHasApogee = np.array([False
+                                                for x in rg.robotDict.keys()],
+                                               dtype=bool)
         return(rg)
 
     def _set_radius(self):
@@ -1519,7 +1533,7 @@ class Field(object):
                 return
         if(field_cadence != 'none'):
             if(self.verbose):
-                print("fieldid {fid}: Setting field cadence".format(fid=self.fieldid), flush=True)
+                print("fieldid {fid}: Setting field cadence to {fc}".format(fid=self.fieldid, fc=field_cadence), flush=True)
             self.field_cadence = clist.cadences[field_cadence]
             if(self.allgrids):
                 for i in range(self.field_cadence.nexp_total):
@@ -2743,6 +2757,9 @@ class Field(object):
         hdr.append({'name':'NOCALIB',
                     'value':self.nocalib,
                     'comment':'True if this field ignores calibrations'})
+        hdr.append({'name':'NOAPOGEE',
+                    'value':self.noapogee,
+                    'comment':'True if this field does not assign APOGEE targets'})
         if(self.nocalib is False):
             for indx, rc in enumerate(self.calibration_order):
                 name = 'RCNAME{indx}'.format(indx=indx)
@@ -6142,9 +6159,11 @@ class Field(object):
         previously observed target.
 """
         anydone = (observed_status['status'] > 0).any()
-        if(anydone is False):
-            print("fieldid {fid}: Nothing marked as done in field".format(fid=self.fieldid),
+        print(anydone, flush=True)
+        if(anydone == False):
+            print("fieldid {fid}: Nothing marked as done in field, but we still need to lock down the exposures".format(fid=self.fieldid),
                   flush=True)
+            self.lock_exposures(iexps=allocated_exposures_done)
             return
 
         ige0 = (allocated_exposures_done >= 0)
@@ -6249,6 +6268,18 @@ class Field(object):
                                                       holeIDs=np.array([observed_status['holeid'][istatus]]),
                                                       force=True, lock=True, override_lock=True)
 
+        self.lock_exposures(iexps=allocated_exposures_done)
+
+        return
+
+    def lock_exposures(self, iexps=None):
+        """Lock down exposures"""
+        for iexp in iexps:
+            self.exposure_locked[iexp] = True
+            for robotID in self.mastergrid.robotDict:
+                robotindx = self.robotID2indx[robotID]
+                if(self._robot2indx[robotindx, iexp] == -1):
+                    self._robot_locked[robotindx, iexp] = True
         return
     
     def assign_done_exposure(self, iexp=None, rsids=None, holeIDs=None, force=False,
@@ -6319,11 +6350,7 @@ class Field(object):
         if(lock):
             # Make sure we check against _robot2indx since if force is set we cannot
             # rely on RobotGrid; should not really matter though.
-            self.exposure_locked[iexp] = True
-            for robotID in self.mastergrid.robotDict:
-                robotindx = self.robotID2indx[robotID]
-                if(self._robot2indx[robotindx, iexp] == -1):
-                    self._robot_locked[robotindx, iexp] = True
+            self.lock_exposures(iexps=[iexp])
 
         return
 
