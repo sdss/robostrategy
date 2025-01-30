@@ -70,10 +70,13 @@ if __name__ == '__main__':
         sc = astropy.coordinates.SkyCoord(ra=fa['racen'], dec=fa['deccen'],
                                           unit='deg', frame='icrs')
         galb = sc.galactic.b.value
-        if((obsmode_pk == 'dark_monit') |
-           (obsmode_pk == 'dark_faint') |
-           (np.abs(galb) > 20.)):
-            new_fields_array['cadence'][i] = fa['cadence'] + '_no_apogee_skies'
+        if((np.abs(galb) > 20.)):
+            w = fa['cadence'].split('_')
+            if('4yr' in fa['cadence']):
+                nas_cadence = "_".join(w[0:-2]) + '_no_apogee_skies_' + "_".join(w[-2:])
+            else:
+                nas_cadence = "_".join(w[0:-1]) + '_no_apogee_skies_' + w[-1]
+            new_fields_array['cadence'][i] = nas_cadence
 
     fields_array_hdu = fits.BinTableHDU(new_fields_array, name='ALLOCATE')
     allocate_hdus[1] = fields_array_hdu
