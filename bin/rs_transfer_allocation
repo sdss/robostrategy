@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Date: Sept 26, 2018
+# @Filename: rs_final_allocation
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import numpy as np
+import roboscheduler.cadence as cadence
+import robostrategy.allocate
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final allocation file, splitting mixed cadences')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-f', '--from-plan', dest='fromplan',
+                        type=str, help='name of plan to transfer from', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='name of observatory', required=False,
+                        choices=['lco', 'apo', 'both'], default='both')
+
+    args = parser.parse_args()
+    plan = args.plan
+    fromplan = args.fromplan
+    observatory = args.observatory
+    
+    if(observatory == 'both'):
+        observatories = ['apo', 'lco']
+    else:
+        observatories = [observatory]
+
+    for observatory in observatories:
+        cadencelist = cadence.CadenceList(skybrightness_only=True)
+        cadencelist.reset()
+        cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                       observatory=observatory)
+        cadencelist.fromfits(filename=cadences_file, unpickle=False)
+
+        from_allocate_file_orig = sdss_path.full('rsAllocation', plan=fromplan,
+                                            observatory=observatory)
+        from_allocate_file = from_allocate_file_orig.replace('rsAllocation',
+                                                             'rsAllocationRefresh')
+        if(os.path.exists(from_allocate_file)):
+            print("Using rsAllocationRefresh version of the allocation file", flush=True)
+        else:
+            from_allocate_file = from_allocate_file_orig
+
+        allocate_file = sdss_path.full('rsAllocation', plan=plan, observatory=observatory)
+
+        allocate = robostrategy.allocate.AllocateLST(filename=from_allocate_file,
+                                                     observatory=observatory)
+
+        allocate.field_array['original_cadence'] = allocate.field_array['cadence']
+        allocate.field_array['original_exposures_done'] = allocate.field_array['allocated_exposures_done']
+
+        allocate.tofits(filename=allocate_file)
