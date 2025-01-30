@@ -1,0 +1,80 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# @Author: Michael R. Blanton
+# @Filename: rs_no_apogee_sky
+# @License: BSD 3-Clause
+# @Copyright: Michael R. Blanton
+
+
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+import argparse
+import sys
+import numpy as np
+import subprocess
+import astropy.io.fits as fits
+import astropy.coordinates
+import roboscheduler.cadence as cadence
+import robostrategy.params as params
+import mugatu.designs_to_targetdb
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Final allocation file, splitting mixed cadences')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan', required=True)
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='name of observatory', required=False,
+                        choices=['lco', 'apo', 'both'], default='both')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+    
+    rsParams = params.RobostrategyParams(plan=plan)
+
+    cadencelist = cadence.CadenceList(skybrightness_only=True)
+    cadencelist.reset()
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    cadencelist.fromfits(filename=cadences_file, unpickle=False)
+
+    allocate_file = sdss_path.full('rsAllocation', plan=plan,
+                                   observatory=observatory)
+    allocate_file_orig = allocate_file + '.orig'
+
+    if(os.path.exists(allocate_file_orig) is False):
+        subprocess.run(['cp', allocate_file, allocate_file_orig])
+
+    allocate_hdus = fits.open(allocate_file_orig)
+    rs_fields_array = allocate_hdus[1].data.copy()
+    new_fields_array_dtype = rs_fields_array.dtype.descr
+    new_fields_array_dtype[3] = ('cadence', np.unicode_, 60)
+    new_fields_array = np.zeros(len(rs_fields_array), dtype=np.dtype(new_fields_array_dtype))
+    for n in new_fields_array.dtype.names:
+        new_fields_array[n] = rs_fields_array[n]
+
+    for i, fa in enumerate(new_fields_array):
+        if(fa['cadence'] == 'none'):
+            continue
+        obsmode_pk = cadencelist.cadences[fa['cadence']].obsmode_pk[0]
+        sc = astropy.coordinates.SkyCoord(ra=fa['racen'], dec=fa['deccen'],
+                                          unit='deg', frame='icrs')
+        galb = sc.galactic.b.value
+        if((obsmode_pk == 'dark_monit') |
+           (obsmode_pk == 'dark_faint') |
+           (np.abs(galb) > 20.)):
+            new_fields_array['cadence'][i] = fa['cadence'] + '_no_apogee_skies'
+
+    fields_array_hdu = fits.BinTableHDU(new_fields_array, name='ALLOCATE')
+    allocate_hdus[1] = fields_array_hdu
+    allocate_hdus.writeto(allocate_file, overwrite=True)
