@@ -57,7 +57,7 @@ def assign_update_wrap(indx):
         print(f"fieldid {fid=}: Unexpected {err=}, {type(err)=}")
         raise
     return
-        
+
 
 def assign_update(indx):
     fieldid = fieldids[indx]
