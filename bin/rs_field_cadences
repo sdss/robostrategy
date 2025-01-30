@@ -120,8 +120,13 @@ if __name__ == '__main__':
 
     if(nostatus is False):
         print("Reading allocations  ...", flush=True)
-        allocate_file = sdss_path.full('rsAllocation', plan=fromplan,
-                                       observatory=observatory)
+        allocate_file_orig = sdss_path.full('rsAllocation', plan=fromplan,
+                                            observatory=observatory)
+        allocate_file = allocate_file_orig.replace('rsAllocation', 'rsAllocationRefresh')
+        if(os.path.exists(allocate_file)):
+            print("Using rsAllocationRefresh version of the allocation file", flush=True)
+        else:
+            allocate_file = allocate_file_orig
         allocate_fromplan = robostrategy.allocate.AllocateLST(filename=allocate_file,
                                                               observatory=observatory)
     else:
@@ -186,12 +191,12 @@ if __name__ == '__main__':
         if(nostatus is False):
             # If any exposures are done, make sure at least one of the current
             # cadences can accommodate those exposures
+            iallocate = np.where(allocate_fromplan.field_array['fieldid'] == fieldid)[0]
+            current_cadence = allocate_fromplan.field_array['cadence'][iallocate[0]]
             idone = np.where((field_status['rs_fieldid'] == fieldid) &
                              (field_status['status'] == 'done'))[0]
-            if(len(idone) > 0):
+            if((len(idone) > 0) & (current_cadence != 'none')):
                 current_exposures_done = field_status['field_exposure'][idone]
-                iallocate = np.where(allocate_fromplan.field_array['fieldid'] == fieldid)[0]
-                current_cadence = allocate_fromplan.field_array['cadence'][iallocate[0]]
                 current_epochs_done = cadencelist.cadences[current_cadence].epochs[current_exposures_done]
                 current_epochs_done = np.unique(current_epochs_done)
 
