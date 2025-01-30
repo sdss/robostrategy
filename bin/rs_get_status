@@ -129,7 +129,7 @@ def get_and_write_status(indx):
                          warning=False)
 
     if(status_field is None):
-        print("fieldid {fid}: No status informationn to write".format(fid=fieldid), flush=True)
+        print("fieldid {fid}: No status information to write".format(fid=fieldid), flush=True)
         print("fieldid {f}: Done".format(f=fieldid), flush=True)
         return
 
@@ -239,7 +239,16 @@ def get_status(indx, fromplan=None):
     fieldid = allocate_field_array['fieldid'][indx]
     original_fieldid = allocate_field_array['rs_fieldid'][indx]
     ioriginal = np.where(original_allocate_field_array['fieldid'] == original_fieldid)[0]
+    field_type = original_allocate_fields['type'][ioriginal[0]]
     full_cadence = original_allocate_field_array['cadence'][ioriginal]
+
+    if(boss_only_special & (fromplan == 'theta-2-boss-only-2')):
+        ibo = np.where(boss_only_fields['fieldid'] == original_fieldid)[0]
+        if(len(ibo) > 0):
+            field_type = boss_only_fields['type'][ibo[0]]
+            if((field_type == 'MCS_FILLIN')):
+                print("fieldid {fid}: Skipping BOSS-only observations in MCS_FILLIN fields".format(fid=fieldid), flush=True)
+                return(status, status_field)
 
     (d2s_status, d2s_designids, d2s_designids_status,
      d2s_field_exposures) = robostrategy.dbutils.field_status(fieldid=fieldid - fieldid_shift,
@@ -267,7 +276,12 @@ def get_status(indx, fromplan=None):
         status_field['full_cadence'] = full_cadence
 
         print("fieldid {fid}: Checking for early observations".format(fid=fieldid), flush=True)
-        c = cadencelist.cadences[status_field['full_cadence'][0]]
+        try:
+            c = cadencelist.cadences[status_field['full_cadence'][0]]
+        except KeyError as err:
+            print("fieldid {fid}: {err}".format(fid=fieldid, err=err), flush=True)
+            raise
+            
         for isf, csf in enumerate(status_field):
             dorb = csf['design_mode'].split('_')[0]
             emjd = earliest_mjd[dorb]
@@ -337,6 +351,9 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--field-list', dest='fieldlist',
                         type=str, help='field list', required=False,
                         default=None)
+    parser.add_argument('-b', '--boss-only-special', dest='boss_only_special',
+                        help='handle BOSS-only observations, ignoring status from theta-2-boss-only-2 for MCS_FILLIN fields', required=False,
+                        default=False, action='store_true')
     parser.add_argument('-x', '--verbose', dest='verbose',
                         help='verbose', required=False,
                         default=False, action='store_true')
@@ -371,6 +388,7 @@ if __name__ == '__main__':
     new_allocation = args.new_allocation
     fieldlist_str = args.fieldlist
     tofile = args.tofile
+    boss_only_special = args.boss_only_special
 
     rsParams = params.RobostrategyParams(plan=plan)
 
@@ -409,8 +427,16 @@ if __name__ == '__main__':
         allocate_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
 
     original_allocate_field_array = fitsio.read(original_allocate_file, ext=1)
+    original_allocate_fields = fitsio.read(original_allocate_file, ext=3)
 
     allocate_field_array = fitsio.read(allocate_file, ext=1)
+
+    if(boss_only_special):
+        boss_only_fields_file = sdss_path.full('rsFields', plan='theta-2-boss-only-2',
+                                               observatory=observatory)
+        boss_only_fields_file = boss_only_fields_file.replace('rsFields',
+                                                              'rsFieldsRotated')
+        boss_only_fields = fitsio.read(boss_only_fields_file)
 
     fieldids, indx = np.unique(allocate_field_array['fieldid'],
                                return_index=True)
