@@ -290,7 +290,10 @@ if __name__ == '__main__':
 
     rmcadences = ['dark_174x8', 'dark_100x8',
                   'dark_174x8_v1', 'dark_100x8_v1',
-                  'dark_174x8_v2', 'dark_100x8_v2']
+                  'dark_174x8_v2', 'dark_100x8_v2',
+                  'dark_no_apogee_skies_174x8', 'dark_no_apogee_skies_100x8',
+                  'dark_no_apogee_skies_174x8_v1', 'dark_no_apogee_skies_100x8_v1',
+                  'dark_no_apogee_skies_174x8_v2', 'dark_no_apogee_skies_100x8_v2']
 
     with multiprocessing.Pool(32) as pool:
         pool.map(count_spares, ikeep)
