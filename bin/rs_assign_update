@@ -36,6 +36,7 @@ cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 clobber = False
 veryverbose = False
+ignore_satisfied_from = None
 special_calibration = []
 standard_apogee_nperzone_min = -1
 mags_allowed_brighttime = []
@@ -86,6 +87,25 @@ def assign_update(indx):
                                             fieldid=fieldid)
     field_assignments_file = field_assignments_file.replace('targets/rsFieldTargets',
                                                             'final/rsFieldAssignmentsFinal')
+
+    coordinated_targets = None
+    if(ignore_satisfied_from is not None):
+        print("fieldid {fid}: Reading satisfied targets to ignore them from {i}".format(fid=fieldid, i=ignore_satisfied_from), flush=True)
+        satisfied_assignments_file = sdss_path.full('rsFieldTargets',
+                                                    plan=ignore_satisfied_from,
+                                                    observatory=observatory,
+                                                    fieldid=fieldid)
+        satisfied_assignments_file = satisfied_assignments_file.replace('targets/rsFieldTargets',
+                                                                        'final/rsFieldAssignmentsFinal')
+        if(os.path.exists(satisfied_assignments_file) is False):
+            raise ValueError("No assignments file: {f}".format(f=satisfied_assignments_file))
+        else:
+            satisfied_targets = fitsio.read(satisfied_assignments_file, ext='TARGET')
+            satisfied_assignments = fitsio.read(satisfied_assignments_file, ext='ASSIGN')
+            coordinated_targets = dict()
+            for t, a in zip(satisfied_targets, satisfied_assignments):
+                if(a['satisfied'] > 0):
+                    coordinated_targets[t['rsid']] = True
 
     field_status_file = sdss_path.full('rsFieldTargets',
                                        plan=plan, observatory=observatory,
@@ -282,7 +302,7 @@ def assign_update(indx):
 
         print("fieldid {fid}: Assign science and calib".format(fid=fieldid), flush=True)
         try:
-            f.assign_science_and_calibs(stage='srd')
+            f.assign_science_and_calibs(stage='srd', coordinated_targets=coordinated_targets)
         except:
             print("fieldid {fid}: Error in assign_science_and_calibs()".format(fid=fieldid))
             raise
@@ -427,6 +447,8 @@ if __name__ == '__main__':
             mags_allowed_darktime = rsParams.cfg['Assignment']['mags_allowed_darktime'].split()
         if('offset_min_skybrightness' in rsParams.cfg['Assignment']):
             offset_min_skybrightness = np.float32(rsParams.cfg['Assignment']['offset_min_skybrightness'])
+        if('ignore_satisfied_from' in rsParams.cfg['Assignment']):
+            ignore_satisfied_from = rsParams.cfg['Assignment']['ignore_satisfied_from']
 
     cadence_version = None
     if('CadenceVersions' in rsParams.cfg):
