@@ -210,14 +210,16 @@ if __name__ == '__main__':
             while(iexpst < curr_cadence.nexp_total):
                 iexpnd = iexpst
                 sb = skybrightness[iexpst]
+                nextsb = -1.
+                nextdelta = -1.
                 if(iexpnd + 1 < curr_cadence.nexp_total):
                     nextsb = skybrightness[iexpnd + 1]
                     nextdelta = delta_max[iexpnd + 1]
                 while(((iexpnd + 1) < curr_cadence.nexp_total) &
                       (np.abs(nextsb - sb) < 0.001) & (
-                      ((delta_max[iexpnd] == -1) |
-                       (nextdelta != -1) |
-                       (split_nocadence == False)))):
+                          ((delta_max[iexpnd] == -1) |
+                           (nextdelta != -1) |
+                           (split_nocadence == False)))):
                     iexpnd = iexpnd + 1
                     if(iexpnd + 1 < curr_cadence.nexp_total):
                         nextsb = skybrightness[iexpnd + 1]
