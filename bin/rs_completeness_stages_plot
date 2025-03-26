@@ -92,7 +92,10 @@ def make_maps(completeness_file, stage, vmin=None, vmax=None):
     if(vmax is None):
         vmax = tmp_vmax
 
-    title = '$\log_{10}$ Exposure Density (deg$^{-2}$) ' + '(' + stage.lower() + '; total is {t:,d})'.format(t=np.int32(nexps.sum()))
+    s = stage.lower()
+    if(s == 'other'):
+        s = 'done'
+    title = '$\log_{10}$ Exposure Density (deg$^{-2}$) ' + '(' + s + '; total is {t:,d})'.format(t=np.int32(nexps.sum()))
     plot_map(hdr, nexps, name=stage.lower(),
              title=title, vmin=vmin, vmax=vmax)
 

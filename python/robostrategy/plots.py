@@ -111,18 +111,47 @@ def fieldshape(racen=180., deccen=0., pa=0., observatory='apo',
 def field_patches(m=None, racen=None, deccen=None, pa=None,
                   observatory=None, types=None, type2color=None,
                   dont_check_360=False, ra_transform_func=None,
-                  colors=None):
+                  colors=None, type2alpha=None, alphas=None, type2zorder=None):
 
     if(ra_transform_func is None):
         ra_transform_func = ra_transform
 
     if((type2color is None) & (colors is None)):
         type2color = dict()
-        type2color['AllSkySloane'] = 'black'
-        type2color['BHMAqmesMedium'] = 'orange'
-        type2color['BHMAqmesWide2'] = 'yellow'
-        type2color['RM'] = 'red'
-        type2color['RMlite'] = 'red'
+        type2color['AllSkySloane'] = 'grey'
+        type2color['AllSkySparse'] = 'black'
+        type2color['YSO'] = 'black'
+        type2color['MCS'] = 'black'
+        type2color['BHMAqmesMedium'] = 'red'
+        type2color['BHMAqmesWide2'] = 'orange'
+        type2color['BHMAqmesWide1'] = 'yellow'
+        type2color['RM'] = 'blue'
+        type2color['RMlite'] = 'blue'
+
+    if((type2alpha is None) & (alphas is None)):
+        type2alpha = dict()
+        type2alpha['AllSkySloane'] = 'grey'
+        type2alpha['AllSkySparse'] = 'black'
+        type2alpha['YSO'] = 'black'
+        type2alpha['MCS'] = 'black'
+        type2alpha['BHMAqmesMedium'] = 'red'
+        type2alpha['BHMAqmesWide2'] = 'orange'
+        type2alpha['BHMAqmesWide1'] = 'yellow'
+        type2alpha['RM'] = 'blue'
+        type2alpha['RMlite'] = 'blue'
+
+    if(type2zorder is None):
+        type2zorder = dict()
+        type2zorder['AllSkySloane'] = 2
+        type2zorder['AllSkySparse'] = 2
+        type2zorder['Unobserved'] = 1
+        type2zorder['YSO'] = 3
+        type2zorder['MCS'] = 3
+        type2zorder['BHMAqmesMedium'] = 5
+        type2zorder['BHMAqmesWide2'] = 5
+        type2zorder['BHMAqmesWide1'] = 5
+        type2zorder['RM'] = 7
+        type2zorder['RMlite'] = 7
         
     fieldshapes = []
     for i in np.arange(len(racen), dtype=int):
@@ -133,22 +162,35 @@ def field_patches(m=None, racen=None, deccen=None, pa=None,
 
     patches = []
     for i, fsh in enumerate(fieldshapes):
-        if(types is None):
-            color = 'black'
-        else:
-            color = type2color[types[i]]
-
         if(colors is not None):
-            coolwarm = matplotlib.cm.get_cmap('coolwarm') 
-            color = coolwarm(colors[i])
-        
+            blues = matplotlib.cm.get_cmap('Blues') 
+            color = blues(colors[i])
+        else:
+            if(types is None):
+                color = 'black'
+            else:
+                color = type2color[types[i]]
+
+        if(alphas is not None):
+            alpha = alphas[i]
+        else:
+            if(types is None):
+                alpha = 0.5
+            else:
+                alpha = type2alpha[types[i]]
+
+        if(types is None):
+            zorder=None
+        else:
+            zorder = type2zorder[types[i]]
+            
         ras = np.array([x[0] for x in fsh.exterior.coords])
         decs = np.array([x[1] for x in fsh.exterior.coords])
         try:
             if(dont_check_360 | (ras.max() - ras.min() < 180.)):
                 mpoly = shapely.ops.transform(m, fsh)
-                patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=0.5,
-                                            linewidth=0))
+                patches.append(PolygonPatch(mpoly, fc=color, ec=None, alpha=alpha,
+                                            linewidth=0, zorder=zorder))
             else:
                 ras1 = ras
                 ii = np.where(ras1 < 0.)[0]
@@ -159,7 +201,7 @@ def field_patches(m=None, racen=None, deccen=None, pa=None,
                 fsh1 = fsh1.intersection(p1)
                 if(fsh1.area > 0):
                     mpoly = shapely.ops.transform(m, fsh1)
-                    patches.append(PolygonPatch(mpoly, fc=color, ec='none', alpha=0.5))
+                    patches.append(PolygonPatch(mpoly, fc=color, ec='none', alpha=alpha, zorder=zorder))
                 ras2 = ras
                 ii = np.where(ras2 > 0.)[0]
                 ras2[ii] = ras2[ii] - 360.
@@ -169,24 +211,45 @@ def field_patches(m=None, racen=None, deccen=None, pa=None,
                 fsh2 = fsh2.intersection(p2)
                 if(fsh2.area > 0):
                     mpoly = shapely.ops.transform(m, fsh2)
-                    patches.append(PolygonPatch(mpoly, fc=color, ec='none', alpha=0.5))
+                    patches.append(PolygonPatch(mpoly, fc=color, ec='none', alpha=alpha, zorder=zorder))
         except:
             pass
 
     return(patches)
 
 def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=None,
-                      type2color=None, colors=None):
+                      type2color=None, type2alpha=None, colors=None, alphas=None,
+                      type2zorder=None, colorbar=None):
 
-    if(type2color is None):
+    if((type2color is None) & (colors is None)):
         type2color = dict()
-        type2color['AllSkySloane'] = 'black'
-        type2color['BHMAqmesMedium'] = 'orange'
-        type2color['BHMAqmesWide2'] = 'yellow'
-        type2color['RM'] = 'red'
-        type2color['RMlite'] = 'red'
+        type2color['AllSkySloane'] = 'grey'
+        type2color['AllSkySparse'] = 'black'
+        type2color['Unobserved'] = 'grey'
+        type2color['YSO'] = 'black'
+        type2color['MCS'] = 'black'
+        type2color['BHMAqmesMedium'] = 'dodgerblue'
+        type2color['BHMAqmesWide2'] = 'skyblue'
+        type2color['BHMAqmesWide1'] = 'lightskyblue'
+        type2color['RM'] = 'blue'
+        type2color['RMlite'] = 'blue'
+
+    if((type2alpha is None) & (alphas is None)):
+        type2alpha = dict()
+        type2alpha['AllSkySloane'] = 0.5
+        type2alpha['AllSkySparse'] = 0.5
+        type2alpha['Unobserved'] = 0.05
+        type2alpha['YSO'] = 0.5
+        type2alpha['MCS'] = 0.5
+        type2alpha['BHMAqmesMedium'] = 0.9
+        type2alpha['BHMAqmesWide2'] = 0.9
+        type2alpha['BHMAqmesWide1'] = 0.45
+        type2alpha['RM'] = 1.0
+        type2alpha['RMlite'] = 1.0
 
     fig, ax = plt.subplots(figsize=(12, 6.))
+    
+    ax.set_facecolor('#d0d0d0')
     plt.subplots_adjust(0.005, 0.005, 0.995, 0.995, 0., 0.)
     
     m = basemap.Basemap(projection='moll', lon_0=0, resolution='c')
@@ -201,8 +264,16 @@ def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=
 
     patches = field_patches(m=m, racen=racen, deccen=deccen, pa=pa,
                             observatory=observatory, types=types,
-                            type2color=type2color, colors=colors)
-    ax.add_collection(matplotlib.collections.PatchCollection(patches, match_original=True))
+                            type2color=type2color, colors=colors, type2alpha=type2alpha,
+                            alphas=alphas, type2zorder=type2zorder)
+    p = matplotlib.collections.PatchCollection(patches, match_original=True, cmap='Blues')
+    ax.add_collection(p)
+
+    if(colorbar is not None):
+        cbar = m.colorbar(p, location='right', size='2%')
+        cbar.set_label(colorbar['name'])
+        cbar.set_ticks(colorbar['ticks'])
+        cbar.set_ticklabels(colorbar['labels'])
 
     return
 

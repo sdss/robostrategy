@@ -29,8 +29,22 @@ if __name__ == '__main__':
     fields_south_file = sdss_path.full('rsFieldsRotated', plan=plan,
                                        observatory='lco')
 
+    allocation_north_file = sdss_path.full('rsAllocation', plan=plan,
+                                           observatory='apo')
+    allocation_south_file = sdss_path.full('rsAllocation', plan=plan,
+                                           observatory='lco')
+
     fn = fitsio.read(fields_north_file)
     fs = fitsio.read(fields_south_file)
+
+    fan = fitsio.read(allocation_north_file)
+    fas = fitsio.read(allocation_south_file)
+
+    io = np.where(fan['cadence'] == 'none')[0]
+    fn['type'][io] = 'Unobserved'
+
+    io = np.where(fas['cadence'] == 'none')[0]
+    fs['type'][io] = 'Unobserved'
     
     racen = np.append(fn['racen'], fs['racen'])
     deccen = np.append(fn['deccen'], fs['deccen'])
@@ -48,5 +62,5 @@ if __name__ == '__main__':
     rp.plot_field_shapes(racen=racen, deccen=deccen, pa=pa, observatory=obs,
                          types=types)
 
-    plt.savefig('rsFieldsPretty-{p}.png'.format(p=plan))
+    plt.savefig('rsFieldsPretty-{p}.png'.format(p=plan), dpi=600)
 
