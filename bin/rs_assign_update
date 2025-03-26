@@ -48,6 +48,8 @@ catchup_version = None
 offset_min_skybrightness = None
 noassignmentstatus = False
 nooffset = False
+special_priority = None
+special_cadence = None
 
 
 def assign_update_wrap(indx):
@@ -185,6 +187,30 @@ def assign_update(indx):
                                 nooffset=nooffset, allgrids=allgrids,
                                 noincadence=noincadence)
     f.fieldid = fieldid
+
+    if(special_priority is not None):
+        for carton in special_priority:
+            icarton = np.where(f.targets['carton'] == carton)[0]
+            sp = np.int32(special_priority[carton])
+            print("fieldid {fid}: Reprioritizing {c} to {sp}".format(fid=fieldid,
+                                                                     c=carton, sp=sp),
+                  flush=True)
+            if(len(icarton) > 0):
+                print("fieldid {fid}:  ({n} targets)".format(fid=fieldid,
+                                                             n=len(icarton)), flush=True)
+                f.targets['priority'][icarton] = sp
+
+    if(special_cadence is not None):
+        for carton in special_cadence:
+            icarton = np.where(f.targets['carton'] == carton)[0]
+            sc = special_cadence[carton]
+            print("fieldid {fid}: Recadencing {c} to {sc}".format(fid=fieldid,
+                                                                  c=carton, sc=sc),
+                  flush=True)
+            if(len(icarton) > 0):
+                print("fieldid {fid}:  ({n} targets)".format(fid=fieldid,
+                                                             n=len(icarton)), flush=True)
+                f.targets['cadence'][icarton] = sc
 
     if(f.field_cadence is None):
         print("fieldid {fid}: no field cadence to assign! Skipping".format(fid=fieldid), flush=True)
@@ -449,6 +475,16 @@ if __name__ == '__main__':
             offset_min_skybrightness = np.float32(rsParams.cfg['Assignment']['offset_min_skybrightness'])
         if('ignore_satisfied_from' in rsParams.cfg['Assignment']):
             ignore_satisfied_from = rsParams.cfg['Assignment']['ignore_satisfied_from']
+
+    special_priority = None
+    if('SpecialPriority' in rsParams.cfg):
+        print("Setting SpecialPriority", flush=True)
+        special_priority = rsParams.cfg['SpecialPriority']
+
+    special_cadence = None
+    if('SpecialCadence' in rsParams.cfg):
+        print("Setting SpecialCadence", flush=True)
+        special_cadence = rsParams.cfg['SpecialCadence']
 
     cadence_version = None
     if('CadenceVersions' in rsParams.cfg):
