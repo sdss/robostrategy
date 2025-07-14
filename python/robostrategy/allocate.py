@@ -10,6 +10,8 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 
 import numpy as np
+import healpy
+import astropy.coordinates
 import fitsio
 import collections
 import matplotlib.pyplot as plt
@@ -24,6 +26,15 @@ try:
     import mpl_toolkits.basemap as basemap
 except ImportError:
     basemap = None
+
+
+def in_spiders(racen=None, deccen=None):
+    cc = astropy.coordinates.SkyCoord(racen, deccen, unit='deg', frame='icrs')
+    cg = cc.transform_to('galactic')
+    l = cg.l.value
+    b = cg.b.value
+    isin = (l > 180.) & (np.abs(b) > 20.)
+    return(isin)
 
 
 def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
@@ -75,18 +86,24 @@ def calculate_filled(fieldid=None, field_status=None, option_cadence=None,
     are allowed.
 """ 
     cadencelist = rcadence.CadenceList(skybrightness_only=True)
+    filled_sb = np.zeros(slots.nskybrightness, dtype=np.int32)
 
     if(use_rs_fieldid):
         ifield = np.where(field_status['rs_fieldid'] == fieldid)[0]
     else:
         ifield = np.where(field_status['fieldid'] == fieldid)[0]
+
+    if(current_cadence == 'none'):
+        if(len(ifield) > 0):
+            raise ValueError("Cadence 'none' but field has status for fieldid={fid}".format(fid=fieldid))
+        return(True, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
+
     curr_field_status = field_status[ifield]
     idone = np.where(curr_field_status['status'] == 'done')
     current_exposures_done_flag = np.zeros(cadencelist.cadences[current_cadence].nexp_total,
                                            dtype=bool)
     current_exposures_done_flag[curr_field_status['field_exposure'][idone]] = True
     current_exposures_done = np.where(current_exposures_done_flag)[0]
-    filled_sb = np.zeros(slots.nskybrightness, dtype=np.int32)
 
     if(len(current_exposures_done) == 0):
         return(True, filled_sb, np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.int32))
@@ -375,7 +392,7 @@ class AllocateLST(object):
                  observatory=None, cartons=None, cadences=None,
                  observe_all_fields=[], observe_all_cadences=[],
                  dark_prefer=1., minimum_ntargets={}, epoch_overhead=None,
-                 fgot_conditions=None, verbose=False):
+                 special_conditions=None, verbose=False, nside=None):
         self.epoch_overhead = None
         self.verbose = verbose
         if(filename is None):
@@ -399,7 +416,17 @@ class AllocateLST(object):
         self.observe_all_cadences = observe_all_cadences
         self.cadencelist = rcadence.CadenceList()
         self.dark_prefer = dark_prefer
-        self.fgot_conditions = fgot_conditions
+        self.special_conditions = special_conditions
+        self.nside = nside
+
+        self.in_spiders_or_aqmes = dict()
+        in_spiders_array = in_spiders(self.fields['racen'], self.fields['deccen'])
+        for i, field in enumerate(self.fields):
+            if(field['type'][0:3] == 'BHM'):
+                self.in_spiders_or_aqmes[field['fieldid']] = True
+            else:
+                self.in_spiders_or_aqmes[field['fieldid']] = in_spiders_array[i]
+
         return
 
     def duration_scale(self, cadence=None, skybrightness=None):
@@ -484,6 +511,84 @@ class AllocateLST(object):
                                                 skybrightness=skybrightness)
         return(xfactor)
 
+    def fail_fgot_conditions(self, fieldid=None, curr_option=None, curr_cadence=None,
+                             ngot_max=None):
+        if(self.special_conditions is None):
+            return(False, dict())
+
+        if('fgot' not in self.special_conditions):
+            return(False, dict())
+            
+        fgot_conditions = self.special_conditions['fgot']
+        
+        ifgot_carton = np.where(self.cartons == fgot_conditions['carton'])[0][0]
+
+        ntarget = curr_option['nwithin_pct'][ifgot_carton]
+        fgot = curr_option['ngot_pct'][ifgot_carton] / ngot_max
+
+        out = {'ntarget':ntarget, 'fgot':fgot}
+
+        exempt_cadence = False
+        if(curr_cadence in fgot_conditions['exempt_cadences']):
+            if(ntarget < fgot_conditions['exempt_cadences'][curr_cadence]):
+                exempt_cadence = True
+        if((ntarget > fgot_conditions['ntarget_minimum']) &
+           ((fgot < fgot_conditions['minimum']) |
+            (fgot > fgot_conditions['maximum'])) &
+           (exempt_cadence == False) &
+           (fieldid not in fgot_conditions['exempt_fields'])):
+            return(True, out)
+
+        return(False, out)
+
+    def fail_hybrid_conditions(self, fieldid=None, curr_slot=None, curr_cadence=None):
+        if(self.special_conditions is None):
+            return(False)
+
+        if('hybrid' not in self.special_conditions):
+            return(False)
+
+        print("fieldid {fid}: checking hybrid for {c}".format(fid=fieldid,
+                                                              c=curr_cadence))
+
+        hybrid_conditions = self.special_conditions['hybrid']
+
+        if(curr_cadence not in hybrid_conditions):
+            return(False)
+
+        print("fieldid {fid}: hybrid cadence is in hybrid_conditions {c}".format(fid=fieldid,
+                                                                                 c=curr_cadence))
+
+        for iexp in hybrid_conditions[curr_cadence]['onlyif']:
+            print("fieldid {fid}: checking {i} for {c}".format(fid=fieldid, i=iexp,
+                                                               c=curr_cadence))
+            if(iexp not in curr_slot['allocated_exposures_done']):
+                print("fieldid {fid}: {i} for {c} not in exposures done".format(fid=fieldid, i=iexp,
+                                                                                c=curr_cadence))
+                return(True)
+
+        return(False)
+
+    def fail_spiders(self, curr_option=None, curr_slot=None, curr_cadence=None):
+        if(self.special_conditions is None):
+            return(False)
+
+        if('onlySPIDERS' not in self.special_conditions):
+            return(False)
+
+        only_spiders = self.special_conditions['onlySPIDERS']
+
+        is_done = (curr_slot['needed'] == curr_slot['filled_sb'].sum())
+
+        if((curr_cadence in only_spiders) &
+           (is_done == False) &
+           (self.in_spiders_or_aqmes[curr_option['fieldid']] == False)):
+            print("fieldid {fid}: Skipping {c} because not in SPIDERS".format(fid=curr_option['fieldid'],
+                                                                              c=curr_cadence))
+            return(True)
+
+        return(False)
+
     def construct(self, fix_cadence=False):
         """Construct the allocinfo attribute with the problem definition
 
@@ -502,14 +607,12 @@ class AllocateLST(object):
 """
         self.allocinfo = collections.OrderedDict()
         self.original_cadences = dict()
-        self.some_filled = dict()
         self.ncadences = dict()
         fieldids = np.unique(self.fields['fieldid'])
 
-        if(self.fgot_conditions is not None):
-            ifgot_carton = np.where(self.cartons == self.fgot_conditions['carton'])[0][0]
-
         for fieldid in fieldids:
+            print("Working on fieldid {fid}".format(fid=fieldid), flush=True)
+
             icurr = np.where(self.field_options['fieldid'] == fieldid)[0]
             if(len(icurr) == 0):
                 self.allocinfo[fieldid] = collections.OrderedDict()
@@ -523,8 +626,6 @@ class AllocateLST(object):
             curr_cadences = np.array([x.strip()
                                       for x in curr_slots['cadence']])
 
-            if(self.fgot_conditions is not None):
-                ngot_max = curr_options['ngot_pct'][:, ifgot_carton].max()
 
             if(fix_cadence):
                 ifield = np.where(self.field_array['fieldid'] == fieldid)[0]
@@ -553,32 +654,41 @@ class AllocateLST(object):
 
             # Count options that will work
             nworkable = 0
-            max_fgot = - 1.
+            fgot_max = -1.
             max_cadence = None
+            ngot_max = None
+            if(self.special_conditions is not None):
+                if('fgot' in self.special_conditions):
+                    ifgot_carton = np.where(self.cartons == self.special_conditions['fgot']['carton'])[0][0]
+                    ngot_max = curr_options['ngot_pct'][:, ifgot_carton].max()
             curr_zip = zip(curr_slots, curr_options, curr_cadences)
             for curr_slot, curr_option, curr_cadence in curr_zip:
                 # Skip not-allowed options
                 if(curr_slot['allowed'] == False):
                     continue
 
+                # Skip a hybrid cadence which doesn't have right exposures done
+                if(self.fail_hybrid_conditions(fieldid, curr_slot, curr_cadence)):
+                    continue
+
+                # Skip some cadences if not in right eROSITA area
+                if(self.fail_spiders(curr_option, curr_slot, curr_cadence)):
+                    continue
+
                 # Skip option which doesn't have enough of the right carton
-                if(self.fgot_conditions is not None):
-                    ntarget = curr_option['nwithin_pct'][ifgot_carton]
-                    fgot = curr_option['ngot_pct'][ifgot_carton] / ngot_max
-                    if((ntarget > self.fgot_conditions['ntarget_minimum']) &
-                       ((fgot < self.fgot_conditions['minimum']) |
-                        (fgot > self.fgot_conditions['maximum'])) &
-                       (fieldid not in self.fgot_conditions['exempt_fields'])):
-                        if(fgot > max_fgot):
-                            max_fgot = fgot
-                            max_cadence = curr_cadence
-                        continue
+                fail, info = self.fail_fgot_conditions(fieldid, curr_option, curr_cadence,
+                                                       ngot_max)
+                if(fail):
+                    if(info['fgot'] > fgot_max):
+                        fgot_max = info['fgot']
+                        max_cadence = curr_cadence
+                    continue
 
                 nworkable = nworkable + 1
 
             alloc = collections.OrderedDict()
             curr_zip = zip(curr_slots, curr_options, curr_cadences)
-            self.some_filled[fieldid] = False
+            triggered_spiders = False
             for curr_slot, curr_option, curr_cadence in curr_zip:
                 # Skip not-allowed options
                 if(curr_slot['allowed'] == False):
@@ -602,30 +712,46 @@ class AllocateLST(object):
                 alloc[curr_cadence]['original_exposures_done'] = curr_slot['original_exposures_done']
                 alloc[curr_cadence]['filled'] = curr_slot['filled_sb'].sum()
 
-                # If there have been SOME observations of this field, note
-                # that so we can reduce the field minimum to zero if necessary
-                if(alloc[curr_cadence]['filled']):
-                    self.some_filled[fieldid] = True
-
                 alloc[curr_cadence]['ngot_pct'] = curr_option['ngot_pct'].copy()
                 alloc[curr_cadence]['value'] = float(curr_option['valuegot'] *
                                                      prefer)
 
-                # Skip option which doesn't have enough of the right carton
-                alloc[curr_cadence]['skip'] = False
-                if(self.fgot_conditions is not None):
-                    ntarget = curr_option['nwithin_pct'][ifgot_carton]
-                    fgot = curr_option['ngot_pct'][ifgot_carton] / ngot_max
-                    if((ntarget > self.fgot_conditions['ntarget_minimum']) &
-                       ((fgot < self.fgot_conditions['minimum']) |
-                        (fgot > self.fgot_conditions['maximum'])) &
-                       (fieldid not in self.fgot_conditions['exempt_fields'])):
-                        if((nworkable == 0) & (curr_cadence == max_cadence)): 
-                            print("fieldid {fid}: Not skipping option {c} with nt={nt} and fgot={fg}, because it is best we can do".format(fid=fieldid, c=curr_option['cadence'], fg=fgot, nt=ntarget))
-                        else:
-                            print("fieldid {fid}: Skipping option {c} with nt={nt} and fgot={fg}".format(fid=fieldid, c=curr_option['cadence'], fg=fgot, nt=ntarget))
-                            alloc[curr_cadence]['skip'] = True
+                skip = False
 
+                # Skip a hybrid cadence which doesn't have right exposures done
+                if(self.fail_hybrid_conditions(fieldid, curr_slot, curr_cadence)):
+                    print("fieldid {fid}: failed hybrid for {c}".format(fid=fieldid,
+                                                                        c=curr_cadence))
+                    skip = True
+                    alloc[curr_cadence]['skip'] = skip
+                    continue
+
+                # Skip some cadences if not in right eROSITA area
+                if(self.fail_spiders(curr_option, curr_slot, curr_cadence)):
+                    triggered_spiders = True
+                    skip = True
+                    alloc[curr_cadence]['skip'] = skip
+                    continue
+
+                # Skip option which doesn't have enough of the right carton
+                fail, info = self.fail_fgot_conditions(fieldid, curr_option, curr_cadence,
+                                                       ngot_max)
+                if(fail):
+                    if((nworkable == 0) & (curr_cadence == max_cadence)): 
+                        print("fieldid {fid}: Not skipping option {c} with nt={nt} and fgot={fg}, because it is best we can do".format(fid=fieldid, c=curr_option['cadence'], fg=info['fgot'], nt=info['ntarget']), flush=True)
+                        skip = False
+                    else:
+                        print("fieldid {fid}: Skipping option {c} with nt={nt} and fgot={fg}".format(fid=fieldid, c=curr_option['cadence'], fg=info['fgot'], nt=info['ntarget']), flush=True)
+                        skip = True
+
+                alloc[curr_cadence]['skip'] = skip
+
+                print("fieldid {fid}, cadence {c}: value={v}, skip={s}, needed={n} filled={f}".format(fid=fieldid, c=curr_cadence, v=alloc[curr_cadence]['value'], s=alloc[curr_cadence]['skip'], n=alloc[curr_cadence]['needed_sb'], f=alloc[curr_cadence]['filled_sb']))
+
+            if(triggered_spiders):
+                print("fieldid {fid}: triggered SPIDERS".format(fid=fieldid))
+                for c in alloc:
+                    print("fieldid {fid}, cadence {c} skipped={s}".format(fid=fieldid, c=c, s=alloc[c]['skip']))
 
             self.allocinfo[fieldid] = alloc
         return()
@@ -659,11 +785,6 @@ class AllocateLST(object):
                     field_minimum_float[cfieldid] = 0.95
             else:
                 if(cftype in self.observe_all_fields):
-                    # If some of the field has been filled, give the option to
-                    # do nothing, unless there is only one cadence to choose from.
-                    #if(self.some_filled[cfieldid] & (self.ncadences[cfieldid] > 1)):
-                    #field_minimum_float[cfieldid] = 0.
-                    #else:
                     field_minimum_float[cfieldid] = 1. - epsilon
                 else:
                     field_minimum_float[cfieldid] = 0.
@@ -679,6 +800,7 @@ class AllocateLST(object):
 
         # Set up variables; these variables ('vars') will correspond to
         # the number of exposures in each slot for each field-cadence.
+        print("Set up variables", flush=True)
         objective = solver.Objective()
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
@@ -709,6 +831,7 @@ class AllocateLST(object):
 
         # Cadences have limits, which limit the total number of exposures
         # in the cadence to the total needed, and as needed in each lunation.
+        print("Set cadence limits", flush=True)
         cadence_constraints = []
         for fieldid in self.allocinfo:
             for cadence in self.allocinfo[fieldid]:
@@ -751,9 +874,11 @@ class AllocateLST(object):
                 cadence_constraints.append(cadence_constraint_sb)
 
         # Constraints on numbers
+        print("Set target minima, if any", flush=True)
         mint_constraints = dict()
         mint_index = dict()
         for cname in self.minimum_ntargets:
+            print(" ... for {t}".format(t=cname), flush=True)
             index = np.where(self.cartons == cname)[0]
             mint_constraints[cname] = solver.Constraint(float(self.minimum_ntargets[cname]),
                                                         float(10000000.))
@@ -763,6 +888,7 @@ class AllocateLST(object):
         # LP and not an integer problem, this constraint involves the
         # definition of "fractional" cadences. From the LP solution,
         # we will pick the largest value cadence.
+        print("Set field constraints", flush=True)
         field_constraints = []
         for fieldid in self.allocinfo:
             if(len(self.allocinfo[fieldid]) > 0):
@@ -795,10 +921,46 @@ class AllocateLST(object):
                         print("fieldid {fid}: IGNORE FOR NOW: No allowed cadences for field with required observations".format(fid=fieldid))
                         field_minimum_float[fieldid] = 0.
 
+        # At least one cadence per healpix if nside is set. 
+        if(self.nside is not None):
+            print("Set healpix constraints with nside={n}".format(n=self.nside), flush=True)
+            npix = healpy.pixelfunc.nside2npix(nside=self.nside)
+            fields_in_pix = dict()
+            for ipix in np.arange(npix, dtype=np.int32):
+                fields_in_pix[ipix] = []
+            for field in self.fields:
+                ipix = healpy.pixelfunc.ang2pix(self.nside, field['racen'], field['deccen'],
+                                                lonlat=True)
+                fields_in_pix[ipix].append(field['fieldid'])
+                
+            solver_inf = solver.infinity()
+            healpix_constraints = []
+            for ipix in np.arange(npix, dtype=np.int32):
+                if(len(fields_in_pix[ipix]) > 0):
+                    healpix_constraint = solver.Constraint(1. - 2. * epsilon, solver_inf)
+                    for fieldid in fields_in_pix[ipix]:
+
+                        for cadence in self.allocinfo[fieldid]:
+                            ccadence = self.allocinfo[fieldid][cadence]
+                            if(ccadence['skip']):
+                                continue
+
+                            invneeded = 1. / (ccadence['needed'] - ccadence['filled'] + epsprime)
+
+                            for ilst in np.arange(self.slots.nlst, dtype=np.int32):
+                                for iskybrightness in np.arange(self.slots.nskybrightness, dtype=np.int32):
+                                    if(ccadence['slots'][ilst, iskybrightness] > 0):
+                                        var = ccadence['vars'][ilst * self.slots.nskybrightness +
+                                                               iskybrightness]
+                                        healpix_constraint.SetCoefficient(var, invneeded)
+
+                    healpix_constraints.append(healpix_constraint)
+
         # Constrain sum of each slot to be less than total. Here the
         # units are still in numbers of exposures, but we multiply by
         # a scaling factor (xfactor) that depends on airmass to account
         # for the cost of high airmass observations.
+        print("Set slot time constraints", flush=True)
         slot_constraints = [[0] * self.slots.nskybrightness] * self.slots.nlst
         for ilst in np.arange(self.slots.nlst, dtype=np.int32):
             for iskybrightness in np.arange(self.slots.nskybrightness, dtype=np.int32):
@@ -824,9 +986,12 @@ class AllocateLST(object):
                                 objective.SetCoefficient(ccadence['vars'][ilst * self.slots.nskybrightness + iskybrightness], float(xfactor))
             
         # Solve the problem
+        print("Now actually solve the problem, if possible", flush=True)
         if(minimize_time is True):
+            print(" ... minimize time", flush=True)
             objective.SetMinimization()
         else:
+            print(" ... maximize value", flush=True)
             objective.SetMaximization()
 
         status = solver.Solve()
@@ -838,6 +1003,7 @@ class AllocateLST(object):
 
         # Extract the solution.
         # Here var is a number of exposures, and so is allocation.
+        print("Extract the solution", flush=True)
         tval = 0.
         ttime = np.zeros((self.slots.nlst, self.slots.nskybrightness), dtype=np.float32)
         for fieldid in self.allocinfo:
@@ -886,7 +1052,7 @@ class AllocateLST(object):
                              ('filled_sb', np.int32, self.slots.nskybrightness),
                              ('allocated_exposures_done', np.int32, 100),
                              ('original_exposures_done', np.int32, 100),
-                             ('original_cadence', np.unicode_, 30),
+                             ('original_cadence', np.unicode_, 60),
                              ('xfactor', np.float32,
                               (self.slots.nlst, self.slots.nskybrightness)),
                              ('slots_exposures', np.float32,
@@ -964,12 +1130,16 @@ class AllocateLST(object):
                 print("fieldid {fid}: chance to pick is {c:0.4f}".format(fid=fieldid,
                                                                          c=field_total / chosen_needed * 1.02), flush=True)
                 if(choose >= field_total / chosen_needed * 1.02):
+                    print("fieldid {fid}: not choosing it".format(fid=fieldid), flush=True)
                     chosen_cadence = 'none'
             else:
+                # total number of slots is not signficant
                 print("fieldid {fid}: field_total not big enough".format(fid=fieldid), flush=True)
+                chosen_cadence = 'none'
 
-                # If the total number of slots is not signficant, pick a cadence
-                # that doesn't require any more observations
+            # If nothing is chosen, choose something that doesn't require any more observations,
+            # assuming such a thing is available
+            if(chosen_cadence == 'none'):
                 for current_cadence in self.allocinfo[fieldid]:
                     print("fieldid {fid}: checking if {c} is fulfilled already".format(c=current_cadence, fid=fieldid))
                     if(np.max(np.array(self.allocinfo[fieldid][current_cadence]['needed_sb']) -
@@ -1242,8 +1412,8 @@ class AllocateLST(object):
             nallocated_tag = 'nallocated'
             nallocated_sb_tag = 'nallocated_sb'
 
-        ii = np.where(self.field_array[nallocated_tag][indx] > 0)[0]
-        ii = indx[ii]
+        #ii = np.where(self.field_array[nallocated_tag][indx] > 0)[0]
+        ii = indx
 
         nallocated_max = 1
         if(len(ii) > 0):
