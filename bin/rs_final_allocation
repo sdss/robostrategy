@@ -19,6 +19,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import argparse
 import sys
 import numpy as np
+import astropy.coordinates
 import astropy.io.fits as fits
 import roboscheduler.cadence as cadence
 import robostrategy.params as params
@@ -28,7 +29,7 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
-def split_slots(exps, time, ndark=2, ttype='', done_exposures=None, iexp=[],
+def split_slots(exps, time, start_dark=0, ndark=2, ttype='', done_exposures=None, iexp=[],
                 verbose=False):
     exps_total = exps.sum()
     dark_total = exps[:, 0].sum()
@@ -45,7 +46,7 @@ def split_slots(exps, time, ndark=2, ttype='', done_exposures=None, iexp=[],
         new_exps[:, 1] = 0.
         new_time[:, 1] = 0.
     elif(ttype == 'bright'):
-        nexp_dark = np.int32(done_exposures[0:ndark] == False).sum()
+        nexp_dark = np.int32(done_exposures[start_dark:ndark] == False).sum()
         if(dark_total > 0):
             new_exps[:, 0] = new_exps[:, 0] * (dark_total - nexp_dark) / dark_total
             new_time[:, 0] = new_time[:, 0] * (dark_total - nexp_dark) / dark_total
@@ -128,6 +129,8 @@ if __name__ == '__main__':
 
         allocate_hdus = fits.open(allocate_file)
         rs_fields_array = allocate_hdus[1].data
+        lens = np.array([len(x) for x in rs_fields_array['original_cadence']])
+        print(lens.max())
         rs_fields = allocate_hdus[3].data
 
         if(reset == 'db'):
@@ -354,6 +357,56 @@ if __name__ == '__main__':
                         print(fields_array['fieldid'][ifield])
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
+                elif('mixed_1x1+1x' in curr_cadence_name):
+                    if((iexpst == 0) & (iexpnd == 0)):
+                        fields_array['cadence'][ifield] = 'bright_1x1'
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='bright',
+                                                        start_dark=1,
+                                                        ndark=iexpnd,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = 0
+                        filled_sb[1] = np.int32(done_exposures[0] > 0)
+                    elif((iexpst == 1) & ((iexpnd == 3) | (iexpnd == 4))):
+                        fields_array['cadence'][ifield] = 'dark_1x{n}'.format(n=iexpnd)
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='dark',
+                                                        start_dark=1,
+                                                        ndark=iexpnd,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = (done_exposures[iexpst:iexpnd+1]).sum()
+                        filled_sb[1] = 0
+                    else:
+                        print(fields_array['fieldid'][ifield])
+                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        sys.exit(3)
+                elif('mixed_2x1+1x' in curr_cadence_name):
+                    if((iexpst == 0) & (iexpnd == 1)):
+                        fields_array['cadence'][ifield] = 'bright_2x1'
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='bright',
+                                                        start_dark=2,
+                                                        ndark=iexpnd - 1,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = 0
+                        filled_sb[1] = np.int32(done_exposures[0] > 0)
+                    elif((iexpst == 2) & ((iexpnd == 4) | (iexpnd == 5))):
+                        fields_array['cadence'][ifield] = 'dark_1x{n}'.format(n=iexpnd - 1)
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='dark',
+                                                        start_dark=2,
+                                                        ndark=iexpnd - 1,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = (done_exposures[iexpst:iexpnd+1]).sum()
+                        filled_sb[1] = 0
+                    else:
+                        print(fields_array['fieldid'][ifield])
+                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        sys.exit(3)
                 elif(curr_cadence_name[0:13] == 'bright_single'):
                     if((iexpst == 0) & (iexpnd <= 17)):
                         fields_array['cadence'][ifield] = 'bright_single_{n}x1'.format(n=nexp_total)
@@ -434,6 +487,22 @@ if __name__ == '__main__':
                         faf[0].header['FCADENCE'] = fields_array['cadence'][i].decode()
                         faf[0].header['DESMODE'] = design_modes_str
                         faf.close()
+
+            if('no_apogee_skies' in rsParams.cfg['FinalCadenceRenaming']):
+                for i, fa in enumerate(fields_array):
+                    if(fa['cadence'] == b'none'):
+                        continue
+                    sc = astropy.coordinates.SkyCoord(ra=fa['racen'], dec=fa['deccen'],
+                                                      unit='deg', frame='icrs')
+                    galb = sc.galactic.b.value
+                    if((np.abs(galb) > 20.)):
+                        w = (fa['cadence'].decode()).split('_')
+                        if('4yr' in fa['cadence'].decode()):
+                            nas_cadence = "_".join(w[0:-2]) + '_no_apogee_skies_' + "_".join(w[-2:])
+                        else:
+                            nas_cadence = "_".join(w[0:-1]) + '_no_apogee_skies_' + w[-1]
+                        fields_array['cadence'][i] = nas_cadence
+                
 
         fields_array_hdu = fits.BinTableHDU(fields_array, name='ALLOCATE')
         fields_hdu = fits.BinTableHDU(fields, name='FIELDS')
