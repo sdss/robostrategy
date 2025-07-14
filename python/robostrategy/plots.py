@@ -85,6 +85,9 @@ def radechex(racen=180., deccen=0., pa=0., observatory='apo'):
                                               pa,
                                               observatory.upper(),
                                               otime.jd)
+    #import astropy.coordinates
+    #for r,d in zip(ra, dec):
+    #    print(180. / np.pi * astropy.coordinates.angular_separation(racen * np.pi/180., deccen * np.pi/180., r * np.pi / 180., d * np.pi / 180.))
     return(ra, dec)
 
 def ra_transform(ras):
