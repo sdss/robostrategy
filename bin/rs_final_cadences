@@ -64,7 +64,11 @@ if __name__ == '__main__':
 
         keylist = [c for c in cadencelist.cadences.keys()]
         for c in keylist:
-            cadencelist.cadences[c + '_' + version] = cadencelist.cadences.pop(c)
+            if(c.split('_')[-1] == version):
+                continue
+            newkey = c + '_' + version
+            if(newkey not in keylist):
+                cadencelist.cadences[newkey] = cadencelist.cadences.pop(c)
 
         keylist = [c for c in cadencelist._cadence_consistency.keys()]
         for k in keylist:
