@@ -15,6 +15,7 @@ from __future__ import unicode_literals
 import argparse
 import os
 import sys
+import pprint
 import numpy as np
 import fitsio
 import robostrategy
@@ -28,19 +29,19 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
 def bhm_spiders_contiguity_value_rescale(ra, dec):
-    length_scale = 20.0
-    value_rescale0 = 1.0
-    max_boost = 3.0
+    length_scale = 3.0
+    floor = 0.1
+    max_boost = 150.0
     dec0_ngc = -20.0
     dec0_sgc = -45.0
     
     lat0 = np.where((ra > 115.0) & (ra < 250.0), dec0_ngc, dec0_sgc)
     
     valueRescale = (
-        value_rescale0 *
-        np.maximum(1.0,
-                   max_boost - (max_boost-1) * np.absolute(lat0 - dec)/length_scale)
+        max_boost *
+        np.maximum(floor / max_boost, np.exp(- np.absolute(lat0 - dec)/length_scale))
     )
+
     return valueRescale
 
 
@@ -102,6 +103,11 @@ if __name__ == '__main__':
         dark_prefer = np.float32(rsParams.cfg.get('Allocation', 'DarkPrefer'))
     else:
         dark_prefer = 1.
+
+    if('Nside' in rsParams.cfg['Allocation']):
+        nside = np.int32(rsParams.cfg.get('Allocation', 'Nside'))
+    else:
+        nside = None
 
     fields_file = sdss_path.full('rsFields', plan=plan,
                                  observatory=observatory)
@@ -175,8 +181,27 @@ if __name__ == '__main__':
                                   flush=True)
                             crescale = bhm_spiders_contiguity_value_rescale(field_options['racen'],
                                                                             field_options['deccen'])
+                            fields_debug = [7794, 8942]
+                            cadences_debug = ['dark_1x3', 'mixed_1x1+1x3']
+                            for fx in fields_debug:
+                                for fc in cadences_debug:
+                                    idebug = np.where((field_options['fieldid'] == fx) &
+                                                      (field_options['cadence'] == fc))[0]
+                                    for ic, ct in enumerate(focartons):
+                                        print("fieldid {fid}, {cd}, before:  {c} : {v}".format(fid=fx, cd=fc, c=ct, v=field_options['valuegot_pct'][idebug[0], ic]))
+                                    print("fieldid {fid}, {cd}, before: {v}".format(fid=fx, cd=fc, v=(field_options['valuegot_pct'][idebug[0], :] * scales_pct).sum()))
                             field_options['valuegot_pct'][:, indx] = \
                                 field_options['valuegot_pct'][:, indx] * crescale
+                            fields_debug = [7794, 8942]
+                            cadences_debug = ['dark_1x3', 'mixed_1x1+1x3']
+                            for fx in fields_debug:
+                                for fc in cadences_debug:
+                                    idebug = np.where((field_options['fieldid'] == fx) &
+                                                      (field_options['cadence'] == fc))[0]
+                                    print("fieldid {fid}, {cd}: crescale={r}".format(fid=fx, cd=fc, r=crescale[idebug[0]]))
+                                    for ic, ct in enumerate(focartons):
+                                        print("fieldid {fid}, {cd}, after:  {c} : {v}".format(fid=fx, cd=fc, c=ct, v=field_options['valuegot_pct'][idebug[0], ic]))
+                                    print("fieldid {fid}, {cd}, after: {v}".format(fid=fx, cd=fc, v=(field_options['valuegot_pct'][idebug[0], :] * scales_pct).sum()))
 
             for indx in np.arange(len(field_options)):
                 field_options['valuegot'][indx] = (
@@ -184,6 +209,16 @@ if __name__ == '__main__':
                     scales_pct).sum()
     except KeyError:
         print("No ValueRescale")
+
+    if('CadencesExclude' in rsParams.cfg['Allocation']):
+        cadences_exclude = rsParams.cfg.get('Allocation', 'CadencesExclude').split()
+        for c in cadences_exclude:
+            ic = np.where(field_options['cadence'] == c)[0]
+            print("Excluding {nc} options with cadence {c}".format(nc=len(ic), c=c),
+                  flush=True)
+            field_options['valuegot'][ic] = 0.0
+
+    special_conditions = dict()
 
     fgot_minimum = np.float32(rsParams.cfg.get('Assignment', 'fgot_minimum'))
     fgot_maximum = np.float32(rsParams.cfg.get('Assignment', 'fgot_maximum'))
@@ -201,12 +236,42 @@ if __name__ == '__main__':
         print("Exempting fields from fgot conditions: {x}".format(x=fgot_exempt_fields))
     else:
         fgot_exempt_fields = np.zeros(0, dtype=np.int32)
+    if('fgotExemptCadences' in rsParams.cfg['Allocation']):
+        fgot_exempt_cadences = np.array(rsParams.cfg['Allocation']['fgotExemptCadences'].split())
+        print("Exempting cadences from fgot conditions: {x}".format(x=fgot_exempt_cadences))
+    else:
+        fgot_exempt_fields = np.zeros(0, dtype=np.int32)
     fgot_conditions = dict()
     fgot_conditions['carton'] = fgot_carton
     fgot_conditions['minimum'] = fgot_minimum
     fgot_conditions['maximum'] = fgot_maximum
     fgot_conditions['ntarget_minimum'] = fgot_ntarget_minimum
     fgot_conditions['exempt_fields'] = fgot_exempt_fields
+    fgot_conditions['exempt_cadences'] = dict()
+    for f in fgot_exempt_cadences:
+        cadence, upto = f.split('<')
+        fgot_conditions['exempt_cadences'][cadence] = np.int32(upto)
+
+    special_conditions['fgot'] = fgot_conditions
+
+    if('hybridIfExposuresDone' in rsParams.cfg['Allocation']):
+        hybrids = rsParams.cfg['Allocation']['hybridIfExposuresDone'].split()
+    else:
+        hybrids = []
+    hybrid_conditions = dict()
+    for h in hybrids:
+        words = h.split(',')
+        hybrid = words[0]
+        exps = [np.int32(x) for x in words[1:]]
+        hybrid_conditions[hybrid] = dict()
+        hybrid_conditions[hybrid]['onlyif'] = exps
+    special_conditions['hybrid'] = hybrid_conditions
+
+    if('onlySPIDERS' in rsParams.cfg['Allocation']):
+        only_spiders = rsParams.cfg['Allocation']['onlySPIDERS'].split()
+        special_conditions['onlySPIDERS'] = only_spiders
+
+    pprint.pprint(special_conditions)
 
     minimum_ntargets = dict()
     amtstr = 'AllocationMinimumTargetsAt{obs}'.format(obs=observatory.upper())
@@ -257,6 +322,8 @@ if __name__ == '__main__':
         print("Must specify cost model.")
         sys.exit(1)
 
+    fitsio.write('tmp-fo-{o}.fits'.format(o=observatory), field_options, clobber=True)
+
     print("Instantiate allocate object", flush=True)
     allocate = allocate_class(slots=slots,
                               field_options=field_options,
@@ -269,8 +336,9 @@ if __name__ == '__main__':
                               cartons=focartons,
                               cadences=focadences,
                               minimum_ntargets=minimum_ntargets,
-                              fgot_conditions=fgot_conditions,
+                              special_conditions=special_conditions,
                               epoch_overhead=epoch_overhead,
+                              nside=nside,
                               verbose=verbose)
 
     print("Construct allocate problem", flush=True)
