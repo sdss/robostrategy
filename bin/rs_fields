@@ -219,7 +219,10 @@ if __name__ == '__main__':
         in_file = os.path.join(os.getenv('ROBOSTRATEGY_DIR'),
                                'data',
                                'candidate_target_fields_bhm_rm_{v}.fits')
-        in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
+        if('BHM_RM' in rsParams.cfg['Fields']):
+            in_file = in_file.format(v=rsParams.cfg['Fields']['BHM_RM'])
+        else:
+            in_file = in_file.format(v=rsParams.cfg['Fields']['BHM'])
         in_rm = fitsio.read(in_file)
         tmp_fields_rm = np.zeros(len(in_rm), dtype=fields_dtype)
         tmp_fields_rm['racen'] = in_rm['RACEN']
