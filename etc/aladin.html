@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Robostrategy Allocation Map</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no">
+		<style>
+			body { margin: 0; overflow: hidden; } /* Remove default body margins */
+			#aladin-lite-div {
+			width: 2600px; /* Set your desired width */
+			height: 1600px; /* Set your desired height */
+			margin: 10px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="aladin-lite-div"></div>
+
+		<script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
+
+		<script type="text/javascript">
+			// 1. Get the full query string (e.g., "?userName=Alice&greeting=Hello")
+			const queryString = window.location.search;
+
+			// 2. Create a URLSearchParams object from the query string
+			const params = new URLSearchParams(queryString);
+
+			// 3. Retrieve specific parameters using .get('paramName')
+			const plan = params.get('plan');
+
+			let aladin; // Declare a variable to hold the AladinLite instance
+
+			function getColorForValue(value, minValue, maxValue, startColor, endColor) {
+
+			aValue = Math.asinh(value)
+			aMinValue = Math.asinh(minValue)
+			aMaxValue = Math.asinh(maxValue)
+			
+			  // Clamp value to the defined range
+			  let clampedValue = Math.max(aMinValue, Math.min(aMaxValue, aValue));
+
+			  // Normalize value to a 0-1 scale
+			  let normalizedValue = (clampedValue - aMinValue) / (aMaxValue - aMinValue);
+
+			// Invert the normalized value if you want low values to be `endColor` and high values to be `startColor`
+			// For magnitude, lower is brighter (red), higher is fainter (blue). So we often reverse the visual mapping.
+			// If startColor is blue and endColor is red, and we want low mag (bright) to be red, high mag (faint) to be blue:
+			// Use 1 - normalizedValue if startColor is for maxVal and endColor for minVal
+			// For example, if startColor=blue, endColor=red:
+			// If normalizedValue = 0 (min mag), we want red, so we want 1.0 from the interpolation.
+			// If normalizedValue = 1 (max mag), we want blue, so we want 0.0 from the interpolation.
+			// So, use 1 - normalizedValue for this specific blue-to-red (faint-to-bright) mapping.
+			  let t = 1 - normalizedValue; // Interpolation factor (0 to 1)
+
+			  // Interpolate RGB components
+			  const r = Math.round(startColor.r + t * (endColor.r - startColor.r));
+			  const g = Math.round(startColor.g + t * (endColor.g - startColor.g));
+			  const b = Math.round(startColor.b + t * (endColor.b - startColor.b));
+  
+  			return `rgb(${r}, ${g}, ${b})`;
+			}
+
+			var drawFunction = function(source, canvasCtx, viewParams) {
+
+			const minValue = 0.0; 
+			const maxValue = 100.0; 
+
+			const highColor = {r: 255, g: 255, b: 255};   
+			const lowColor = {r: 0, g: 0, b: 255}; 
+
+			const value = parseFloat(source.data['nallocated_full']); 
+			const oldValue = parseFloat(source.data['nallocated_full']) - parseFloat(source.data['nallocated']); 
+
+			const currentFov = Math.max(viewParams.fov[0], viewParams.fov[1]); // Get largest dimension of FoV
+
+			baseSize = 1
+			if (source.data['fieldid'] > 4669) {
+			   baseSize = 16;
+			} else {
+			   baseSize = 21;
+			}
+
+			// Adjust point size based on zoom level (e.g., larger when zoomed out)
+			const dynamicSize = baseSize / (currentFov / 100); // Example: make larger as FoV increases (zoom out)
+
+			const baseWidth = 2;
+			const dynamicWidth = baseWidth / (currentFov / 100);
+
+      fillColor = getColorForValue(value, minValue, maxValue, lowColor, highColor);
+      oldFillColor = getColorForValue(oldValue, minValue, maxValue, lowColor, highColor);
+
+			canvasCtx.beginPath();
+			canvasCtx.arc(source.x, source.y, dynamicSize, 0, 2 * Math.PI, false);
+			canvasCtx.closePath();
+			canvasCtx.strokeStyle = fillColor;
+			canvasCtx.fillStyle = fillColor;
+			canvasCtx.lineWidth = dynamicWidth;
+			canvasCtx.globalAlpha = 1.0,
+			canvasCtx.fill();
+
+			 canvasCtx.beginPath();
+			 canvasCtx.arc(source.x, source.y, 0.3 * dynamicSize, 0, 2 * Math.PI, false);
+			 canvasCtx.closePath();
+			 canvasCtx.fillStyle = oldFillColor;
+			 canvasCtx.lineWidth = dynamicWidth;
+			 canvasCtx.globalAlpha = 1.0,
+			 canvasCtx.fill();
+
+			                }
+
+			// A.init is a promise that resolves when AladinLite's core is loaded
+			A.init.then(() => {
+			// Create an AladinLite instance
+			aladin = A.aladin('#aladin-lite-div', {
+			survey: "P/2MASS/color", // Initial image survey (e.g., DSS2 color)
+			fov: 360,              // Initial field of view in degrees
+			target: "180.0 0.0",        // Initial target to center on (e.g., Andromeda Galaxy)
+			projection: "AIT",    // Optional: All-sky Aitoff projection
+			showCooGrid: true     // Optional: Show coordinate grid
+			});
+
+      const observatories = ["apo", "lco"];
+			for (const observatory of observatories) {
+			
+			const catalogURL = 'allocations/' + plan + '/rsAllocation-' + plan + '-' + observatory + '.vot'; // Replace with your actual file name/URL
+
+			// The aladin.addCatalog method directly accepts the A.catalogFromURL call.
+			// AladinLite handles the asynchronous loading internally.
+			aladin.addCatalog(A.catalogFromURL(catalogURL, {
+			name: observatory + ' fields', // Name for your catalog in AladinLite
+			color: 'orange',             // Default color for catalog points
+			sourceSize: 40,              // Default size for catalog points
+      onClick: 'showTable',
+			shape: drawFunction
+			  }));
+			}
+
+			// You won't have a direct .then() for the catalog loading here in this pattern.
+			// If you need to perform actions *after* the catalog is fully loaded,
+			// you'd typically use AladinLite's event system (e.g., aladin.on('catalogLoaded', ...)).
+			console.log('Catalog loading initiated. It will appear when loaded.');
+			
+			});
+			
+		</script>
+	</body>
+	</html>

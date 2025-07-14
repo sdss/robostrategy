@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import matplotlib.pyplot as plt
+import numpy as np
+import fitsio
+import robostrategy.plots as rp
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pretty plot of the fields')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+
+    args = parser.parse_args()
+    plan = args.plan
+
+    type2zorder = dict()
+    type2zorder['AllSkySloane'] = 10
+    type2zorder['AllSkySparse'] = 10
+    type2zorder['Unobserved'] = 1
+    type2zorder['YSO'] = 10
+    type2zorder['MCS'] = 10
+    type2zorder['BHMAqmesMedium'] = 5
+    type2zorder['BHMAqmesWide2'] = 5
+    type2zorder['BHMAqmesWide1'] = 10
+    type2zorder['RM'] = 7
+    type2zorder['RMlite'] = 7
+
+    fields_north_file = sdss_path.full('rsFieldsRotated', plan=plan,
+                                       observatory='apo')
+    fields_south_file = sdss_path.full('rsFieldsRotated', plan=plan,
+                                       observatory='lco')
+
+    allocation_north_file = sdss_path.full('rsAllocation', plan=plan,
+                                           observatory='apo')
+    allocation_south_file = sdss_path.full('rsAllocation', plan=plan,
+                                           observatory='lco')
+
+    fn = fitsio.read(fields_north_file)
+    fs = fitsio.read(fields_south_file)
+
+    fan = fitsio.read(allocation_north_file)
+    fas = fitsio.read(allocation_south_file)
+
+    io = np.where(fan['cadence'] == 'none')[0]
+    fn['type'][io] = 'Unobserved'
+
+    io = np.where(fas['cadence'] == 'none')[0]
+    fs['type'][io] = 'Unobserved'
+    
+    racen = np.append(fn['racen'], fs['racen'])
+    deccen = np.append(fn['deccen'], fs['deccen'])
+    pa = np.append(fn['pa2'], fs['pa2'])
+    types = np.append(fn['type'], fs['type'])
+    obs = np.append(np.array(['apo'] * len(fn)),
+                    np.array(['lco'] * len(fs)))
+    ndesign = np.append(fan['nallocated_full'], fas['nallocated_full'])
+
+    ii = np.where(ndesign > 0)[0]
+    racen = racen[ii]
+    deccen = deccen[ii]
+    pa = pa[ii]
+    types = types[ii]
+    obs = obs[ii]
+    ndesign = ndesign[ii]
+
+    colorbar = dict()
+
+    nmax = 50
+    indx = np.arange(10, dtype=np.float32) / 5.0
+    indx = indx[np.where(indx < np.log10(nmax))[0]]
+    colorbar['ticks'] = indx / np.log10(nmax)
+    colorbar['labels'] = ['${x}$'.format(x=str(int(x))) for x in indx]
+    colorbar['name'] = r'${\rm log}_{10} N_{\rm d}$'
+
+    colors = np.log10(ndesign)
+    alphas = np.ones(len(racen), dtype=np.float32)
+
+    rp.plot_field_shapes(racen=racen, deccen=deccen, pa=pa, observatory=obs,
+                         types=types, colors=colors, alphas=alphas,
+                         colorbar=colorbar, type2zorder=type2zorder)
+
+    plt.savefig(os.path.join(os.path.dirname(fields_south_file),
+                             'rsFieldsPrettyCadence-{p}.png'.format(p=plan)), dpi=600)
+

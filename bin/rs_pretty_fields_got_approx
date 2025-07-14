@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+import sys
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import fitsio
+import robostrategy.plots as rp
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+
+matplotlib.rcParams['text.usetex'] = True
+matplotlib.rcParams['font.size'] = 18
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Pretty plot of the fields')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+
+    parser.add_argument('-c', '--carton', dest='carton',
+                        type=str, help='name of cartons')
+
+    args = parser.parse_args()
+    plan = args.plan
+    carton = args.carton
+
+    fields_north_file = sdss_path.full('rsFieldsRotated', plan=plan,
+                                       observatory='apo')
+    fields_south_file = sdss_path.full('rsFieldsRotated', plan=plan,
+                                       observatory='lco')
+
+    allocation_north_file = sdss_path.full('rsAllocation', plan=plan,
+                                           observatory='apo')
+    allocation_south_file = sdss_path.full('rsAllocation', plan=plan,
+                                           observatory='lco')
+
+    options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'allocations', plan,
+                                'rsOptions-{p}-{o}.fits'.format(p=plan, o='apo'))
+    options_cartons = fitsio.read(options_file, ext=3)
+    options_north = fitsio.read(options_file)
+
+    options_file = os.path.join(os.getenv('ROBOSTRATEGY_DATA'), 'allocations', plan,
+                                'rsOptions-{p}-{o}.fits'.format(p=plan, o='lco'))
+    options_south = fitsio.read(options_file)
+
+    fn = fitsio.read(fields_north_file)
+    fs = fitsio.read(fields_south_file)
+
+    fan = fitsio.read(allocation_north_file)
+    fas = fitsio.read(allocation_south_file)
+
+    fieldids, ifieldid, nfieldid = np.unique(options_north['fieldid'],
+                                             return_index=True, return_counts=True)
+    fieldids, io, ia = np.intersect1d(fieldids, fan['fieldid'], return_indices=True)
+    fon = np.zeros(len(fan), dtype=options_north.dtype.names)
+    for i, fieldid in enumerate(fieldids):
+        if(fan['cadence'][ia[i]] == 'none'):
+            continue
+        curr_options = options_north[fieldid[io[i]]:ifieldid[io[i]]] + nfieldid[io[i]]
+        ipicked = np.where(curr_options['cadence'] == fan['cadence'][ia[i]])[0][0]
+        fon[i] = curr_options[ipicked]
+
+    fieldids, ifieldid, nfieldid = np.unique(options_south['fieldid'],
+                                             return_index=True, return_counts=True)
+    fieldids, io, ia = np.intersect1d(fieldids, fas['fieldid'], return_indices=True)
+    fos = np.zeros(len(fas), dtype=options_south.dtype.names)
+    for i, fieldid in enumerate(fieldids):
+        if(fas['cadence'][ia[i]] == 'none'):
+            continue
+        curr_options = options_south[fieldid[io[i]]:ifieldid[io[i]]] + nfieldid[io[i]]
+        ipicked = np.where(curr_options['cadence'] == fas['cadence'][ia[i]])[0][0]
+        fos[i] = curr_options[ipicked]
+
+    io = np.where(fan['cadence'] == 'none')[0]
+    fn['type'][io] = 'Unobserved'
+
+    io = np.where(fas['cadence'] == 'none')[0]
+    fs['type'][io] = 'Unobserved'
+    
+    racen = np.append(fn['racen'], fs['racen'])
+    deccen = np.append(fn['deccen'], fs['deccen'])
+    pa = np.append(fn['pa2'], fs['pa2'])
+    types = np.append(fn['type'], fs['type'])
+    obs = np.append(np.array(['apo'] * len(fn)),
+                    np.array(['lco'] * len(fs)))
+
+    fgot = np.zeros(len(racen), dtype=np.float32) - 0.1
+
+    ntarget = np.append(fsn[carton + '_nwithin'], fss[carton + '_nwithin'])
+    ngot = np.append(fsn[carton + '_ngot'], fss[carton + '_ngot'])
+    fgot = np.append(fsn[carton + '_fgot'], fss[carton + '_fgot'])
+
+    alphas = np.ones(len(racen), dtype=np.float32)
+
+    type2zorder = dict()
+    type2zorder['AllSkySloane'] = 10
+    type2zorder['AllSkySparse'] = 10
+    type2zorder['Unobserved'] = 1
+    type2zorder['YSO'] = 10
+    type2zorder['MCS'] = 10
+    type2zorder['BHMAqmesMedium'] = 5
+    type2zorder['BHMAqmesWide2'] = 5
+    type2zorder['BHMAqmesWide1'] = 10
+    type2zorder['RM'] = 7
+    type2zorder['RMlite'] = 7
+
+    keep = (types != 'Unobserved') & (ntarget > 0)
+
+
+    racen = racen[keep]
+    deccen = deccen[keep]
+    pa = pa[keep]
+    ntarget = ntarget[keep]
+    types = types[keep]
+    obs = obs[keep]
+    ngot = ngot[keep]
+    fgot = fgot[keep]
+    alphas = alphas[keep]
+
+    colors = np.log10(ntarget) / np.log10(ntarget.max())
+
+    print("Plotting ntarget", flush=True)
+    colorbar = dict()
+
+    indx = np.arange(10, dtype=np.float32)
+    indx = indx[np.where(indx < np.log10(ntarget.max()))[0]]
+    colorbar['ticks'] = indx / np.log10(ntarget.max())
+    colorbar['labels'] = ['${x}$'.format(x=str(int(x))) for x in indx]
+    colorbar['name'] = r'${\rm log}_{10} N_{\rm target}$'
+
+    rp.plot_field_shapes(racen=racen, deccen=deccen, pa=pa, observatory=obs,
+                         colors=colors, alphas=alphas, type2zorder=type2zorder,
+                         types=types, colorbar=colorbar)
+    plt.tight_layout()
+    plt.savefig('rsFieldsPretty-{p}-ntarget-{c}.png'.format(p=plan, c=carton), dpi=600)
+
+    print("Plotting ngot", flush=True)
+    colorbar['name'] = r'${\rm log}_{10} N_{\rm got}$'
+    colors = np.log10(ngot) / np.log10(ntarget.max())
+    rp.plot_field_shapes(racen=racen, deccen=deccen, pa=pa, observatory=obs,
+                         colors=colors, alphas=alphas, type2zorder=type2zorder,
+                         types=types, colorbar=colorbar)
+    plt.tight_layout()
+    plt.savefig('rsFieldsPretty-{p}-ngot-{c}.png'.format(p=plan, c=carton), dpi=600)
+
+    print("Plotting fgot", flush=True)
+
+    frac = np.arange(11, dtype=np.float32) / 10.
+    colorbar['ticks'] = frac
+    colorbar['labels'] = ['${x:0.1f}$'.format(x=x) for x in frac]
+    colorbar['name'] = r'$f_{\rm got}$'
+    colors = fgot
+    rp.plot_field_shapes(racen=racen, deccen=deccen, pa=pa, observatory=obs,
+                         colors=colors, alphas=alphas, type2zorder=type2zorder,
+                         types=types, colorbar=colorbar)
+    plt.tight_layout()
+    plt.savefig(os.path.join(os.path.dirname(fields_south_file),
+                             'rsFieldsPretty-{p}-fgot-{c}.png'.format(p=plan, c=carton)),
+                dpi=600)
+    
