@@ -8,7 +8,7 @@ database.set_profile('operations')
 
 design_dtype = [('design_id', np.int64),
                 ('field_id', np.int32),  # from field
-                ('exposure', np.int32),
+                ('field_exposure', np.int32),
                 ('design_mode', np.unicode_, 40),
                 ('mugatu_version', np.unicode_, 40),
                 ('run_on', np.unicode_, 40),
@@ -41,6 +41,7 @@ def get_designs(plan=None, observatory=None):
 
     # First find the number of designs
     ndesigns = (targetdb.Design.select(targetdb.Design.design_id)
+                .join(targetdb.DesignToField)
                 .join(targetdb.Field)
                 .join(targetdb.Version).switch(targetdb.Field)
                 .join(targetdb.Observatory)
@@ -53,7 +54,7 @@ def get_designs(plan=None, observatory=None):
         return(designs)
 
     ddicts = (targetdb.Design.select(targetdb.Design.design_id,
-                                     targetdb.Design.exposure,
+                                     targetdb.DesignToField.field_exposure,
                                      targetdb.Design.design_mode_label.alias('design_mode'),
                                      targetdb.Design.mugatu_version,
                                      targetdb.Design.run_on,
@@ -64,6 +65,7 @@ def get_designs(plan=None, observatory=None):
                                      targetdb.Cadence.label.alias('cadence'),
                                      opsdb.DesignToStatus.mjd,
                                      opsdb.CompletionStatus.label.alias('completion_status'))
+              .join(targetdb.DesignToField)
               .join(targetdb.Field)
               .join(targetdb.Version).switch(targetdb.Field)
               .join(targetdb.Observatory).switch(targetdb.Field)
