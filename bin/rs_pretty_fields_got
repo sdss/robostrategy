@@ -142,5 +142,7 @@ if __name__ == '__main__':
                          colors=colors, alphas=alphas, type2zorder=type2zorder,
                          types=types, colorbar=colorbar)
     plt.tight_layout()
-    plt.savefig('rsFieldsPretty-{p}-fgot-{c}.png'.format(p=plan, c=carton), dpi=600)
-
+    plt.savefig(os.path.join(os.path.dirname(fields_south_file),
+                             'rsFieldsPretty-{p}-fgot-{c}.png'.format(p=plan, c=carton)),
+                dpi=600)
+    
