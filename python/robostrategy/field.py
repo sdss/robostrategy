@@ -4922,9 +4922,9 @@ class Field(object):
             robotindx = None
 
             statusDict = dict()
-            expRobotIDs = [[] for _ in range(len(iexpsall))]
-            nExpRobotIDs = np.zeros(len(iexpsall), dtype=np.int32)
-            nExpAlready = np.zeros(len(iexpsall), dtype=np.int32)
+            expRobotIDs = [[] for _ in range(self.field_cadence.nexp_total)]
+            nExpRobotIDs = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
+            nExpAlready = np.zeros(self.field_cadence.nexp_total, dtype=np.int32)
             for robotID in robotIDs:
                 s = AssignmentStatus(rsid=rsid, robotID=robotID,
                                      iexps=iexpsall)
@@ -4943,7 +4943,7 @@ class Field(object):
             # enough, go ahead
             nalready = nExpAlready.sum()
             nexp_need = nexp_cadence - nalready
-            iexps = iexpsall[np.where(nExpRobotIDs > 0)[0]]
+            iexps = np.where(nExpRobotIDs > 0)[0]
             if(len(iexps) >= nexp_need):
                 succeed[cinotsat] = True
 
