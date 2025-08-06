@@ -34,6 +34,7 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
+target_cadence_change = dict()
 clobber = False
 veryverbose = False
 ignore_satisfied_from = None
@@ -158,7 +159,7 @@ def assign_update(indx):
         status_field = None
 
     print("fieldid {f}: Reading target file".format(f=fieldid), flush=True)
-    print("fieldid {f}:  ... {f}".format(f=field_target_file), flush=True)
+    print("fieldid {fid}:  ... {f}".format(fid=fieldid, f=field_target_file), flush=True)
 
     print("fieldid {fid}: ".format(fid=fieldid) + str(datetime.datetime.now()), flush=True)
 
@@ -185,7 +186,8 @@ def assign_update(indx):
                                 reset_bright=reset_bright,
                                 offset_min_skybrightness=offset_min_skybrightness,
                                 nooffset=nooffset, allgrids=allgrids,
-                                noincadence=noincadence)
+                                noincadence=noincadence,
+                                target_cadence_change=target_cadence_change)
     f.fieldid = fieldid
 
     if(special_priority is not None):
@@ -490,6 +492,11 @@ if __name__ == '__main__':
     if('CadenceVersions' in rsParams.cfg):
         if('version' in rsParams.cfg['CadenceVersions']):
             cadence_version = rsParams.cfg.get('CadenceVersions', 'version')
+
+    target_cadence_change = dict()
+    if('TargetCadenceChange' in rsParams.cfg):
+        for t in rsParams.cfg['TargetCadenceChange']:
+            target_cadence_change[t] = rsParams.cfg['TargetCadenceChange'][t]
 
     if('Assignment' in rsParams.cfg):
         if('standard_apogee_nperzone_min' in rsParams.cfg['Assignment']):
