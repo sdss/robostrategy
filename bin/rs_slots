@@ -39,15 +39,23 @@ if __name__ == '__main__':
     parser.add_argument("-m", "--mjd-start", dest="mjd_start", type=int,
                         required=False, help="start MJD (overrides --date-start)", 
                         default=None)
+    parser.add_argument("-n", "--mjd-end", dest="mjd_end", type=int,
+                        required=False, help="end MJD (overrides --date-end)", 
+                        default=None)
     parser.add_argument("-d", "--date-start", dest="date_start", type=str,
                         required=False, help="start date (YYYY-MM-DD); overrides cfg file", 
+                        default=None)
+    parser.add_argument("-e", "--date-end", dest="date_end", type=str,
+                        required=False, help="end date (YYYY-MM-DD); overrides cfg file", 
                         default=None)
 
     args = parser.parse_args()
     plan = args.plan
     observatory = args.observatory
     mjd_start = args.mjd_start
+    mjd_end = args.mjd_end
     date_start = args.date_start
+    date_end = args.date_end
 
     rsParams = params.RobostrategyParams(plan=plan)
     schedule = rsParams.cfg.get('Allocation', 'Schedule')
@@ -60,13 +68,25 @@ if __name__ == '__main__':
         if('mjdStart' in rsParams.cfg['Allocation']):
             mjd_start = int(rsParams.cfg.get('Allocation', 'mjdStart'))
 
+    if(mjd_end is None):
+        if('mjdEnd' in rsParams.cfg['Allocation']):
+            mjd_end = int(rsParams.cfg.get('Allocation', 'mjdEnd'))
+
     if(date_start is None):
         if('DateStart' in rsParams.cfg['Allocation']):
             date_start = rsParams.cfg.get('Allocation', 'DateStart')
 
+    if(date_end is None):
+        if('DateEnd' in rsParams.cfg['Allocation']):
+            date_end = rsParams.cfg.get('Allocation', 'DateEnd')
+
     if((date_start is not None) &
        (mjd_start is None)):
         mjd_start = np.int32(roboscheduler.scheduler.dateandtime2mjd(date=date_start))
+
+    if((date_end is not None) &
+       (mjd_end is None)):
+        mjd_end = np.int32(roboscheduler.scheduler.dateandtime2mjd(date=date_end))
 
     if('ExposureTime' in rsParams.cfg['Allocation']):
         exposure_times = rsParams.cfg.get('Allocation', 'ExposureTime').split()
@@ -102,6 +122,6 @@ if __name__ == '__main__':
                                      schedule=schedule, fclear=fclear,
                                      exptimes=exptimes / 60.,
                                      exposure_overhead=exposure_overhead / 60.)
-    slots.fill(mjd_start=mjd_start)
+    slots.fill(mjd_start=mjd_start, mjd_end=mjd_end)
     slots_file = sdss_path.full('rsSlots', plan=plan, observatory=observatory)
     slots.tofits(filename=slots_file)
