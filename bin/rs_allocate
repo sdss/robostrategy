@@ -17,6 +17,7 @@ import os
 import sys
 import pprint
 import numpy as np
+import astropy.coordinates
 import fitsio
 import robostrategy
 import robostrategy.allocate
@@ -28,12 +29,12 @@ import sdss_access.path
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 
 
-def bhm_spiders_contiguity_value_rescale(ra, dec):
-    length_scale = 3.0
-    floor = 0.1
-    max_boost = 150.0
-    dec0_ngc = -20.0
-    dec0_sgc = -45.0
+def bhm_spiders_contiguity_value_rescale(ra, dec, params=None):
+    length_scale = params['length_scale']
+    floor = params['floor']
+    max_boost = params['max_boost']
+    dec0_sgc = params['dec0_sgc']
+    dec0_ngc = params['dec0_ngc']
     
     lat0 = np.where((ra > 115.0) & (ra < 250.0), dec0_ngc, dec0_sgc)
     
@@ -172,6 +173,9 @@ if __name__ == '__main__':
 
             if('bhm_spiders_contiguity' in rsParams.cfg['ValueRescale']):
                 bhm_spiders_contiguity_cartons = rsParams.cfg.get('ValueRescale', 'bhm_spiders_contiguity').split()
+                bhm_spiders_contiguity_params = dict()
+                for p in ['length_scale', 'floor', 'max_boost', 'dec0_sgc', 'dec0_ngc']:
+                    bhm_spiders_contiguity_params[p] = np.float32(rsParams.cfg.get('ValueRescale', 'bhm_spiders_contiguity_{p}'.format(p=p)))
                 if(observatory.upper() in bhm_spiders_contiguity_cartons):
                     for c in bhm_spiders_contiguity_cartons:
                         indx = np.where(c == focartons)[0]
@@ -180,7 +184,8 @@ if __name__ == '__main__':
                             print("Carton {c} rescale for contiguity".format(c=focartons[indx]),
                                   flush=True)
                             crescale = bhm_spiders_contiguity_value_rescale(field_options['racen'],
-                                                                            field_options['deccen'])
+                                                                            field_options['deccen'],
+                                                                            params=bhm_spiders_contiguity_params)
                             fields_debug = [7794, 8942]
                             cadences_debug = ['dark_1x3', 'mixed_1x1+1x3']
                             for fx in fields_debug:
@@ -322,8 +327,6 @@ if __name__ == '__main__':
         print("Must specify cost model.")
         sys.exit(1)
 
-    fitsio.write('tmp-fo-{o}.fits'.format(o=observatory), field_options, clobber=True)
-
     print("Instantiate allocate object", flush=True)
     allocate = allocate_class(slots=slots,
                               field_options=field_options,
@@ -355,7 +358,11 @@ if __name__ == '__main__':
     allocate.construct(fix_cadence=True)
 
     print("Solve time minimization problem", flush=True)
-    allocate.solve(minimize_time=True)
+    status = allocate.solve(minimize_time=True)
+
+    if(status != 0):
+        print("Allocation failed.")
+        sys.exit(1)
 
     print("Output results", flush=True)
     allocate_file = sdss_path.full('rsAllocation', plan=plan,
