@@ -717,7 +717,8 @@ class Field(object):
                  trim_cadence_version=False, untrim_cadence_version=None,
                  noassign=False, oldmag=False, reload_design_mode=False,
                  input_design_mode=None, reset_bright=False, noincadence=False,
-                 offset_min_skybrightness=None, nooffset=False):
+                 offset_min_skybrightness=None, nooffset=False,
+                 target_cadence_change=dict()):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
@@ -743,6 +744,7 @@ class Field(object):
         self.input_design_mode = input_design_mode
         self.reset_bright = reset_bright
         self.bright_neighbors = bright_neighbors
+        self.target_cadence_change = target_cadence_change
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
             self.bright_stars_coords = collections.OrderedDict()
@@ -1132,6 +1134,18 @@ class Field(object):
                           min_deltav_ks91=[-2.5] * 12,
                           min_twilight_ang=[8.] * 12,
                           max_airmass=[2.] * 12)
+        clist.add_cadence(name='_field_single_18x1',
+                          nepochs=18,
+                          skybrightness=[1.] * 18,
+                          delta=[-1.] * 18,
+                          delta_min=[-1.] * 18,
+                          delta_max=[-1.] * 18,
+                          nexp=[1] * 18,
+                          max_length=[9999999.] * 18,
+                          min_moon_sep=[15.] * 18,
+                          min_deltav_ks91=[-2.5] * 18,
+                          min_twilight_ang=[8.] * 18,
+                          max_airmass=[2.] * 18)
         clist.add_cadence(name='_field_dark_single_1x1',
                           nepochs=1,
                           skybrightness=[0.35],
@@ -1475,9 +1489,9 @@ class Field(object):
         When first called, sets robotHasApogee attribute.
 """
         if(self.observatory == 'apo'):
-            rg = kaiju.robotGrid.RobotGridAPO(stepSize=0.05)
+            rg = kaiju.robotGrid.RobotGridAPO(stepSize=0.10)
         if(self.observatory == 'lco'):
-            rg = kaiju.robotGrid.RobotGridLCO(stepSize=0.05)
+            rg = kaiju.robotGrid.RobotGridLCO(stepSize=0.10)
         for k in rg.robotDict.keys():
             rg.homeRobot(k)
         if(self.robotHasApogee is None):
@@ -2368,6 +2382,26 @@ class Field(object):
             print("fieldid {fieldid}: Setup allowed".format(fieldid=self.fieldid), flush=True)
         umode = np.unique(self.design_mode)
 
+        # Check for each mode whether each target is allowed
+        if(self.verbose):
+            print("fieldid {fieldid}: Checking allowed".format(fieldid=self.fieldid), flush=True)
+        mags_allowed = dict()
+        bright_allowed = dict()
+        for mode in umode:
+            dm = self.designModeDict[mode]
+            mags_allowed[mode] = self._mags_allowed(designMode=dm,
+                                                    targets=targets)
+            if(self.bright_neighbors):
+                bright_allowed[mode] = self._bright_allowed_direct(design_mode=mode,
+                                                                   targets=targets,
+                                                                   assignments=assignments)
+            else:
+                bright_allowed[mode] = np.ones(len(targets), dtype=bool)
+
+        for epoch, mode in enumerate(self.design_mode):
+            assignments['mags_allowed'][:, epoch] = mags_allowed[mode]
+            assignments['bright_allowed'][:, epoch] = bright_allowed[mode]
+
         # Now find minimum offset among all modes; use this offset; for
         # any modes where the offset is larger, exclude these. The idea
         # is that (a) probably we don't want to mix these offsets; (b)
@@ -2385,26 +2419,30 @@ class Field(object):
             delta_ra_all[imode, :] = tmp_delta_ra
             delta_dec_all[imode, :] = tmp_delta_dec
             offset_flag_all[imode, :] = tmp_offset_flag
+
         delta_all = np.sqrt(delta_ra_all**2 + delta_dec_all**2)
-        idelta = np.argmin(delta_all, axis=0)
-        delta_ra = delta_ra_all[idelta, np.arange(len(targets), dtype=int)]
-        delta_dec = delta_dec_all[idelta, np.arange(len(targets), dtype=int)]
-        delta = np.sqrt(delta_ra**2 + delta_dec**2)
-        offset_allowed = dict()
-        offset_flag = dict()
-        for imode, mode in enumerate(umode):
-            offset_flag[mode] = offset_flag_all[imode, :]
-            offset_allowed[mode] = (delta_all[imode, :] <= delta) & (offset_flag[mode] == 0)
-            inot = np.where(offset_allowed[mode] == False)[0]
-            offset_flag[mode][inot] = offset_flag[mode][inot] | _offsetdict['TOO_CLOSE_FOR_MODE']
 
-        assignments['delta_ra'] = delta_ra
-        assignments['delta_dec'] = delta_dec
+        if(len(targets) > 0):
+            max_delta_all = delta_all.max() + 1.
+            idelta = np.argmin(delta_all + (offset_flag_all > 0) * max_delta_all, axis=0)
+            delta_ra = delta_ra_all[idelta, np.arange(len(targets), dtype=int)]
+            delta_dec = delta_dec_all[idelta, np.arange(len(targets), dtype=int)]
+            delta = np.sqrt(delta_ra**2 + delta_dec**2)
+            offset_allowed = dict()
+            offset_flag = dict()
+            for imode, mode in enumerate(umode):
+                offset_flag[mode] = offset_flag_all[imode, :]
+                offset_allowed[mode] = (delta_all[imode, :] <= delta) & (offset_flag[mode] == 0)
+                inot = np.where(offset_allowed[mode] == False)[0]
+                offset_flag[mode][inot] = offset_flag[mode][inot] | _offsetdict['TOO_CLOSE_FOR_MODE']
 
-        # Set offset allowed so we can double check in _bright_allowed_direct
-        for epoch, mode in enumerate(self.design_mode):
-            assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
-            assignments['offset_flag'][:, epoch] = offset_flag[mode]
+            assignments['delta_ra'] = delta_ra
+            assignments['delta_dec'] = delta_dec
+
+            # Set offset allowed so we can double check in _bright_allowed_direct
+            for epoch, mode in enumerate(self.design_mode):
+                assignments['offset_allowed'][:, epoch] = offset_allowed[mode]
+                assignments['offset_flag'][:, epoch] = offset_flag[mode]
 
         # Assign positions
         if(self.verbose):
@@ -2426,30 +2464,12 @@ class Field(object):
                                                    y=assignments['y'],
                                                    fiberType=targets['fiberType'])
 
-        # Check for each mode whether each target is allowed
-        if(self.verbose):
-            print("fieldid {fieldid}: Checking allowed".format(fieldid=self.fieldid), flush=True)
-        mags_allowed = dict()
-        bright_allowed = dict()
-        for mode in umode:
-            dm = self.designModeDict[mode]
-            mags_allowed[mode] = self._mags_allowed(designMode=dm,
-                                                    targets=targets)
-            if(self.bright_neighbors):
-                bright_allowed[mode] = self._bright_allowed_direct(design_mode=mode,
-                                                                   targets=targets,
-                                                                   assignments=assignments)
-            else:
-                bright_allowed[mode] = np.ones(len(targets), dtype=bool)
 
         # Set allowed in assignments; note offset_allowed was already
         # set above.
-        for epoch, mode in enumerate(self.design_mode):
-            assignments['mags_allowed'][:, epoch] = mags_allowed[mode]
-            assignments['bright_allowed'][:, epoch] = bright_allowed[mode]
-            assignments['allowed'][:, epoch] = ((mags_allowed[mode] |
-                                                 offset_allowed[mode]) &
-                                                bright_allowed[mode])
+        assignments['allowed'] = ((assignments['mags_allowed'] |
+                                   assignments['offset_allowed']) &
+                                  assignments['bright_allowed'])
 
         if(self.allgrids):
             if(self.verbose):
@@ -2516,6 +2536,12 @@ class Field(object):
                         targets[n][:, imagmap] = target_array[n][:, imag]
                     continue
                 targets[n] = target_array[n]
+
+        # Replace cadences where configured
+        for t in self.target_cadence_change:
+            itarget = np.where(targets['cadence'] == t)[0]
+            print("fieldid {fid}: Changing {n} targets from cadence {t} to {tc}, from cartons {cs}".format(fid=self.fieldid, n=len(itarget), t=t, tc=self.target_cadence_change[t], cs=np.unique(targets['carton'][itarget])))
+            targets['cadence'][itarget] = self.target_cadence_change[t]
 
         # Deal with use case where we need to reference a cadence version
         if(self._untrim_cadence_version is not None):
@@ -4377,7 +4403,7 @@ class Field(object):
                 # bright exposures, just set on basis of number of
                 # exposures
                 if(clist.cadence_consistency(target_cadence,
-                                             '_field_single_12x1',
+                                             '_field_single_18x1',
                                              return_solutions=False)):
                     if(len(iexp) >=
                        clist.cadences[target_cadence].nexp_total):
@@ -4549,7 +4575,7 @@ class Field(object):
                                          return_solutions=False)):
                 icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
                 singlebright[indxs[icad]] = True
-            elif(clist.cadence_consistency(cadence, '_field_single_12x1',
+            elif(clist.cadence_consistency(cadence, '_field_single_18x1',
                                            return_solutions=False)):
                 icad = np.where(self.targets['cadence'][indxs] == cadence)[0]
                 multibright[indxs[icad]] = True
@@ -6205,14 +6231,26 @@ class Field(object):
                     print("fieldid {fid}: Accounting for completion of original exposure={iexp}, allocated exposure={ialloc}".format(fid=self.fieldid, iexp=original_iexp, ialloc=ialloc), flush=True)
                 rsids = np.zeros(len(iobs), dtype=np.int64) - 1
                 for indx, cstatus in enumerate(observed_status[iobs]):
+                    if(self.veryverbose):
+                        print("fieldid {fid}: Checking carton {c} / {rsid}".format(fid=self.fieldid,
+                                                                                   c=cstatus['carton'],
+                                                                                   rsid=cstatus['carton_to_target_pk']))
                     tmp_rsids = self.equiv_target(cstatus)
                     if(cstatus['carton_to_target_pk'] in c2t_to_rsid):
                         # If this carton_to_target is explicitly in status table,
                         # assign that rsid
+                        if(self.veryverbose):
+                            print("fieldid {fid}: explicitly in status {c} / {rsid}".format(fid=self.fieldid,
+                                                                                            c=cstatus['carton'],
+                                                                                            rsid=cstatus['carton_to_target_pk']))
                         rsids[indx] = c2t_to_rsid[cstatus['carton_to_target_pk']]
                     else:
                         # Else take an equivalent based on catalogid/fiberType
                         if(len(tmp_rsids) > 0):
+                            if(self.veryverbose):
+                                print("fieldid {fid}: found equiv {c} / {rsid}".format(fid=self.fieldid,
+                                                                                       c=cstatus['carton'],
+                                                                                       rsid=cstatus['carton_to_target_pk']))
                             rsids[indx] = tmp_rsids[0]
                     # Associate the status with ANY equivalent target for step below
                     # "completing" cadences with bad observations; this relies on
@@ -6252,21 +6290,58 @@ class Field(object):
         isci = np.where((self.assignments['satisfied'] == 0) & (gotone) &
                         (self.targets['stage'] == 'srd') &
                         (self.assignments['incadence'] > 0))[0]
+
         for indx, target in enumerate(self.targets[isci]):
+            if(self.veryverbose):
+                print("fieldid {fid}: target not done {c} / {rsid}".format(fid=self.fieldid,
+                                                                           c=target['carton'],
+                                                                           rsid=target['carton_to_target_pk']))
             success = self.assign_cadences(rsids=np.array([target['rsid']]),
                                            test_only=True)
+            if(self.veryverbose):
+                print("fieldid {fid}: Checking if satisfiable {ct} / {rsid}".format(fid=self.fieldid,
+                                                                                    rsid=target['rsid'],
+                                                                                    ct=target['carton']))
             if(success == False) :
+                if(self.veryverbose):
+                    print("fieldid {fid}:  indeed not satisfiable {ct} / {rsid}".format(fid=self.fieldid,
+                                                                                        rsid=target['rsid'],
+                                                                                        ct=target['carton']))
                 for iexp in allocated_exposures_done:
+                    if(self.veryverbose):
+                        print("fieldid {fid}: checking exp {i} for {ct} / {rsid}".format(fid=self.fieldid,
+                                                                                         i=iexp,
+                                                                                         rsid=target['rsid'],
+                                                                                         ct=target['carton']))
                     if((iexp, target['rsid']) in rsid_obs_to_istatus):
+                        if(self.veryverbose):
+                            print("fieldid {fid}: found rsid_obs_to_istatus in exp {i} for {ct} / {rsid}".format(fid=self.fieldid,
+                                                                                                                 i=iexp,
+                                                                                                                 rsid=target['rsid'],
+                                                                                                                 ct=target['carton']))
                         # Bail if this assignment was equivalently done already
                         # earlier in this loop
                         if(self.assignments['equivRobotID'][isci[indx], iexp] >= 0):
                             continue
+                        if(self.veryverbose):
+                            print("fieldid {fid}: not equiv done for exp {i} for {ct} / {rsid}".format(fid=self.fieldid,
+                                                                                                       i=iexp,
+                                                                                                       rsid=target['rsid'],
+                                                                                                       ct=target['carton']))
                         istatus = rsid_obs_to_istatus[iexp, target['rsid']]
                         if(observed_status['status'][istatus] == 0):
+                            if(self.veryverbose):
+                                print("fieldid {fid}: status 0 for exp {i} for {ct} / {rsid}".format(fid=self.fieldid,
+                                                                                                     i=iexp,
+                                                                                                     rsid=target['rsid'],
+                                                                                                     ct=target['carton']))
                             self.assign_done_exposure(iexp=iexp, rsids=np.array([target['rsid']]),
                                                       holeIDs=np.array([observed_status['holeid'][istatus]]),
                                                       force=True, lock=True, override_lock=True)
+
+                if(self.veryverbose):
+                    print("fieldid {fid}:  new assignments {a}".format(fid=self.fieldid,
+                                                                       a=self.assignments['equivRobotID'][self.rsid2indx[target['rsid']]]))
 
         self.lock_exposures(iexps=allocated_exposures_done)
 
