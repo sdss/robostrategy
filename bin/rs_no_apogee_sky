@@ -52,10 +52,9 @@ if __name__ == '__main__':
                                    observatory=observatory)
     allocate_file_orig = allocate_file + '.orig'
 
-    if(os.path.exists(allocate_file_orig) is False):
-        subprocess.run(['cp', allocate_file, allocate_file_orig])
+    subprocess.run(['cp', '-f', allocate_file, allocate_file_orig])
 
-    allocate_hdus = fits.open(allocate_file_orig)
+    allocate_hdus = fits.open(allocate_file)
     rs_fields_array = allocate_hdus[1].data.copy()
     new_fields_array_dtype = rs_fields_array.dtype.descr
     new_fields_array_dtype[3] = ('cadence', np.unicode_, 60)
