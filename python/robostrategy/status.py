@@ -263,10 +263,22 @@ def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
     for i, s in enumerate(status_array):
         status_array['first_plan'] = first_plan[s['design_id']]
 
+    status_field = status_to_status_field(status_array, first_plan=first_plan,
+                                          design_mode=design_mode)
+
+    if(len(np.unique(status_field['field_exposure'])) != len(status_field)):
+        raise ValueError("Two entries with same field_exposure in fieldid={fid}".format(fid=fieldid))
+
+    return(status_array, status_field)
+
+
+def status_to_status_field(status_array, first_plan=None, design_mode=None):
+
     status_designs_set = set()
     for s in status_array:
         thing = (s['fieldid'], s['field_pk'], s['field_exposure'], s['design_id'], s['field_cadence'])
         status_designs_set.add(thing)
+
     status_field = np.zeros(0, dtype=status_field_dtype)
     for s in status_designs_set:
         tmp_status_field = np.zeros(1, dtype=status_field_dtype)
@@ -291,7 +303,4 @@ def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
     isort = np.argsort(status_field['field_exposure'])
     status_field = status_field[isort]
 
-    if(len(np.unique(status_field['field_exposure'])) != len(status_field)):
-        raise ValueError("Two entries with same field_exposure in fieldid={fid}".format(fid=fieldid))
-
-    return(status_array, status_field)
+    return(status_field)
