@@ -51,6 +51,9 @@ class Slots(object):
     mjd_start : int
         MJD to start counting schedule from
 
+    mjd_end : int
+        MJD to end counting schedule at
+
     nlst : int, np.int32
         number of LST bins
 
@@ -116,9 +119,10 @@ class Slots(object):
         self.exptimes = exptimes
         self.durations = self.exposure_overhead + self.exptimes
         self.mjd_start = None
+        self.mjd_end = None
         return
 
-    def fill(self, mjd_start=None):
+    def fill(self, mjd_start=None, mjd_end=None):
         """Fill slots attribute with available hours
 
         Parameters
@@ -126,6 +130,9 @@ class Slots(object):
         
         mjd_start : int or None
             start planning at this MJD (i.e. only count time after this)
+        
+        mjd_end : int or None
+            end planning at this MJD (i.e. only count time before this)
 
         Notes
         -----
@@ -139,6 +146,7 @@ class Slots(object):
         Does NOT apply the fclear factor.
 """
         self.mjd_start = mjd_start
+        self.mjd_end = mjd_end
         self.slots = np.zeros((self.nlst, self.nskybrightness),
                               dtype=np.float32)
         scheduler = roboscheduler.scheduler.Scheduler(observatory=self.observatory,
@@ -147,6 +155,11 @@ class Slots(object):
             # Do not count MJDs in the past
             if(mjd_start is not None):
                 if(mjd < mjd_start):
+                    continue
+
+            # Cut off survey
+            if(mjd_end is not None):
+                if(mjd > mjd_end):
                     continue
 
             mjd_evening_twilight = scheduler.evening_twilight(mjd)
@@ -209,6 +222,8 @@ class Slots(object):
         hdr['NSB'] = self.nskybrightness
         if(self.mjd_start is not None):
             hdr['MJD_START'] = self.mjd_start
+        if(self.mjd_end is not None):
+            hdr['MJD_END'] = self.mjd_end
         for indx in range(len(self.skybrightness)):
             hdr['SB{indx}'.format(indx=indx)] = self.skybrightness[indx]
         fitsio.write(filename, self.slots, header=hdr, clobber=clobber, extname='SLOTS')
@@ -233,6 +248,8 @@ class Slots(object):
         self.nlst = np.int32(hdr['NLST'])
         if('MJD_START' in hdr):
             self.mjd_start = int(hdr['MJD_START'])
+        if('MJD_END' in hdr):
+            self.mjd_end = int(hdr['MJD_END'])
         if('DURATION' in hdr):
             self.durations = np.array([np.float32(hdr['DURATION']),
                                       np.float32(hdr['DURATION'])],
