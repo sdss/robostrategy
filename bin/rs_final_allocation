@@ -357,9 +357,14 @@ if __name__ == '__main__':
                         print(fields_array['fieldid'][ifield])
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
-                elif('mixed_1x1+1x' in curr_cadence_name):
+                elif(('mixed_1x1+1x' in curr_cadence_name) | 
+                     ('mixed_no_apogee_skies_1x1+1x' in curr_cadence_name)):
+                    if('no_apogee_skies' in curr_cadence_name):
+                        nasstr = '_no_apogee_skies'
+                    else:
+                        nasstr = ''
                     if((iexpst == 0) & (iexpnd == 0)):
-                        fields_array['cadence'][ifield] = 'bright_1x1'
+                        fields_array['cadence'][ifield] = 'bright' + nasstr+ '_1x1'
                         new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         start_dark=1,
@@ -369,7 +374,7 @@ if __name__ == '__main__':
                         filled_sb[0] = 0
                         filled_sb[1] = np.int32(done_exposures[0] > 0)
                     elif((iexpst == 1) & ((iexpnd == 3) | (iexpnd == 4))):
-                        fields_array['cadence'][ifield] = 'dark_1x{n}'.format(n=iexpnd)
+                        fields_array['cadence'][ifield] = 'dark' + nasstr + '_1x{n}'.format(n=iexpnd)
                         new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='dark',
                                                         start_dark=1,
@@ -382,9 +387,14 @@ if __name__ == '__main__':
                         print(fields_array['fieldid'][ifield])
                         print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
                         sys.exit(3)
-                elif('mixed_2x1+1x' in curr_cadence_name):
+                elif(('mixed_2x1+1x' in curr_cadence_name) |
+                     ('mixed_no_apogee_skies_2x1+1x' in curr_cadence_name)):
+                    if('no_apogee_skies' in curr_cadence_name):
+                        nasstr = '_no_apogee_skies'
+                    else:
+                        nasstr = ''
                     if((iexpst == 0) & (iexpnd == 1)):
-                        fields_array['cadence'][ifield] = 'bright_2x1'
+                        fields_array['cadence'][ifield] = 'bright' + nasstr+ '_2x1'
                         new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='bright',
                                                         start_dark=2,
@@ -394,7 +404,7 @@ if __name__ == '__main__':
                         filled_sb[0] = 0
                         filled_sb[1] = np.int32(done_exposures[0] > 0)
                     elif((iexpst == 2) & ((iexpnd == 4) | (iexpnd == 5))):
-                        fields_array['cadence'][ifield] = 'dark_1x{n}'.format(n=iexpnd - 1)
+                        fields_array['cadence'][ifield] = 'dark' + nasstr+ '_1x{n}'.format(n=iexpnd - 1)
                         new_exp, new_time = split_slots(curr_exps, curr_time,
                                                         ttype='dark',
                                                         start_dark=2,
@@ -487,22 +497,6 @@ if __name__ == '__main__':
                         faf[0].header['FCADENCE'] = fields_array['cadence'][i].decode()
                         faf[0].header['DESMODE'] = design_modes_str
                         faf.close()
-
-            if('no_apogee_skies' in rsParams.cfg['FinalCadenceRenaming']):
-                for i, fa in enumerate(fields_array):
-                    if(fa['cadence'] == b'none'):
-                        continue
-                    sc = astropy.coordinates.SkyCoord(ra=fa['racen'], dec=fa['deccen'],
-                                                      unit='deg', frame='icrs')
-                    galb = sc.galactic.b.value
-                    if((np.abs(galb) > 20.)):
-                        w = (fa['cadence'].decode()).split('_')
-                        if('4yr' in fa['cadence'].decode()):
-                            nas_cadence = "_".join(w[0:-2]) + '_no_apogee_skies_' + "_".join(w[-2:])
-                        else:
-                            nas_cadence = "_".join(w[0:-1]) + '_no_apogee_skies_' + w[-1]
-                        fields_array['cadence'][i] = nas_cadence
-                
 
         fields_array_hdu = fits.BinTableHDU(fields_array, name='ALLOCATE')
         fields_hdu = fits.BinTableHDU(fields, name='FIELDS')
