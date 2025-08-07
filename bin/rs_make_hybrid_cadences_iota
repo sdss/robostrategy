@@ -1,0 +1,171 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import fitsio
+import argparse
+import numpy as np
+import roboscheduler.cadence as cadence
+import sdss_access.path
+
+sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
+
+clist = cadence.CadenceList(skybrightness_only=True)
+
+
+def copy_cadence(from_cadence, to_cadence, nepochs=None, version=None):
+    if(nepochs is None):
+        nepochs = clist.cadences[from_cadence].nepochs
+
+    clist.add_cadence(name=to_cadence + version,
+                      nepochs=nepochs,
+                      skybrightness=clist.cadences[from_cadence].skybrightness[0:nepochs],
+                      delta=clist.cadences[from_cadence].delta[0:nepochs],
+                      delta_min=clist.cadences[from_cadence].delta_min[0:nepochs],
+                      delta_max=clist.cadences[from_cadence].delta_max[0:nepochs],
+                      nexp=clist.cadences[from_cadence].nexp[0:nepochs],
+                      max_length=clist.cadences[from_cadence].max_length[0:nepochs],
+                      min_moon_sep=clist.cadences[from_cadence].min_moon_sep[0:nepochs],
+                      min_deltav_ks91=clist.cadences[from_cadence].min_deltav_ks91[0:nepochs],
+                      min_twilight_ang=clist.cadences[from_cadence].min_twilight_ang[0:nepochs],
+                      max_airmass=clist.cadences[from_cadence].max_airmass[0:nepochs],
+                      obsmode_pk=clist.cadences[from_cadence].obsmode_pk[0:nepochs])
+
+    clist.cadences[to_cadence + version].label_root = to_cadence
+    clist.cadences[to_cadence + version].label_version = version
+
+    return
+
+
+def merge_cadences(first_name=None, second_name=None, new_name=None):
+    version = ''
+
+    nepochs = clist.cadences[first_name].nepochs + clist.cadences[second_name].nepochs
+    skybrightness = np.append(clist.cadences[first_name].skybrightness,
+                              clist.cadences[second_name].skybrightness)
+    delta = np.append(clist.cadences[first_name].delta,
+                      clist.cadences[second_name].delta)
+    delta_min = np.append(clist.cadences[first_name].delta_min,
+                          clist.cadences[second_name].delta_min)
+    delta_max = np.append(clist.cadences[first_name].delta_max,
+                          clist.cadences[second_name].delta_max)
+    nexp = np.append(clist.cadences[first_name].nexp,
+                     clist.cadences[second_name].nexp)
+    max_length = np.append(clist.cadences[first_name].max_length,
+                           clist.cadences[second_name].max_length)
+    min_moon_sep = np.append(clist.cadences[first_name].min_moon_sep,
+                             clist.cadences[second_name].min_moon_sep)
+    min_deltav_ks91 = np.append(clist.cadences[first_name].min_deltav_ks91,
+                                clist.cadences[second_name].min_deltav_ks91)
+    min_twilight_ang = np.append(clist.cadences[first_name].min_twilight_ang,
+                                 clist.cadences[second_name].min_twilight_ang)
+    max_airmass = np.append(clist.cadences[first_name].max_airmass,
+                            clist.cadences[second_name].max_airmass)
+    obsmode_pk = np.append(clist.cadences[first_name].obsmode_pk,
+                           clist.cadences[second_name].obsmode_pk)
+
+    for version in ['', '_v2']:
+        clist.add_cadence(name=new_name + version,
+                          nepochs=nepochs,
+                          skybrightness=skybrightness,
+                          delta=delta,
+                          delta_min=delta_min,
+                          delta_max=delta_max,
+                          nexp=nexp,
+                          max_length=max_length,
+                          min_moon_sep=min_moon_sep,
+                          min_deltav_ks91=min_deltav_ks91,
+                          min_twilight_ang=min_twilight_ang,
+                          max_airmass=max_airmass,
+                          obsmode_pk=obsmode_pk)
+        
+        clist.cadences[new_name + version].label_root = new_name
+        clist.cadences[new_name + version].label_version = version
+    
+    return
+
+
+def copy_to_nas(spiders_cadence):
+    nas_cadence = spiders_cadence.replace('mixed', 'mixed_no_apogee_skies')
+    copy_cadence(spiders_cadence, nas_cadence, version='')
+    opks = clist.cadences[nas_cadence].obsmode_pk
+    new_opks = []
+    for i, opk in enumerate(opks):
+        new_opks.append(opk + '_no_apogee_skies')
+    clist.cadences[nas_cadence].obsmode_pk = np.array(new_opks)
+    print(clist.cadences[nas_cadence].obsmode_pk)
+    copy_cadence(nas_cadence, nas_cadence, version='_v2')
+    return
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        description='Create hybrid cadence file')
+
+    parser.add_argument('-p', '--plan', dest='plan',
+                        type=str, help='name of plan')
+
+    parser.add_argument('-o', '--observatory', dest='observatory',
+                        type=str, help='name of observatory')
+
+    args = parser.parse_args()
+    plan = args.plan
+    observatory = args.observatory
+
+    cadences_file = sdss_path.full('rsCadences', plan=plan,
+                                   observatory=observatory)
+    orig_cadences_file = cadences_file.replace('rsCadences', 'rsCadencesOrig')
+    clist.fromfits(filename=orig_cadences_file, unpickle=False)
+
+    hybrid_names = []
+
+    spiders_cadence = 'mixed_1x1+1x3'
+    merge_cadences('bright_1x1', 'dark_1x3', spiders_cadence)
+    hybrid_names.append(spiders_cadence)
+    copy_to_nas(spiders_cadence)
+
+    spiders_cadence = 'mixed_1x1+1x4'
+    merge_cadences('bright_1x1', 'dark_monit_1x4', spiders_cadence)
+    hybrid_names.append(spiders_cadence)
+    copy_to_nas(spiders_cadence)
+
+    spiders_cadence = 'mixed_2x1+1x3'
+    merge_cadences('bright_2x1', 'dark_1x3', spiders_cadence)
+    hybrid_names.append(spiders_cadence)
+    copy_to_nas(spiders_cadence)
+
+    spiders_cadence = 'mixed_2x1+1x4'
+    merge_cadences('bright_2x1', 'dark_monit_1x4', spiders_cadence)
+    hybrid_names.append(spiders_cadence)
+    copy_to_nas(spiders_cadence)
+
+    spiders_cadence = 'mixed_2x1+1x3'
+    merge_cadences('bright_2x1', 'dark_1x3', spiders_cadence)
+    hybrid_names.append(spiders_cadence)
+    copy_to_nas(spiders_cadence)
+
+    for h in hybrid_names.copy():
+        w = h.split('_')
+        hnas = w[0] + '_no_apogee_skies_' + '_'.join(w[1:])
+        hybrid_names.append(hnas)
+    
+    new_cadences_file = cadences_file.replace('rsCadences', 'rsCadencesNew')
+    clist_array = clist.toarray()
+    fitsio.write(new_cadences_file, clist_array, clobber=True)
+
+    cadences = [c for c in clist.cadences]
+    for c in cadences:
+        if(clist.cadences[c].label_root not in hybrid_names):
+            print("pop {c} {l}".format(c=c, l=clist.cadences[c].label_root))
+            clist.cadences.pop(c)
+            
+    hybrid_cadences_file = cadences_file.replace('rsCadences', 'rsCadencesHybrid')
+    clist.tocsv(filename=hybrid_cadences_file.replace('.fits', '.csv'))
+
+    fp = open(hybrid_cadences_file.replace('.fits', '.cfg'), 'w')
+    for c in clist.cadences:
+        txt = clist.cadences[c].epoch_text()
+        fp.write(txt)
+    fp.close()
