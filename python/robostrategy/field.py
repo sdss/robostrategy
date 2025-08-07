@@ -453,6 +453,9 @@ class Field(object):
 
     observatory : str
         observatory field observed from, 'apo' or 'lco' (default 'apo')
+
+    epoch : np.float32
+        epoch to use 
     
     field_cadence : str
         field cadence (default 'none')
