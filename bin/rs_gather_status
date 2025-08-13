@@ -66,38 +66,57 @@ if __name__ == '__main__':
 
     fieldids = np.unique(fieldids)
 
-    field_status = None
-    fromplan_field = None
-    for fieldid in fieldids:
-        print(fieldid)
-        field_status_file = sdss_path.full('rsFieldTargets',
-                                           plan=plan, observatory=observatory,
-                                           fieldid=fieldid)
-        field_status_file = field_status_file.replace('targets/rsFieldTargets',
-                                                      'final/rsFieldStatus')
-        if(os.path.exists(field_status_file) is False):
-            continue
-
-        tmp_field_status = fitsio.read(field_status_file, ext='FIELD')
-        hdr = fitsio.read_header(field_status_file)
-        if('FROMPLAN' in hdr):
-            tmp_fromplan = hdr['FROMPLAN']
-            if(fromplan_field is None):
-                fromplan_field = tmp_fromplan
+    for ipass in [0, 1]:
+        field_status = None
+        fromplan_field = None
+        tmp_nfield_status = 0
+        for fieldid in fieldids:
+            if(ipass == 0):
+                print("Counting {fid}".format(fid=fieldid), flush=True)
             else:
-                if(fromplan_field != tmp_fromplan):
-                    raise ValueError("Inconsistency in FROMPLANs found in status files")
+                print("Gathering {fid}".format(fid=fieldid), flush=True)
+            field_status_file = sdss_path.full('rsFieldTargets',
+                                               plan=plan, observatory=observatory,
+                                               fieldid=fieldid)
+            field_status_file = field_status_file.replace('targets/rsFieldTargets',
+                                                          'final/rsFieldStatus')
+            if(os.path.exists(field_status_file) is False):
+                continue
 
-        if(field_status is None):
-            field_status_dtype = tmp_field_status.dtype.descr
-            field_status_dtype.append(('rs_fieldid', np.int32))
-            field_status_dtype = np.dtype(field_status_dtype)
-            field_status = np.zeros(0, dtype=field_status_dtype)
-        append_field_status = np.zeros(len(tmp_field_status), dtype=field_status_dtype)
-        for n in tmp_field_status.dtype.names:
-            append_field_status[n] = tmp_field_status[n]
-        append_field_status['rs_fieldid'] = fieldid_to_rs[fieldid]
-        field_status = np.append(field_status, append_field_status)
+            hdr1 = fitsio.read_header(field_status_file, ext=1)
+            if(ipass == 0):
+                tmp_nfield_status = tmp_nfield_status + np.int32(hdr1['NAXIS2'])
+                continue
+
+            hdr = fitsio.read_header(field_status_file)
+            tmp_field_status = fitsio.read(field_status_file, ext='FIELD')
+            if('FROMPLAN' in hdr):
+                tmp_fromplan = hdr['FROMPLAN']
+                if(fromplan_field is None):
+                    fromplan_field = tmp_fromplan
+                else:
+                    if(fromplan_field != tmp_fromplan):
+                        raise ValueError("Inconsistency in FROMPLANs found in status files")
+
+            if(field_status is None):
+                field_status_dtype = tmp_field_status.dtype.descr
+                field_status_dtype.append(('rs_fieldid', np.int32))
+                field_status_dtype = np.dtype(field_status_dtype)
+                field_status = np.zeros(nfield_status, dtype=field_status_dtype)
+
+            append_field_status = np.zeros(len(tmp_field_status), dtype=field_status_dtype)
+            for n in tmp_field_status.dtype.names:
+                append_field_status[n] = tmp_field_status[n]
+            append_field_status['rs_fieldid'] = fieldid_to_rs[fieldid]
+
+            ncurr = len(append_field_status) 
+            field_status[tmp_nfield_status:tmp_nfield_status+ncurr] = append_field_status
+
+            tmp_nfield_status = tmp_nfield_status + ncurr
+
+        nfield_status = tmp_nfield_status
+
+    field_status = field_status[0:nfield_status]
 
     if(fromplan is None):
         fromplan = fromplan_field
