@@ -19,17 +19,14 @@ class ObsTime(object):
     observatory : str
         'apo' or 'lco'
 
-    year : int
-        nominal year to consider (default 2021)
+    date : str
+        date to start on ('YYYY-MM-DD' format)
 
     Attributes
     ----------
 
     observatory : str
         'apo' or 'lco'
-
-    year : int
-        nominal year to consider
 
     utcoff : int
         offset of local time from UTC
@@ -53,9 +50,11 @@ class ObsTime(object):
     It uses SDSS's coordio for the astronomy calculation.
 
     """
-    def __init__(self, observatory='apo', year=2021):
+    def __init__(self, observatory='apo', date='2025-08-01'):
+        if(date is None):
+            date = '2025-08-01'
+        year, month, mday = [int(x) for x in date.split('-')]
         self.observatory = observatory
-        self.year = year
         if(observatory == 'apo'):
             self.utcoff = - 7
         if(observatory == 'lco'):
@@ -69,11 +68,15 @@ class ObsTime(object):
         self.transit_lst = np.zeros(365, dtype=np.float64)
         self.midnight = []
 
-        day = datetime.datetime(year, 1, 1) - self.utcoff * onehour
+        day = datetime.datetime(year, month, mday) - self.utcoff * onehour
         for n in range(365):
             midnight = day + oneday * n
             site.set_time(midnight)
-            south = coordio.sky.Observed([[45., 180.]], site=site)
+            try:
+                south = coordio.sky.Observed([[45., 180.]], site=site)
+            except coordio.exceptions.CoordIOError as e:
+                outstr = "{e} (tried date {d})".format(e=e, d=date)
+                raise coordio.exceptions.CoordIOError(outstr)
             self.transit_lst[n] = south.ra
             self.midnight.append(midnight)
 
