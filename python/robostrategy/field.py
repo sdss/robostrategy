@@ -32,6 +32,7 @@ import robostrategy.standards
 import coordio.time
 import coordio.utils
 import sdss_access.path
+import hashlib
 
 
 sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
@@ -96,6 +97,20 @@ __all__ = ['Field', 'read_field', 'read_cadences', 'AssignmentStatus',
 # Establish access to the CadenceList singleton
 clist = roboscheduler.cadence.CadenceList(skybrightness_only=True)
 
+
+def random_float(seed=None):
+    # The output of SHA-256 is a 256-bit integer.
+    # The maximum value for a 256-bit unsigned integer is 2^256 - 1.
+    max_hash_value = 2**256 - 1
+    
+    # Get the deterministic integer from the original function
+    seed_bytes = int(seed).to_bytes(8, 'little')
+    hashed_bytes = hashlib.sha256(seed_bytes).digest()
+    det_int = int.from_bytes(hashed_bytes, 'little')
+
+    # Normalize the integer to a float between 0 and 1.
+    return det_int / max_hash_value
+                                                
 
 def read_cadences(plan=None, observatory=None, unpickle=False,
                   stage='srd'):
@@ -721,7 +736,8 @@ class Field(object):
                  noassign=False, oldmag=False, reload_design_mode=False,
                  input_design_mode=None, reset_bright=False, noincadence=False,
                  offset_min_skybrightness=None, nooffset=False,
-                 target_cadence_change=dict()):
+                 target_cadence_change=dict(), subsample_cartons=dict(),
+                 observe_epoch=None):
         self.calibration_order = np.array(['sky_apogee', 'sky_boss',
                                            'standard_boss', 'standard_apogee'])
         self._add_dummy_cadences()
@@ -734,6 +750,7 @@ class Field(object):
         self.preferred_robotids = None
         self.verbose = verbose
         self.noincadence = noincadence
+        self.subsample_cartons = subsample_cartons
         self.oldmag = oldmag
         self.veryverbose = veryverbose
         self._trim_cadence_version = trim_cadence_version  # trims field cadence
@@ -743,6 +760,7 @@ class Field(object):
         self.nocalib = nocalib
         self.nocollide = nocollide
         self.allgrids = allgrids
+        self.observe_epoch = observe_epoch
         self.reload_design_mode = reload_design_mode
         self.input_design_mode = input_design_mode
         self.reset_bright = reset_bright
@@ -785,7 +803,7 @@ class Field(object):
             self.deccen = deccen
             self.pa = pa
             self.observatory = observatory
-            self._ot = obstime.ObsTime(observatory=self.observatory)
+            self._ot = obstime.ObsTime(observatory=self.observatory, date=self.observe_epoch)
             self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
             if(self.collisionBuffer is None):
                 self.collisionBuffer = defaultCollisionBuffer
@@ -1238,7 +1256,7 @@ class Field(object):
         self.pa = np.float32(hdr['PA'])
         self.observatory = hdr['OBS']
         if('BRIGHTN' in hdr):
-            self.bright_neighbors = np.bool(hdr['BRIGHTN'])
+            self.bright_neighbors = bool(hdr['BRIGHTN'])
         if(self.bright_neighbors):
             self.bright_stars = collections.OrderedDict()
             self.bright_stars_coords = collections.OrderedDict()
@@ -1246,10 +1264,12 @@ class Field(object):
             self.bright_neighbor_cache = dict()
         if(self.collisionBuffer is None):
             self.collisionBuffer = hdr['CBUFFER']
+        if(('OEPOCH' in hdr) & (self.observe_epoch is None)):
+            self.observe_epoch = hdr['OEPOCH']
         if(('NOCALIB' in hdr) & (self.nocalib == False)):
-            self.nocalib = np.bool(hdr['NOCALIB'])
+            self.nocalib = bool(hdr['NOCALIB'])
         if(('NOAPOGEE' in hdr) & (self.noapogee == False)):
-            self.noapogee = np.bool(hdr['NOAPOGEE'])
+            self.noapogee = bool(hdr['NOAPOGEE'])
         if(('OFFMINSKY' in hdr) & (self.offset_min_skybrightness is None)):
             self.offset_min_skybrightness = np.float32(hdr['OFFMINSKY'])
             if(self.offset_min_skybrightness != self.offset_min_skybrightness):
@@ -1260,7 +1280,7 @@ class Field(object):
         self.robotID2indx = dict()
         for indx, robotID in enumerate(self.robotIDs):
             self.robotID2indx[robotID] = indx
-        self._ot = obstime.ObsTime(observatory=self.observatory)
+        self._ot = obstime.ObsTime(observatory=self.observatory, date=self.observe_epoch)
         self.obstime = coordio.time.Time(self._ot.nominal(lst=self.racen))
         field_cadence = hdr['FCADENCE']
         if(self._untrim_cadence_version is not None):
@@ -1340,7 +1360,7 @@ class Field(object):
         self.set_field_cadence(field_cadence)
 
         if('EXPLOCK' in hdr):
-            self.exposure_locked = np.array([np.bool(x == 'True') for x in hdr['EXPLOCK'].split()])
+            self.exposure_locked = np.array([bool(x == 'True') for x in hdr['EXPLOCK'].split()])
 
         if('status' in f.hdu_map):
             design_status = f['status'].read()
@@ -1587,6 +1607,8 @@ class Field(object):
                                                ('delta_dec', np.float32),
                                                ('incadence', bool),
                                                ('allowed', bool,
+                                                (self.field_cadence.nepochs,)),
+                                               ('subsample_allowed', bool,
                                                 (self.field_cadence.nepochs,)),
                                                ('mags_allowed', bool,
                                                 (self.field_cadence.nepochs,)),
@@ -2760,6 +2782,10 @@ class Field(object):
         hdr.append({'name':'BRIGHTN',
                     'value':self.bright_neighbors,
                     'comment':'account for bright neighbor constraints'})
+        if(self.observe_epoch is not None):
+            hdr.append({'name':'OEPOCH',
+                        'value':self.observe_epoch,
+                        'comment':'observing epoch'})
         if(self.field_cadence is not None):
             hdr.append({'name':'FCADENCE',
                         'value':self.field_cadence.name,
@@ -6350,6 +6376,55 @@ class Field(object):
 
         return
 
+    def subsample(self, retain=False):
+        subsample_allowed = np.ones(len(self.targets), dtype=bool)
+        for carton in self.subsample_cartons:
+            fraction = self.subsample_cartons[carton]
+            print("fieldid {fid}: Subsampling carton {c} at {f}".format(fid=self.fieldid, c=carton, f=fraction), flush=True)
+            sa = self.subsample_carton(carton=carton, fraction=fraction, retain=retain)
+            print("fieldid {fid}:  (removed {n} of {m})".format(fid=self.fieldid, n=(sa == False).sum(), m=(self.targets['carton'] == carton).sum()), flush=True)
+            subsample_allowed = subsample_allowed & sa
+
+        print("fieldid {fid}: Total number removed from subsampling is {n}".format(fid=self.fieldid, n=(subsample_allowed == False).sum()), flush=True)
+
+        for iepoch in np.arange(self.field_cadence.nepochs, dtype=np.int32):
+            self.assignments['subsample_allowed'][:, iepoch] = subsample_allowed
+        self.assignments['allowed'] = (self.assignments['allowed'] &
+                                       self.assignments['subsample_allowed'])
+        return
+
+    def subsample_carton(self, carton=None, fraction=None, retain=False):
+
+        subsample_allowed = np.ones(len(self.targets), dtype=bool)
+        satisfiable = np.zeros(len(self.targets), dtype=bool)
+
+        if(retain):
+            # First let's not subsample cases that are started and satisfiable.
+            # Find members of this carton, with at least one exposure, which
+            # fit into the field cadence, and aren't already satisfied. This
+            # assumes apply_done_exposures() has been run.
+            equiv = self.assignments['equivRobotID'].copy()
+            for iexp in np.arange(self.field_cadence.nexp_total, dtype=np.int32):
+                equiv[:, iexp] = equiv[:, iexp] * self.exposure_locked[iexp]
+            gotone = ((equiv >= 0).sum(axis=1) > 0)
+            icarton = np.where((self.targets['carton'] == carton) &
+                               (self.assignments['incadence'] > 0) &
+                               (self.assignments['satisfied'] == 0) &
+                               gotone)[0]
+
+            for i in icarton:
+                target = self.targets[i]
+                satisfiable[i] = self.assign_cadences(rsids=np.array([target['rsid']]),
+                                                      test_only=True)
+
+        icarton = np.where(self.targets['carton'] == carton)[0]
+        for i in icarton:
+            random = random_float(seed=self.targets['carton_to_target_pk'][i])
+            if((random > fraction) & (satisfiable[i] == False)):
+                subsample_allowed[i] = False
+                
+        return(subsample_allowed)
+
     def lock_exposures(self, iexps=None):
         """Lock down exposures"""
         for iexp in iexps:
@@ -6412,7 +6487,6 @@ class Field(object):
             holeID = self.mastergrid.robotDict[robotID].holeID 
             holeID2robotID[holeID] = robotID
         robotIDs = np.array([holeID2robotID[hid] for hid in holeIDs], dtype=int)
-
         if(override_lock):
             for robotID in robotIDs:
                 robotindx = self.robotID2indx[robotID]
@@ -7243,12 +7317,14 @@ class FieldSpeedy(Field):
 """
     def __init__(self, filename=None, racen=None, deccen=None, pa=0.,
                  observatory='apo', field_cadence='none', collisionBuffer=2.,
-                 fieldid=1, verbose=False):
+                 fieldid=1, verbose=False, subsample_cartons=dict()):
         super().__init__(filename=filename, racen=racen, pa=pa,
                          observatory=observatory, field_cadence=field_cadence,
                          collisionBuffer=collisionBuffer, fieldid=fieldid,
                          verbose=verbose, bright_neighbors=False,
-                         nocalib=True, nocollide=True, allgrids=False)
+                         nocalib=True, nocollide=True, allgrids=False,
+                         subsample_cartons=subsample_cartons,
+                         observe_epoch=None)
         self.bright_neighbors = False
         self.nocalib = True
         self.nocollide = True
