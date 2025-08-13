@@ -35,13 +35,12 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 target_cadence_change = dict()
+subsample_cartons = dict()
 clobber = False
 veryverbose = False
 ignore_satisfied_from = None
 special_calibration = []
 standard_apogee_nperzone_min = -1
-mags_allowed_brighttime = []
-mags_allowed_darktime = []
 dmodes = None
 test = False
 catchup = False
@@ -51,6 +50,7 @@ noassignmentstatus = False
 nooffset = False
 special_priority = None
 special_cadence = None
+observe_epoch = None
 
 
 def assign_update_wrap(indx):
@@ -138,7 +138,6 @@ def assign_update(indx):
             print(field_status_file)
             status = fitsio.read(field_status_file, ext='TARGET')
             status_field = fitsio.read(field_status_file, ext='FIELD')
-            #iobs = np.where(status['mjd'] > 0)[0]
             iobs = np.where(status['status'] > 0)[0]
             if(len(iobs) > 0):
                 print("fieldid {f}:   status found in {e}".format(f=fieldid,
@@ -187,7 +186,9 @@ def assign_update(indx):
                                 offset_min_skybrightness=offset_min_skybrightness,
                                 nooffset=nooffset, allgrids=allgrids,
                                 noincadence=noincadence,
-                                target_cadence_change=target_cadence_change)
+                                target_cadence_change=target_cadence_change,
+                                subsample_cartons=subsample_cartons,
+                                observe_epoch=observe_epoch)
     f.fieldid = fieldid
 
     if(special_priority is not None):
@@ -292,26 +293,6 @@ def assign_update(indx):
                                     allocated_exposures_done=allocated_exposures_done,
                                     original_exposures_done=original_exposures_done)
 
-        # For some cartons, allow them even if mags are not allowed
-        for carton in mags_allowed_brighttime:
-            ic = np.where((f.targets['carton'] == carton) &
-                          (f.targets['fiberType'] == 'BOSS'))[0]
-            for epoch in np.arange(f.field_cadence.nepochs, dtype=int):
-                if(f.field_cadence.skybrightness[epoch] > 0.5):
-                    f.assignments['mags_allowed'][ic, epoch] = True
-                    f.assignments['bright_allowed'][ic, epoch] = True
-                    f.assignments['allowed'][ic, epoch] = True
-
-        # For some cartons, allow them even if mags are not allowed
-        for carton in mags_allowed_darktime:
-            ic = np.where((f.targets['carton'] == carton) &
-                          (f.targets['fiberType'] == 'BOSS'))[0]
-            for epoch in np.arange(f.field_cadence.nepochs, dtype=int):
-                if(f.field_cadence.skybrightness[epoch] < 0.5):
-                    f.assignments['mags_allowed'][ic, epoch] = True
-                    f.assignments['bright_allowed'][ic, epoch] = True
-                    f.assignments['allowed'][ic, epoch] = True
- 
         # Escape if all exposures are locked
         iunlocked = np.where(f.exposure_locked == False)[0]
         if(len(iunlocked) == 0):
@@ -320,6 +301,9 @@ def assign_update(indx):
             f.tofits(field_assignments_file)
             print("fieldid {f}: Done".format(f=fieldid), flush=True)
             return
+
+        # Subsample cartons as appropriate
+        f.subsample()
 
         # For special calibration methods running at beginning
         for sc in special_calibration:
@@ -469,10 +453,6 @@ if __name__ == '__main__':
     if('Assignment' in rsParams.cfg):
         if('special_calibration' in rsParams.cfg['Assignment']):
             special_calibration = rsParams.cfg['Assignment']['special_calibration'].split()
-        if('mags_allowed_brighttime' in rsParams.cfg['Assignment']):
-            mags_allowed_brighttime = rsParams.cfg['Assignment']['mags_allowed_brighttime'].split()
-        if('mags_allowed_darktime' in rsParams.cfg['Assignment']):
-            mags_allowed_darktime = rsParams.cfg['Assignment']['mags_allowed_darktime'].split()
         if('offset_min_skybrightness' in rsParams.cfg['Assignment']):
             offset_min_skybrightness = np.float32(rsParams.cfg['Assignment']['offset_min_skybrightness'])
         if('ignore_satisfied_from' in rsParams.cfg['Assignment']):
@@ -498,7 +478,14 @@ if __name__ == '__main__':
         for t in rsParams.cfg['TargetCadenceChange']:
             target_cadence_change[t] = rsParams.cfg['TargetCadenceChange'][t]
 
+    subsample_cartons = dict()
+    if('AssignmentSubsample' in rsParams.cfg):
+        for t in rsParams.cfg['AssignmentSubsample']:
+            subsample_cartons[t] = np.float32(rsParams.cfg['AssignmentSubsample'][t])
+
     if('Assignment' in rsParams.cfg):
+        if('observe_epoch' in rsParams.cfg['Assignment']):
+            observe_epoch = rsParams.cfg.get('Assignment', 'observe_epoch')
         if('standard_apogee_nperzone_min' in rsParams.cfg['Assignment']):
             standard_apogee_nperzone_min = np.int32(rsParams.cfg.get('Assignment',
                                                                      'standard_apogee_nperzone_min'))
