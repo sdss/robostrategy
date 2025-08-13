@@ -31,6 +31,7 @@ sdss_path = sdss_access.path.Path(release='sdss5', preserve_envvars=True)
 cadencelist = cadence.CadenceList(skybrightness_only=True)
 
 noclobber = False
+subsample_cartons = dict()
 
 
 def make_assign_entry(f, fields_entry, field_cadence, utcadences,
@@ -177,6 +178,7 @@ def field_options(ifield):
                                        observatory=observatory,
                                        fieldid=fieldid)
     f = field.FieldSpeedy(filename=field_target_file,
+                          subsample_cartons=subsample_cartons,
                           verbose=True, fieldid=fieldid)
 
     icadences = np.where(cadence_mask[ifield, :] != 0)[0]
@@ -234,6 +236,7 @@ def field_options(ifield):
             print(e)
             sys.exit()
         
+        f.subsample()
         f.assign_science()
         f.decollide_unassigned()
 
@@ -266,6 +269,7 @@ def field_options(ifield):
                 fcadence = '{base}_{n}x1'.format(base=field_cadence_base,
                                                  n=indx)
                 f.set_field_cadence(fcadence)
+                f.subsample()
                 f.assign_science()
                 f.decollide_unassigned()
                 assign_entry = make_assign_entry(f, fields_entry,
@@ -424,6 +428,11 @@ if __name__ == '__main__':
         rotate = False
         paname = ''
 
+    subsample_cartons = dict()
+    if('AssignmentSubsample' in rsParams.cfg):
+        for t in rsParams.cfg['AssignmentSubsample']:
+            subsample_cartons[t] = np.float32(rsParams.cfg['AssignmentSubsample'][t])
+
     cadences_file = sdss_path.full('rsCadences', plan=plan,
                                    observatory=observatory)
     cadencelist.fromfits(filename=cadences_file, unpickle=True)
@@ -507,9 +516,24 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # Concatenate all
-    assign_all = np.zeros(0, dtype=assign_dtype)
+    noptions = 0
     for fieldid in fields_array['fieldid']:
-        print(fieldid, flush=True)
+        print("Counting {fid}".format(fid=fieldid), flush=True)
+        tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
+                                  observatory=observatory,
+                                  fieldid=fieldid)
+        options_file = tmp_file.replace('rsFieldTargets', 'rsFieldOptions')
+        try:
+            assign_hdr = fitsio.read_header(options_file, ext=1)
+            noptions = noptions + np.int32(assign_hdr['NAXIS2'])
+        except:
+            print("No options for fieldid {fid}".format(fid=fieldid))
+
+    # Concatenate all
+    assign_all = np.zeros(noptions, dtype=assign_dtype)
+    noptions = 0
+    for fieldid in fields_array['fieldid']:
+        print("Reading in {fid}".format(fid=fieldid), flush=True)
         tmp_file = sdss_path.full('rsFieldTargets', plan=plan,
                                   observatory=observatory,
                                   fieldid=fieldid)
@@ -525,9 +549,13 @@ if __name__ == '__main__':
             assign_tmp = np.zeros(len(assign_tmp_in), dtype=assign_dtype)
             for n in assign_tmp.dtype.names:
                 assign_tmp[n] = assign_tmp_in[n]
+            nnew = len(assign_tmp)
+            assign_all[noptions:noptions+nnew] = assign_tmp
+            noptions = noptions + nnew
         except:
-            assign_tmp = np.zeros(0, dtype=assign_dtype)
-        assign_all = np.append(assign_all, assign_tmp)
+            print("No options for fieldid {fid}".format(fid=fieldid))
+
+    assign_all = assign_all[0:noptions]
 
     options_file = sdss_path.full('rsOptions', plan=plan,
                                   observatory=observatory)
