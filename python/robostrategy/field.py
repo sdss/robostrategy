@@ -1494,7 +1494,7 @@ class Field(object):
         return
 
     def _arrayify(self, quantity=None, dtype=np.float64):
-        """Cast quantity as ndarray of numpy.float64"""
+        """Cast quantity as ndarray of np.float64"""
         try:
             length = len(quantity)
         except TypeError:
@@ -2076,6 +2076,12 @@ class Field(object):
 
         delta_dec : ndarray of np.float64
             offset in Dec (proper angular distance)
+
+        offset_flag : ndarray of np.int32
+            flags for offset results
+
+        offset_valid : ndarray of bool
+            whether offset is valid
 """
         if('bright' in design_mode):
             lunation = 'bright'
@@ -2084,46 +2090,58 @@ class Field(object):
             lunation = 'dark'
             skybrightness = 0.35
         mags = targets['magnitude'][:, :]
-        boss = targets['fiberType'] == 'BOSS'
-        apogee = targets['fiberType'] == 'APOGEE'
 
         delta_ra = np.zeros(len(targets), dtype=np.float64)
         delta_dec = np.zeros(len(targets), dtype=np.float64)
         offset_flag = np.zeros(len(targets), dtype=np.int32)
+        offset_valid = np.zeros(len(targets), dtype=bool)
 
-        iboss = np.where(boss)[0]
-        if(len(iboss) > 0):
-            mag_limits = self._mag_limits(design_mode=design_mode, fiberType='BOSS')
-            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iboss, :],
-                                                                                       mag_limits,
-                                                                                       lunation,
-                                                                                       'Boss',
-                                                                                       self.observatory.upper(),
-                                                                                       fmagloss=self.fmagloss,
-                                                                                       can_offset=targets['can_offset'][iboss],
-                                                                                       skybrightness=skybrightness,
-                                                                                       offset_min_skybrightness=self.offset_min_skybrightness)
-            delta_ra[iboss] = tmp_delta_ra
-            delta_dec[iboss] = tmp_delta_dec
-            offset_flag[iboss] = tmp_offset_flag
+        for instrument in ['Apogee', 'Boss']:
+            isinstrument = targets['fiberType'] == instrument.upper()
+            iinstrument = np.where(isinstrument)[0]
+            if(len(iinstrument) > 0):
+                mag_limits = self._mag_limits(design_mode=design_mode, fiberType=instrument.upper())
+                tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iinstrument, :],
+                                                                                           mag_limits,
+                                                                                           lunation,
+                                                                                           instrument,
+                                                                                           self.observatory.upper(),
+                                                                                           fmagloss=self.fmagloss,
+                                                                                           can_offset=targets['can_offset'][iinstrument],
+                                                                                           skybrightness=skybrightness,
+                                                                                           offset_min_skybrightness=self.offset_min_skybrightness)
 
-        iapogee = np.where(apogee)[0]
-        if(len(iapogee) > 0):
-            mag_limits = self._mag_limits(design_mode=design_mode, fiberType='APOGEE')
-            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iapogee, :],
-                                                                                       mag_limits,
-                                                                                       lunation,
-                                                                                       'Apogee',
-                                                                                       self.observatory.upper(),
-                                                                                       fmagloss=self.fmagloss,
-                                                                                       can_offset=targets['can_offset'][iapogee],
-                                                                                       skybrightness=skybrightness,
-                                                                                       offset_min_skybrightness=self.offset_min_skybrightness)
-            delta_ra[iapogee] = tmp_delta_ra
-            delta_dec[iapogee] = tmp_delta_dec
-            offset_flag[iapogee] = tmp_offset_flag
+                delta_ra[iinstrument] = tmp_delta_ra
+                delta_dec[iinstrument] = tmp_delta_dec
+                offset_flag[iinstrument] = tmp_offset_flag
 
-        return(delta_ra, delta_dec, offset_flag)
+                # check stars that are too bright for design mode
+                valid_ind = np.where(mag_limits != -999.0)[0]
+                cases = [-999, -9999, 999, 0.0, np.nan, 99.9, None]
+                curr_mags = mags[iinstrument, :]
+                curr_mags[np.isin(curr_mags, cases)] = np.nan
+                mag_bright = np.any(curr_mags[:, valid_ind] < mag_limits[valid_ind], axis=1)
+
+                # check offset flags to see if should be used or not
+                for indx, i in enumerate(iinstrument):
+                    fl = offset_flag[i]
+                    # manually check bad flags
+                    if targets['program'][i] == "SKY" or "ops" in targets['program'][i]:
+                        offset_valid[i] = True
+                    elif 8 & int(fl) and mag_bright[indx]:
+                        # if below sky brightness and brighter than mag limit
+                        offset_valid[i] = False
+                    elif 16 & int(fl) and mag_bright[indx]:
+                        # if can_offset False and brighter than mag limit
+                        offset_valid[i] = False
+                    elif 32 & int(fl):
+                        # if brighter than safety limit
+                        offset_valid[i] = False
+                    else:
+                        offset_valid[i] = True
+
+        ic = np.where(targets['carton_to_target_pk'] == 1150959021)[0]
+        return(delta_ra, delta_dec, offset_flag, offset_valid)
 
     def radec2xyz(self, ra=None, dec=None, epoch=None, pmra=None,
                   pmdec=None, delta_ra=0., delta_dec=0., fiberType=None):
@@ -2382,6 +2400,8 @@ class Field(object):
         assignments = np.zeros(len(targets),
                                dtype=self.assignments_dtype)
 
+        assignments['subsample_allowed'] = True
+
         field_skybrightness = self.field_cadence.skybrightness[self.field_cadence.epochs]
         assignments['field_skybrightness'] = np.outer(np.ones(len(targets)),
                                                       field_skybrightness)
@@ -2438,26 +2458,30 @@ class Field(object):
         delta_ra_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
         delta_dec_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
         offset_flag_all = np.zeros((len(umode), len(targets)), dtype=np.int32)
+        offset_valid_all = np.zeros((len(umode), len(targets)), dtype=bool)
         for imode, mode in enumerate(umode):
-            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = self.offset(targets=targets,
-                                                                       design_mode=mode)
+            tmp_delta_ra, tmp_delta_dec, tmp_offset_flag, tmp_offset_valid = self.offset(targets=targets,
+                                                                                         design_mode=mode)
             delta_ra_all[imode, :] = tmp_delta_ra
             delta_dec_all[imode, :] = tmp_delta_dec
             offset_flag_all[imode, :] = tmp_offset_flag
+            offset_valid_all[imode, :] = tmp_offset_valid
 
         delta_all = np.sqrt(delta_ra_all**2 + delta_dec_all**2)
 
         if(len(targets) > 0):
             max_delta_all = delta_all.max() + 1.
-            idelta = np.argmin(delta_all + (offset_flag_all > 0) * max_delta_all, axis=0)
+            idelta = np.argmin(delta_all + (offset_valid_all == 0) * max_delta_all, axis=0)
             delta_ra = delta_ra_all[idelta, np.arange(len(targets), dtype=int)]
             delta_dec = delta_dec_all[idelta, np.arange(len(targets), dtype=int)]
             delta = np.sqrt(delta_ra**2 + delta_dec**2)
             offset_allowed = dict()
             offset_flag = dict()
+            offset_valid = dict()
             for imode, mode in enumerate(umode):
                 offset_flag[mode] = offset_flag_all[imode, :]
-                offset_allowed[mode] = (delta_all[imode, :] <= delta) & (offset_flag[mode] == 0)
+                offset_valid[mode] = offset_valid_all[imode, :]
+                offset_allowed[mode] = ((delta_all[imode, :] <= delta) & (offset_valid[mode] > 0))
                 inot = np.where(offset_allowed[mode] == False)[0]
                 offset_flag[mode][inot] = offset_flag[mode][inot] | _offsetdict['TOO_CLOSE_FOR_MODE']
 
