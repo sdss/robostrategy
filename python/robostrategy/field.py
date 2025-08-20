@@ -2101,46 +2101,23 @@ class Field(object):
             iinstrument = np.where(isinstrument)[0]
             if(len(iinstrument) > 0):
                 mag_limits = self._mag_limits(design_mode=design_mode, fiberType=instrument.upper())
-                tmp_delta_ra, tmp_delta_dec, tmp_offset_flag = coordio.utils.object_offset(mags[iinstrument, :],
-                                                                                           mag_limits,
-                                                                                           lunation,
-                                                                                           instrument,
-                                                                                           self.observatory.upper(),
-                                                                                           fmagloss=self.fmagloss,
-                                                                                           can_offset=targets['can_offset'][iinstrument],
-                                                                                           skybrightness=skybrightness,
-                                                                                           offset_min_skybrightness=self.offset_min_skybrightness)
+                tmp_delta_ra, tmp_delta_dec, tmp_offset_flag, tmp_offset_valid = coordio.utils.object_offset(mags[iinstrument, :],
+                                                                                                             mag_limits,
+                                                                                                             lunation,
+                                                                                                             instrument,
+                                                                                                             self.observatory.upper(),
+                                                                                                             fmagloss=self.fmagloss,
+                                                                                                             can_offset=targets['can_offset'][iinstrument],
+                                                                                                             program=targets['program'][iinstrument],
+                                                                                                             skybrightness=skybrightness,
+                                                                                                             offset_min_skybrightness=self.offset_min_skybrightness,
+                                                                                                             check_valid_offset=True)
 
                 delta_ra[iinstrument] = tmp_delta_ra
                 delta_dec[iinstrument] = tmp_delta_dec
                 offset_flag[iinstrument] = tmp_offset_flag
+                offset_valid[iinstrument] = tmp_offset_valid
 
-                # check stars that are too bright for design mode
-                valid_ind = np.where(mag_limits != -999.0)[0]
-                cases = [-999, -9999, 999, 0.0, np.nan, 99.9, None]
-                curr_mags = mags[iinstrument, :]
-                curr_mags[np.isin(curr_mags, cases)] = np.nan
-                mag_bright = np.any(curr_mags[:, valid_ind] < mag_limits[valid_ind], axis=1)
-
-                # check offset flags to see if should be used or not
-                for indx, i in enumerate(iinstrument):
-                    fl = offset_flag[i]
-                    # manually check bad flags
-                    if targets['program'][i] == "SKY" or "ops" in targets['program'][i]:
-                        offset_valid[i] = True
-                    elif 8 & int(fl) and mag_bright[indx]:
-                        # if below sky brightness and brighter than mag limit
-                        offset_valid[i] = False
-                    elif 16 & int(fl) and mag_bright[indx]:
-                        # if can_offset False and brighter than mag limit
-                        offset_valid[i] = False
-                    elif 32 & int(fl):
-                        # if brighter than safety limit
-                        offset_valid[i] = False
-                    else:
-                        offset_valid[i] = True
-
-        ic = np.where(targets['carton_to_target_pk'] == 1150959021)[0]
         return(delta_ra, delta_dec, offset_flag, offset_valid)
 
     def radec2xyz(self, ra=None, dec=None, epoch=None, pmra=None,
@@ -2459,13 +2436,21 @@ class Field(object):
         delta_dec_all = np.zeros((len(umode), len(targets)), dtype=np.float32)
         offset_flag_all = np.zeros((len(umode), len(targets)), dtype=np.int32)
         offset_valid_all = np.zeros((len(umode), len(targets)), dtype=bool)
+        # This is fragile to cadence naming convention
+        target_lunations = np.array([x.split('_')[0] for x in targets['cadence']])
+        target_bright = (target_lunations == 'bright')
         for imode, mode in enumerate(umode):
+            mode_lunation = mode.split('_')[0]
+            mode_bright = (mode_lunation == 'bright')
             tmp_delta_ra, tmp_delta_dec, tmp_offset_flag, tmp_offset_valid = self.offset(targets=targets,
                                                                                          design_mode=mode)
             delta_ra_all[imode, :] = tmp_delta_ra
             delta_dec_all[imode, :] = tmp_delta_dec
             offset_flag_all[imode, :] = tmp_offset_flag
             offset_valid_all[imode, :] = tmp_offset_valid
+            # For bright modes, don't try to offset dark targets
+            if(mode_bright):
+                offset_valid_all[imode, :] = (offset_valid_all[imode, :] & target_bright)
 
         delta_all = np.sqrt(delta_ra_all**2 + delta_dec_all**2)
 
@@ -2474,19 +2459,22 @@ class Field(object):
             idelta = np.argmin(delta_all + (offset_valid_all == 0) * max_delta_all, axis=0)
             delta_ra = delta_ra_all[idelta, np.arange(len(targets), dtype=int)]
             delta_dec = delta_dec_all[idelta, np.arange(len(targets), dtype=int)]
-            delta = np.sqrt(delta_ra**2 + delta_dec**2)
+            delta = delta_all[idelta, np.arange(len(targets), dtype=int)]
             offset_allowed = dict()
             offset_flag = dict()
             offset_valid = dict()
+            any_offset_allowed = np.zeros(len(targets), dtype=bool)
             for imode, mode in enumerate(umode):
                 offset_flag[mode] = offset_flag_all[imode, :]
                 offset_valid[mode] = offset_valid_all[imode, :]
-                offset_allowed[mode] = ((delta_all[imode, :] <= delta) & (offset_valid[mode] > 0))
+                offset_allowed[mode] = (((delta_all[imode, :] == delta) & (offset_valid[mode] > 0))
+                                        & (targets['can_offset'] == True))
+                any_offset_allowed = any_offset_allowed | offset_allowed[mode]
                 inot = np.where(offset_allowed[mode] == False)[0]
                 offset_flag[mode][inot] = offset_flag[mode][inot] | _offsetdict['TOO_CLOSE_FOR_MODE']
 
-            assignments['delta_ra'] = delta_ra
-            assignments['delta_dec'] = delta_dec
+            assignments['delta_ra'] = delta_ra * targets['can_offset'] * any_offset_allowed
+            assignments['delta_dec'] = delta_dec * targets['can_offset'] * any_offset_allowed
 
             # Set offset allowed so we can double check in _bright_allowed_direct
             for epoch, mode in enumerate(self.design_mode):
@@ -2516,8 +2504,9 @@ class Field(object):
 
         # Set allowed in assignments; note offset_allowed was already
         # set above.
+        can_offset = np.outer(targets['can_offset'], np.ones(assignments['mags_allowed'].shape[1], dtype=bool))
         assignments['allowed'] = ((assignments['mags_allowed'] |
-                                   assignments['offset_allowed']) &
+                                   (assignments['offset_allowed'] & can_offset)) &
                                   assignments['bright_allowed'])
 
         if(self.allgrids):
