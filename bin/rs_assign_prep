@@ -211,8 +211,8 @@ if __name__ == '__main__':
             prep_field(i)
     else:
         if(bright_stars_cache is None):
-            with multiprocessing.Pool() as pool:
+            with multiprocessing.Pool(4) as pool:
                 pool.map(prep_field, ikeep)
         else:
-            with multiprocessing.Pool() as pool:
+            with multiprocessing.Pool(4) as pool:
                 pool.map(prep_field, ikeep)
