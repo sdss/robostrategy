@@ -255,7 +255,7 @@ def get_status(indx, fromplan=None):
 
     if(fromplan in assume_done_plans):
 
-        if(('_RM' in field_type)):
+        if(('RM' in field_type)):
             print("fieldid {fid}: Not faking RM fields".format(fid=fieldid), flush=True)
             return(status, status_field)
 
@@ -263,7 +263,7 @@ def get_status(indx, fromplan=None):
         ndesigns = original_allocate_field_array['nallocated_full'][ioriginal[0]]
         d2s_status = 'done'
         fassfile = sdss_path.full('rsFieldAssignmentsFinal', plan=fromplan,
-                                 observatory=observatory, fieldid=fieldid)
+                                  observatory=observatory, fieldid=fieldid)
         fass_status = fitsio.read(fassfile, ext='STATUS')
         d2s_designids = fass_status['designid']
         inew = np.where(d2s_designids <= 0)[0]
@@ -282,8 +282,6 @@ def get_status(indx, fromplan=None):
         status['plan'] = fromplan
         status['first_plan'] = fromplan
         status['observatory'] = observatory
-        status['status'] = 1
-        status['mjd'] = 55555
         status['assignment_status_pk'] = -1
 
         idesign = 0
@@ -309,7 +307,27 @@ def get_status(indx, fromplan=None):
                         status[n][(idesign) * ntargets :
                                   (idesign + 1) * ntargets] = fass_assign[n]
 
+                if(len(fass_assign['holeID'].shape) > 1):
+                    status['holeid'][(idesign) * ntargets :
+                                     (idesign + 1) * ntargets] = fass_assign['holeID'][:, idesign]
+                    status['status'][(idesign) * ntargets :
+                                     (idesign + 1) * ntargets] = (fass_assign['holeID'][:, idesign] != '')
+                    status['mjd'][(idesign) * ntargets :
+                                  (idesign + 1) * ntargets] = 55555 * (fass_assign['holeID'][:, idesign] != '') - 1
+                else:
+                    if(idesign > 0):
+                        raise ValueError("fieldid {fid}: Unexpected number of designs for 1-design field!".format(fid=fieldid))
+                    status['holeid'][(idesign) * ntargets :
+                                     (idesign + 1) * ntargets] = fass_assign['holeID']
+                    status['status'][(idesign) * ntargets :
+                                     (idesign + 1) * ntargets] = (fass_assign['holeID'] != '')
+                    status['mjd'][(idesign) * ntargets :
+                                  (idesign + 1) * ntargets] = 55555 * (fass_assign['holeID'] != '') - 1
+
                 idesign = idesign + 1
+
+        igot = np.where(status['holeid'] != '')[0]
+        status = status[igot]
 
         first_plan = dict()
         design_mode = dict()
