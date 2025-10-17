@@ -83,6 +83,9 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--observatory', dest='observatory',
                         type=str, help='name of observatory', required=False,
                         choices=['lco', 'apo', 'both'], default='both')
+    parser.add_argument('-z', '--assume-done-plan', dest='assume_done_plan',
+                        type=str, help='plan to assume is done', required=False,
+                        default=None)
     parser.add_argument('-S', '--no-split-nocadence', dest='no_split_nocadence',
                         help='do not split off after 18 bright epochs', required=False,
                         default=False, action='store_true')
@@ -98,6 +101,7 @@ if __name__ == '__main__':
     fix_design_mode = args.fix_design_mode
     observatory = args.observatory
     split_nocadence = (args.no_split_nocadence == False)
+    assume_done_plan = args.assume_done_plan
     
     if(observatory == 'both'):
         observatories = ['apo', 'lco']
@@ -111,7 +115,6 @@ if __name__ == '__main__':
         if('version' in rsParams.cfg['CadenceVersions']):
             version = rsParams.cfg.get('CadenceVersions', 'version')
 
-
     for observatory in observatories:
         cadencelist = cadence.CadenceList(skybrightness_only=True)
         cadencelist.reset()
@@ -124,14 +127,24 @@ if __name__ == '__main__':
         allocate_final_file = allocate_file.replace('rsAllocation',
                                                     'final/rsAllocationFinal')
 
+        assume_done = None
+        if(assume_done_plan is not None):
+            assume_done = dict()
+            assume_done['file'] = sdss_path.full('rsAllocation',
+                                                 plan=assume_done_plan,
+                                                 observatory=observatory)
+
         if(refresh):
             allocate_file = allocate_file.replace('rsAllocation', 'rsAllocationRefresh')
 
         allocate_hdus = fits.open(allocate_file)
         rs_fields_array = allocate_hdus[1].data
-        lens = np.array([len(x) for x in rs_fields_array['original_cadence']])
-        print(lens.max())
         rs_fields = allocate_hdus[3].data
+
+        if(assume_done_plan is not None):
+            assume_done['hdus'] = fits.open(assume_done['file'])
+            assume_done['fields_array'] = assume_done['hdus'][1].data
+            assume_done['fields'] = assume_done['hdus'][3].data
 
         if(reset == 'db'):
             t = mugatu.designs_to_targetdb.TargetdbFieldIDs(fieldid_type='manual')
@@ -165,6 +178,7 @@ if __name__ == '__main__':
                                           np.dtype([('iexpst', np.int32),
                                                     ('iexpnd', np.int32),
                                                     ('split', np.int32),
+                                                    ('load', bool),
                                                     ('rs_fieldid', np.int32)]).descr)
         else:
             fields_array_dtype = rs_fields_array.dtype
@@ -174,9 +188,13 @@ if __name__ == '__main__':
                                     np.dtype([('iexpst', np.int32),
                                               ('iexpnd', np.int32),
                                               ('split', np.int32),
+                                              ('load', bool),
                                               ('rs_fieldid', np.int32)]).descr)
         else:
             fields_dtype = rs_fields.dtype
+
+        if(assume_done_plan is not None):
+            expnotdone = dict()
         
         fields_array = np.zeros(0, dtype=fields_array_dtype)
         fields = np.zeros(0, dtype=fields_dtype)
@@ -185,6 +203,11 @@ if __name__ == '__main__':
             fieldid = fieldid_use[iuse]
             iuse = iuse + 1
             curr_cadence_name = rs_fields_array['cadence'][irsfield]
+
+            if('no_apogee_skies' in curr_cadence_name):
+                nasstr = '_no_apogee_skies'
+            else:
+                nasstr = ''
 
             if(curr_cadence_name == 'none'):
                 tmp_fields_array = np.zeros(1, dtype=fields_array_dtype)
@@ -206,6 +229,70 @@ if __name__ == '__main__':
                 fields = np.append(fields, tmp_fields)
                 continue
 
+            if(assume_done_plan is not None):
+                assume_fields_array = assume_done['fields_array']
+                iassume = np.where(rs_fieldid == assume_fields_array['fieldid'])[0][0]
+                old_cadence_name = assume_fields_array['cadence'][iassume]
+                old_cadence = cadencelist.cadences[old_cadence_name]
+                curr_cadence = cadencelist.cadences[curr_cadence_name]
+
+                if(old_cadence.nexp_total >= curr_cadence.nexp_total):
+                    if(old_cadence.nexp_total > curr_cadence.nexp_total):
+                        print("fieldid {fid}: WARNING replaced old cadence {oc} with shorter new cadence {nc}".format(fid=rs_fieldid, nc=curr_cadence_name, oc=old_cadence_name), flush=True)
+
+                    print("fieldid {fid}: full cadence {fc} minus {oc} = {cc} (exclude from output)".format(cc='none',
+                                                                                                            fid=rs_fieldid,
+                                                                                                            fc=curr_cadence_name,
+                                                                                                            oc=old_cadence_name), flush=True)
+                    continue
+
+                expnotdone[fieldid] = np.ones(curr_cadence.nexp_total, dtype=bool)
+                iexp = np.where(rs_fields_array['allocated_exposures_done'][irsfield] >= 0)[0]
+                expnotdone[fieldid][rs_fields_array['allocated_exposures_done'][irsfield, iexp]] = False
+                iepochs = np.unique(curr_cadence.epochs[expnotdone[fieldid]])
+                nepochs = len(iepochs)
+                skybrightness = curr_cadence.skybrightness[iepochs]
+                nexp = curr_cadence.nexp[iepochs]
+                skybrightness_unique = np.unique(skybrightness)
+                if(len(skybrightness_unique) > 1):
+                    idark = np.where(skybrightness < 0.4)[0]
+                    if((len(idark) == 1) & (idark[0] == 0)):
+                        if(nexp.max() > 1):
+                            raise ValueError("Unexpected way to mix bright and dark (nexp>1): full {fc} and old {oc}".format(fc=curr_cadence_name, oc=old_cadence_name))
+                        trim_cadence_name = 'mixed_single' + nasstr + '_{n}x1'.format(n=nepochs)
+                    elif((len(idark) == 2) & (idark[0] == 0) & (idark[1] == 1)):
+                        if(nexp.max() > 1):
+                            raise ValueError("Unexpected way to mix bright and dark (nexp>1): full {fc} and old {oc}".format(fc=curr_cadence_name, oc=old_cadence_name))
+                        trim_cadence_name = 'mixed2_single' + nasstr + '_{n}x1'.format(n=nepochs)
+                    else:
+                        raise ValueError("Unexpected way to mix bright and dark (more than 2 dark): full {fc} and old {oc}".format(fc=curr_cadence_name, oc=old_cadence_name))
+                elif(nexp.max() == 1):
+                    nepochs = curr_cadence.nexp_total - old_cadence.nexp_total
+                    if(skybrightness[0] > 0.35):
+                        if(nepochs == 1):
+                            trim_cadence_name = 'bright' + nasstr + '_{n}x1'.format(n=nepochs)
+                        else:
+                            trim_cadence_name = 'bright_flexible' + nasstr + '_{n}x1'.format(n=nepochs)
+                    else:
+                        if(nepochs == 1):
+                            trim_cadence_name = 'dark' + nasstr + '_{n}x1'.format(n=nepochs)
+                        else:
+                            trim_cadence_name = 'dark_flexible' + nasstr + '_{n}x1'.format(n=nepochs)
+                else:
+                    nexp_unique = np.unique(nexp)
+                    if(len(nexp_unique) > 1):
+                        raise ValueError("Do not expect multiple nexp in extra designs")
+                    if(skybrightness[0] > 0.35):
+                        trim_cadence_name = 'bright' + nasstr + '_{n}x{m}'.format(n=nepochs, m = nexp[0])
+                    else:
+                        trim_cadence_name = 'dark' + nasstr + '_{n}x{m}'.format(n=nepochs, m = nexp[0])
+
+                print("fieldid {fid}: full cadence {fc} minus {oc} = {cc}".format(cc=trim_cadence_name,
+                                                                                  fid=rs_fieldid,
+                                                                                  fc=curr_cadence_name,
+                                                                                  oc=old_cadence_name), flush=True)
+                curr_cadence_name = trim_cadence_name
+                        
             curr_cadence = cadencelist.cadences[curr_cadence_name]
             skybrightness = curr_cadence.skybrightness[curr_cadence.epochs]
             delta_max = curr_cadence.delta_max[curr_cadence.epochs]
@@ -231,6 +318,7 @@ if __name__ == '__main__':
                 tmp_fields_array = np.zeros(1, dtype=fields_array_dtype)
                 for n in rs_fields_array.dtype.names:
                     tmp_fields_array[n][0] = rs_fields_array[n][irsfield]
+                tmp_fields_array['cadence'] = curr_cadence_name
                 tmp_fields_array['iexpst'][0] = iexpst
                 tmp_fields_array['iexpnd'][0] = iexpnd
                 tmp_fields_array['fieldid'][0] = fieldid
@@ -265,12 +353,18 @@ if __name__ == '__main__':
                 print("Impossible result for nexp, bombing")
                 sys.exit(1)
             if(nexp_total < rs_nexp_total):
+                fieldid = fields_array['fieldid'][ifield]
                 fields_array['split'][ifield] = 1
                 fields['split'][ifield] = 1
                 fields_array['needed'][ifield] = nexp_total
                 fields_array['nallocated_full'][ifield] = nexp_total
                 filled_sb = fields_array['filled_sb'][ifield, :]
                 allocated_exposures_done = fields_array['allocated_exposures_done'][ifield, :]
+                if(assume_done_plan is not None):
+                    for ia, iexp in enumerate(fields_array['allocated_exposures_done'][ifield, :]):
+                        if(iexp >= 0):
+                            if(expnotdone[fieldid][iexp] == False):
+                                allocated_exposures_done[ia] = - 1
                 allocated_exposures_done = allocated_exposures_done[allocated_exposures_done >= 0]
                 done_exposures = np.zeros(rs_nexp_total, dtype=bool)
                 done_exposures[allocated_exposures_done] = True
@@ -315,7 +409,7 @@ if __name__ == '__main__':
                         filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     else:
                         print(fields_array['fieldid'][ifield])
-                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        print("iexpst={s}, iexpnd={e} does not make sense for {c}".format(s=iexpst, e=iexpnd, c=curr_cadence_name))
                         sys.exit(3)
                 elif(curr_cadence_name[0:12] == 'mixed_single'):
                     if((iexpst == 0) & (iexpnd == 0)):
@@ -355,7 +449,7 @@ if __name__ == '__main__':
                         filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     else:
                         print(fields_array['fieldid'][ifield])
-                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        print("iexpst={s}, iexpnd={e} does not make sense for {c}".format(s=iexpst, e=iexpnd, c=curr_cadence_name))
                         sys.exit(3)
                 elif(('mixed_1x1+1x' in curr_cadence_name) | 
                      ('mixed_no_apogee_skies_1x1+1x' in curr_cadence_name)):
@@ -385,7 +479,7 @@ if __name__ == '__main__':
                         filled_sb[1] = 0
                     else:
                         print(fields_array['fieldid'][ifield])
-                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        print("iexpst={s}, iexpnd={e} does not make sense for {c}".format(s=iexpst, e=iexpnd, c=curr_cadence_name))
                         sys.exit(3)
                 elif(('mixed_2x1+1x' in curr_cadence_name) |
                      ('mixed_no_apogee_skies_2x1+1x' in curr_cadence_name)):
@@ -415,7 +509,28 @@ if __name__ == '__main__':
                         filled_sb[1] = 0
                     else:
                         print(fields_array['fieldid'][ifield])
-                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        print("iexpst={s}, iexpnd={e} does not make sense for {c}".format(s=iexpst, e=iexpnd, c=curr_cadence_name))
+                        sys.exit(3)
+                        sys.exit(3)
+                elif(('bright_2x2+' in curr_cadence_name) |
+                     ('bright_no_apogee_skies_2x2+' in curr_cadence_name)):
+                    if('no_apogee_skies' in curr_cadence_name):
+                        nasstr = '_no_apogee_skies'
+                    else:
+                        nasstr = ''
+                    if(iexpst == 4):
+                        fields_array['cadence'][ifield] = 'bright' + nasstr+ '_{n}x1'.format(n=iexpnd - 4)
+                        new_exp, new_time = split_slots(curr_exps, curr_time,
+                                                        ttype='bright',
+                                                        ndark=0,
+                                                        done_exposures=done_exposures,
+                                                        iexp=[iexpst, iexpnd], verbose=verbose)
+                        filled_sb[0] = 0
+                        filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
+                    else:
+                        print(fields_array['fieldid'][ifield])
+                        print("iexpst={s}, iexpnd={e} does not make sense for {c}".format(s=iexpst, e=iexpnd, c=curr_cadence_name))
+                        sys.exit(3)
                         sys.exit(3)
                 elif(curr_cadence_name[0:13] == 'bright_single'):
                     if((iexpst == 0) & (iexpnd <= 17)):
@@ -443,7 +558,7 @@ if __name__ == '__main__':
                                                         iexp=[iexpst, iexpnd], verbose=verbose)
                         filled_sb[1] = (done_exposures[iexpst:iexpnd+1]).sum()
                     else:
-                        print("iexpst={s}, iexpnd={e} does not make sense".format(s=iexpst, e=iexpnd))
+                        print("iexpst={s}, iexpnd={e} does not make sense for {c}".format(s=iexpst, e=iexpnd, c=curr_cadence_name))
                         sys.exit(3)
                 else:
                     print("Not expecting mixed cadence with name {n}".format(n=curr_cadence_name))
@@ -467,6 +582,13 @@ if __name__ == '__main__':
                 oexpdone = fields_array['original_exposures_done'][ifield, iexpdone]
                 fields_array['original_exposures_done'][ifield, :] = -1
                 fields_array['original_exposures_done'][ifield, 0:len(oexpdone)] = oexpdone
+
+        if(assume_done_plan is not None):
+            for i, fieldid in enumerate(fields_array['fieldid']):
+                if(fieldid in expnotdone):
+                    inotdone = np.where(expnotdone[fieldid])[0]
+                    fields_array['iexpst'][i] = inotdone[fields_array['iexpst'][i]]
+                    fields_array['iexpnd'][i] = inotdone[fields_array['iexpnd'][i]]
 
         for i, fc in enumerate(fields_array['cadence']):
             if(fc != b'none'):
