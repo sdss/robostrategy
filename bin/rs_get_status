@@ -39,6 +39,7 @@ catchup = False
 catchup_version = None
 debug = False
 earliest_mjd = {'bright': 0., 'dark': 0.}
+latest_mjd = {'bright': 9999999., 'dark': 9999999.}
 
 
 def raise_or_report(fieldid, msg):
@@ -136,7 +137,12 @@ def get_and_write_status(indx):
 
     for sf in status_field:
         if(sf['first_plan'] not in assume_done_plans):
+            dorb = sf['design_mode'].split('_')[0]
             d2s, mjd = robostrategy.dbutils.design_status(design_id=sf['design_id'])
+            if(d2s == 'done'):
+                if((mjd < earliest_mjd[dorb]) | (mjd > latest_mjd[dorb])):
+                    print("WARNING: fieldid {fid}: design_id {did} observed too early or late at MJD={mjd}, ignoring in validation after merge".format(fid=fieldid, did=sf['design_id'], mjd=mjd), flush=True)
+                    d2s = 'not started'
             if(sf['status'] != d2s):
                 raise_or_report(fieldid, "design_to_status says {d2s}, assignment_status says {sf}".format(d2s=d2s, sf=sf['status']))
 
@@ -365,7 +371,7 @@ def get_status(indx, fromplan=None):
             status_field[n] = tmp_status_field[n]
         status_field['full_cadence'] = full_cadence
 
-        print("fieldid {fid}: Checking for early observations".format(fid=fieldid), flush=True)
+        print("fieldid {fid}: Checking for early or late excluded observations".format(fid=fieldid), flush=True)
         try:
             c = cadencelist.cadences[status_field['full_cadence'][0]]
         except KeyError as err:
@@ -375,11 +381,14 @@ def get_status(indx, fromplan=None):
         for isf, csf in enumerate(status_field):
             dorb = csf['design_mode'].split('_')[0]
             emjd = earliest_mjd[dorb]
-            if((csf['status'] == 'done') & (csf['mjd'] < emjd)):
-                print("WARNING: fieldid {fid}: design_id {did} observed too early at MJD={mjd}, removing".format(fid=fieldid, did=csf['design_id'], mjd=csf['mjd']), flush=True)
+            lmjd = latest_mjd[dorb]
+            if((csf['status'] == 'done') & ((csf['mjd'] < emjd) | (csf['mjd'] > lmjd))):
+                print("WARNING: fieldid {fid}: design_id {did} observed too early or late at MJD={mjd}, removing".format(fid=fieldid, did=csf['design_id'], mjd=csf['mjd']), flush=True)
                 status_field['status'][isf] = 'not started'
                 status_field['mjd'][isf] = 0.
-                istatus = np.where(status['design_id'] == design_id)[0]
+                istatus = np.where(d2s_designids == csf['design_id'])[0]
+                d2s_designids_status[istatus] = 'not started'
+                istatus = np.where(status['design_id'] == csf['design_id'])[0]
                 status['status'][istatus] = 0
                 status['mjd'][istatus] = 0
                 status['assignment_status_pk'][istatus] = 0
@@ -436,6 +445,10 @@ if __name__ == '__main__':
     parser.add_argument('-z', '--assume-done-plans', dest='assume_done_plans',
                         type=str, help='name of plan(s) to assume are fully done', required=False,
                         default=None)
+    parser.add_argument('--earliest-mjd', dest='earliest_mjd', type=np.float32,
+                        help='earliest MJD to consider', required=False, default=None)
+    parser.add_argument('--latest-mjd', dest='latest_mjd', type=np.float32,
+                        help='latest MJD to consider', required=False, default=None)
     parser.add_argument('-s', '--start', dest='start',
                         type=np.int32, help='field to start', required=False,
                         default=0)
@@ -487,6 +500,8 @@ if __name__ == '__main__':
     tofile = args.tofile
     boss_only_special = args.boss_only_special
     assume_done_plans_str = args.assume_done_plans
+    earliest_mjd_value = args.earliest_mjd
+    latest_mjd_value = args.latest_mjd
 
     if(assume_done_plans_str is not None):
         assume_done_plans = assume_done_plans_str.split(',')
@@ -495,11 +510,27 @@ if __name__ == '__main__':
 
     rsParams = params.RobostrategyParams(plan=plan)
 
-    earliest_key = 'EarliestMJD{o}'.format(o=observatory.upper())
-    if(earliest_key in rsParams.cfg['Allocation']):
-        earliest = rsParams.cfg['Allocation'][earliest_key].split()
-        earliest_mjd['dark'] = np.float32(earliest[0])
-        earliest_mjd['bright'] = np.float32(earliest[1])
+    if(earliest_mjd_value is None):
+        earliest_key = 'EarliestMJD{o}'.format(o=observatory.upper())
+        if(earliest_key in rsParams.cfg['Allocation']):
+            earliest = rsParams.cfg['Allocation'][earliest_key].split()
+            earliest_mjd['dark'] = np.float32(earliest[0])
+            earliest_mjd['bright'] = np.float32(earliest[1])
+    else:
+        earliest_mjd['dark'] = earliest_mjd_value
+        earliest_mjd['bright'] = earliest_mjd_value
+
+    if(latest_mjd_value is None):
+        latest_key = 'LatestMJD{o}'.format(o=observatory.upper())
+        if(latest_key in rsParams.cfg['Allocation']):
+            latest = rsParams.cfg['Allocation'][latest_key].split()
+            latest_mjd['dark'] = np.float32(latest[0])
+            latest_mjd['bright'] = np.float32(latest[1])
+    else:
+        latest_mjd['dark'] = latest_mjd_value
+        latest_mjd['bright'] = latest_mjd_value
+
+    print(latest_mjd)
 
     fieldlist = None
     if(fieldlist_str is not None):
