@@ -254,7 +254,7 @@ def assign_update(indx):
                     print("fieldid {fid}: WARNING: {o}".format(fid=fieldid, o=original_exposures_done), flush=True)
                     print("fieldid {fid}: WARNING: {o}".format(fid=fieldid, o=allocated_exposures_done), flush=True)
                 else:
-                    print("fieldid {fid}: ERROR: current observations now do not fit into cadence; ignoring old observations".format(fid=fieldid))
+                    raise ValueError("fieldid {fid}: ERROR: current observations now do not fit into cadence; ignoring old observations".format(fid=fieldid))
                     status_field['status'] = 'not started'
                     status['status'] = 0
         
@@ -513,8 +513,8 @@ if __name__ == '__main__':
     allocate_final_file = allocate_file.replace('rsAllocation',
                                                 'final/rsAllocationFinal')
     if(catchup):
-        allocate_final_file = allocate_file.replace('final', 'catchup')
-        allocate_final_file = allocate_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
+        allocate_final_file = allocate_final_file.replace('final', 'catchup')
+        allocate_final_file = allocate_final_file.replace('Final', 'Catchup{v}'.format(v=catchup_version.upper()))
 
     # Rely on this for field information
     allocate_field_array  = fitsio.read(allocate_file, ext='ALLOCATE')
