@@ -226,7 +226,7 @@ def plot_field_shapes(racen=None, deccen=None, pa=None, observatory=None, types=
 
     if((type2color is None) & (colors is None)):
         type2color = dict()
-        type2color['AllSkySloane'] = 'grey'
+        type2color['AllSkySloane'] = 'black'
         type2color['AllSkySparse'] = 'black'
         type2color['Unobserved'] = 'grey'
         type2color['YSO'] = 'black'
