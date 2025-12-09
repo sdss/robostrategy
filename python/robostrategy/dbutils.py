@@ -185,18 +185,22 @@ def field_status(fieldid=None, field_pk=None, plan=None, observatory=None, other
         if(field_pk is not None):
             dinfo = dinfo_joins.where((targetdb.Field.pk == int(field_pk)) &
                                       (targetdb.Observatory.label == observatory.upper()) &
-                                      (targetdb.Version.plan == plan)).dicts()
+                                      (targetdb.Version.plan == plan) &
+                                      (targetdb.Field.overplan_pk.is_null(True))).dicts()
         else:
             dinfo = dinfo_joins.where((targetdb.Field.field_id == int(fieldid)) &
                                       (targetdb.Observatory.label == observatory.upper()) &
-                                      (targetdb.Version.plan == plan)).dicts()
+                                      (targetdb.Version.plan == plan) &
+                                      (targetdb.Field.overplan_pk.is_null(True))).dicts()
     else:
         if(field_pk is not None):
             dinfo = dinfo_joins.where((targetdb.Field.pk == int(field_pk)) &
-                                      (targetdb.Observatory.label == observatory.upper())).dicts()
+                                      (targetdb.Observatory.label == observatory.upper()) &
+                                      (targetdb.Field.overplan_pk.is_null(True))).dicts()
         else:
             dinfo = dinfo_joins.where((targetdb.Field.field_id == int(fieldid)) &
-                                      (targetdb.Observatory.label == observatory.upper())).dicts()
+                                      (targetdb.Observatory.label == observatory.upper()) &
+                                      (targetdb.Field.overplan_pk.is_null(True))).dicts()
 
     designid = np.zeros(len(dinfo), dtype=np.int32)
     designid_status = np.array(['not started'] * len(dinfo))

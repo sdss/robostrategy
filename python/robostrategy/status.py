@@ -108,10 +108,12 @@ def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
         field_info = field_info_select.where((targetdb.Field.field_id == fieldid) &
                                              (targetdb.Version.plan == plan) &
                                              ((opsdb.FieldPriority.label != 'disabled') |
-                                              (opsdb.FieldPriority.label.is_null(True)))).dicts()
+                                              (opsdb.FieldPriority.label.is_null(True))) &
+                                             (targetdb.Field.overplan_pk.is_null(True))).dicts()
     else:
         field_info = field_info_select.where((targetdb.Field.field_id == fieldid) &
-                                             (targetdb.Version.plan == plan)).dicts()
+                                             (targetdb.Version.plan == plan) &
+                                             (targetdb.Field.overplan_pk.is_null(True))).dicts()
 
     field_cadence_dict = dict()
     for f in field_info:
@@ -185,10 +187,12 @@ def get_status_by_fieldid(plan=None, fieldid=None, exclude_disabled=False):
         q_status = q_status.where((targetdb.Field.field_id == fieldid) &
                                   (targetdb.Version.plan == plan) &
                                   ((opsdb.FieldPriority.label != 'disabled') |
-                                   (opsdb.FieldPriority.label.is_null(True)))).dicts()
+                                   (opsdb.FieldPriority.label.is_null(True))) &
+                                  (targetdb.Field.overplan_pk.is_null(True))).dicts()
     else:
         q_status = q_status.where((targetdb.Field.field_id == fieldid) &
-                                  (targetdb.Version.plan == plan)).dicts()
+                                  (targetdb.Version.plan == plan) &
+                                  (targetdb.Field.overplan_pk.is_null(True))).dicts()
 
     sql_string, sql_params = q_status.sql()
     for sql_param in sql_params:
