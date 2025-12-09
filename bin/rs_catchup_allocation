@@ -42,13 +42,24 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--diff-fieldid', dest='diff_fieldid',
                         type=int, help='field ID difference in reading catchup list',
                         default=0, required=False)
+    parser.add_argument('-c', '--cadence-replace', dest='cadence_replace',
+                        type=str, help='cadence replacements',
+                        default=None, required=False)
 
     args = parser.parse_args()
     plan = args.plan
     diff_fieldid = args.diff_fieldid
     catchup_version = args.catchup_version
     observatory = args.observatory
+    cadence_replace_str = args.cadence_replace
 
+    cadence_replace = dict()
+    if(cadence_replace_str is not None):
+        crs = cadence_replace_str.split(',')
+        for cr in crs:
+            original, replace = cr.split('=')
+            cadence_replace[original] = replace
+        
     if(observatory == 'both'):
         observatories = ['apo', 'lco']
     else:
@@ -80,6 +91,13 @@ if __name__ == '__main__':
         for indx, fieldid in enumerate(final_fields['fieldid']):
             keep[indx] = fieldid in (catchup['field_id'] + diff_fieldid)
         catchup_fields = final_fields[keep]
+
+        for original in cadence_replace:
+            replace = cadence_replace[original]
+            iorig = np.where(catchup_fields_array['cadence'] == original)[0]
+            print(f"Replacing {len(iorig)} cadence {original} fields with cadence {replace}",
+                  flush=True)
+            catchup_fields_array['cadence'][iorig] = replace
 
         catchup_fields_array_hdu = astropy.io.fits.BinTableHDU(catchup_fields_array)
         catchup_fields_hdu = astropy.io.fits.BinTableHDU(catchup_fields)
