@@ -186,32 +186,12 @@ if __name__ == '__main__':
                             crescale = bhm_spiders_contiguity_value_rescale(field_options['racen'],
                                                                             field_options['deccen'],
                                                                             params=bhm_spiders_contiguity_params)
-                            fields_debug = [7794, 8942]
-                            cadences_debug = ['dark_1x3', 'mixed_1x1+1x3']
-                            for fx in fields_debug:
-                                for fc in cadences_debug:
-                                    idebug = np.where((field_options['fieldid'] == fx) &
-                                                      (field_options['cadence'] == fc))[0]
-                                    for ic, ct in enumerate(focartons):
-                                        print("fieldid {fid}, {cd}, before:  {c} : {v}".format(fid=fx, cd=fc, c=ct, v=field_options['valuegot_pct'][idebug[0], ic]))
-                                    print("fieldid {fid}, {cd}, before: {v}".format(fid=fx, cd=fc, v=(field_options['valuegot_pct'][idebug[0], :] * scales_pct).sum()))
-                            field_options['valuegot_pct'][:, indx] = \
-                                field_options['valuegot_pct'][:, indx] * crescale
-                            fields_debug = [7794, 8942]
-                            cadences_debug = ['dark_1x3', 'mixed_1x1+1x3']
-                            for fx in fields_debug:
-                                for fc in cadences_debug:
-                                    idebug = np.where((field_options['fieldid'] == fx) &
-                                                      (field_options['cadence'] == fc))[0]
-                                    print("fieldid {fid}, {cd}: crescale={r}".format(fid=fx, cd=fc, r=crescale[idebug[0]]))
-                                    for ic, ct in enumerate(focartons):
-                                        print("fieldid {fid}, {cd}, after:  {c} : {v}".format(fid=fx, cd=fc, c=ct, v=field_options['valuegot_pct'][idebug[0], ic]))
-                                    print("fieldid {fid}, {cd}, after: {v}".format(fid=fx, cd=fc, v=(field_options['valuegot_pct'][idebug[0], :] * scales_pct).sum()))
 
             for indx in np.arange(len(field_options)):
                 field_options['valuegot'][indx] = (
                     field_options['valuegot_pct'][indx, :] *
                     scales_pct).sum()
+
     except KeyError:
         print("No ValueRescale")
 
