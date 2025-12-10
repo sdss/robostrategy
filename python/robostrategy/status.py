@@ -42,11 +42,11 @@ status_dtype = [('fieldid', np.int32),  # in field
                 ('program', np.unicode_, 15), 
                 ('mapper', np.unicode_, 3), # from mapper
                 ('category', np.unicode_, 15), # from category
-                ('cadence', np.unicode_, 22), # from carton_to_target, cadence
+                ('cadence', np.unicode_, 60), # from carton_to_target, cadence
                 ('fiberType', np.unicode_, 6)]  # from instrument
 
 status_field_dtype = [('fieldid', np.int32),
-                      ('cadence', np.unicode_, 25),
+                      ('cadence', np.unicode_, 60),
                       ('field_pk', np.int64),
                       ('field_exposure', np.int32),
                       ('design_id', np.int32),

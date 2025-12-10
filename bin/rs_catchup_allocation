@@ -45,6 +45,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--cadence-replace', dest='cadence_replace',
                         type=str, help='cadence replacements',
                         default=None, required=False)
+    parser.add_argument('-s', '--same-run', dest='same',
+                        help='this catchup is of a currently running run (so use the current cadence as the original)', required=False,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     plan = args.plan
@@ -52,6 +55,7 @@ if __name__ == '__main__':
     catchup_version = args.catchup_version
     observatory = args.observatory
     cadence_replace_str = args.cadence_replace
+    same = args.same
 
     cadence_replace = dict()
     if(cadence_replace_str is not None):
@@ -91,6 +95,9 @@ if __name__ == '__main__':
         for indx, fieldid in enumerate(final_fields['fieldid']):
             keep[indx] = fieldid in (catchup['field_id'] + diff_fieldid)
         catchup_fields = final_fields[keep]
+
+        if(same):
+            catchup_fields_array['original_cadence'] = catchup_fields_array['cadence']
 
         for original in cadence_replace:
             replace = cadence_replace[original]
