@@ -85,6 +85,10 @@ def assign_update(indx):
         field_target_file = field_target_file.replace('targets/rsFieldTargets',
                                                       'targets/rsFieldPrep')
 
+    if(catchup):
+        field_target_file = field_target_file.replace('targets/rsFieldPrep',
+                                                      'catchup/rsFieldPrepCatchup{v}'.format(v=catchup_version.upper()))
+
     field_assignments_file = sdss_path.full('rsFieldTargets',
                                             plan=plan, observatory=observatory,
                                             fieldid=fieldid)

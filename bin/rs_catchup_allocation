@@ -77,6 +77,9 @@ if __name__ == '__main__':
 
         allocate_file = sdss_path.full('rsAllocation', plan=plan,
                                        observatory=observatory)
+        original_allocate_catchup_file = allocate_file.replace('rsAllocation',
+                                                               'catchup/rsAllocationOriginalCatchup{v}'.format(v=catchup_version.upper()))
+                                         
         allocate_final_file = allocate_file.replace('rsAllocation',
                                                     'final/rsAllocationFinal')
         allocate_catchup_file = allocate_file.replace('rsAllocation',
@@ -111,3 +114,30 @@ if __name__ == '__main__':
         allocate_hdus[1] = catchup_fields_array_hdu
         allocate_hdus[3] = catchup_fields_hdu
         allocate_hdus.writeto(allocate_catchup_file, overwrite=False)
+
+        original_allocate_hdus = astropy.io.fits.open(allocate_file)
+        original_fields_array = original_allocate_hdus[1].data
+        original_fields = original_allocate_hdus[3].data
+
+        keep = np.zeros(len(original_fields_array), dtype=bool)
+        for indx, fieldid in enumerate(original_fields_array['fieldid']):
+            keep[indx] = fieldid in (catchup_fields_array['rs_fieldid'])
+        original_catchup_fields_array = original_fields_array[keep]
+
+        keep = np.zeros(len(original_fields), dtype=bool)
+        for indx, fieldid in enumerate(original_fields['fieldid']):
+            keep[indx] = fieldid in (catchup_fields_array['rs_fieldid'])
+        original_catchup_fields = original_fields[keep]
+
+        for original in cadence_replace:
+            replace = cadence_replace[original]
+            iorig = np.where(original_catchup_fields_array['cadence'] == original)[0]
+            print(f"Replacing {len(iorig)} cadence {original} fields with cadence {replace} (original)",
+                  flush=True)
+            original_catchup_fields_array['cadence'][iorig] = replace
+
+        original_catchup_fields_array_hdu = astropy.io.fits.BinTableHDU(original_catchup_fields_array)
+        original_catchup_fields_hdu = astropy.io.fits.BinTableHDU(original_catchup_fields)
+        original_allocate_hdus[1] = original_catchup_fields_array_hdu
+        original_allocate_hdus[3] = original_catchup_fields_hdu
+        original_allocate_hdus.writeto(original_allocate_catchup_file, overwrite=False)
