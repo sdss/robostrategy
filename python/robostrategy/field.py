@@ -508,6 +508,8 @@ class Field(object):
 
     veryverbose : bool
         if True, really issue a lot of output statements (default False)
+    observe_epoch : str
+        calendar date of observation "YYYY-MM-DD" (default None)
 
     Attributes
     ----------

@@ -1,6 +1,6 @@
 import os
 import numpy as np
-import peewee
+from peewee import JOIN, fn
 import astropy.io.ascii
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdssdb.peewee.sdss5db.catalogdb as catalogdb
@@ -80,7 +80,7 @@ def read_cartons(version=None, filename=None):
     return(cartons)
 
 
-def get_targets(carton=None, version=None, justcount=False, c2c=None):
+def get_targets(carton=None, version=None, justcount=False, c2c=None, racen=None, deccen=None, radius=None):
     """Pull targets from the targetdb
 
     Parameters
@@ -97,6 +97,15 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
 
     c2c : config
         if not None, maps cartons to fiber type and cadences (default None)
+
+    racen : float
+        right ascension of center of search region
+
+    deccen : float
+        declination of center of search region
+
+    radius : float
+        radius of search region in degrees
 """
     if(justcount):
         print("Counting carton {p}, version {v}".format(p=carton,
@@ -111,7 +120,11 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
              .join(targetdb.Carton)
              .join(targetdb.Version)
              .where((targetdb.Carton.carton == carton) &
-                    (targetdb.Version.plan == version))).count()
+                    (targetdb.Version.plan == version)))
+    if racen is not None and deccen is not None and radius is not None:
+        ntall = ntall.where(fn.q3c_radial_query(targetdb.Target.ra, targetdb.Target.dec, racen, deccen, radius)).count()
+    else:
+        ntall = ntall.count()       
 
     if(justcount):
         print(" ... {ntall} targets".format(ntall=ntall), flush=True)
@@ -120,13 +133,18 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
     # Now look at those with a cadence, instrument, and magnitude not null
     nt = (targetdb.Target.select(targetdb.Target.pk)
           .join(targetdb.CartonToTarget)
-          .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-          .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-          .join(targetdb.Magnitude, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+          .join(targetdb.Instrument, JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+          .join(targetdb.Cadence, JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+          .join(targetdb.Magnitude, JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
           .join(targetdb.Carton)
           .join(targetdb.Version)
           .where((targetdb.Carton.carton == carton) &
-                 (targetdb.Version.plan == version))).count()
+                 (targetdb.Version.plan == version)))
+
+    if racen is not None and deccen is not None and radius is not None:
+        nt = nt.where(fn.q3c_radial_query(targetdb.Target.ra, targetdb.Target.dec, racen, deccen, radius)).count()
+    else:
+        nt = nt.count() 
 
     if(nt != ntall):
         print("WARNING: only {nt} of {ntall} targets in carton {carton} have cadence, instrument, and magnitude non-null".format(nt=nt, ntall=ntall, carton=carton))
@@ -172,22 +190,27 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None):
                                      targetdb.Version.plan,
                                      targetdb.Version.tag)
               .join(targetdb.CartonToTarget)
-              .join(targetdb.Instrument, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-              .join(targetdb.Cadence, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
-              .join(targetdb.Magnitude, peewee.JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+              .join(targetdb.Instrument, JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+              .join(targetdb.Cadence, JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
+              .join(targetdb.Magnitude, JOIN.LEFT_OUTER).switch(targetdb.CartonToTarget)
               .join(targetdb.Carton)
-              .join(targetdb.Mapper, peewee.JOIN.LEFT_OUTER).switch(targetdb.Carton)
+              .join(targetdb.Mapper, JOIN.LEFT_OUTER).switch(targetdb.Carton)
               .join(targetdb.Version).switch(targetdb.Carton)
               .join(targetdb.Category).switch(targetdb.Target)
               .join(catalogdb.Catalog, on=(catalogdb.Catalog.catalogid == targetdb.Target.catalogid))
               .join(catalogdb.Version)
               .where((targetdb.Carton.carton == carton) &
-                     (targetdb.Version.plan == version))).dicts()
+                     (targetdb.Version.plan == version)))
+                     
+        if racen is not None and deccen is not None and radius is not None:
+            ts = ts.where(fn.q3c_radial_query(targetdb.Target.ra, targetdb.Target.dec, racen, deccen, radius)).dicts()
+        else:
+            ts = ts.dicts()
 
         castn = dict()
         for n in tmp_targets.dtype.names:
             castn[n] = np.cast[type(tmp_targets[n][0])]
-            
+
         problems = []
         for indx, t in enumerate(ts):
             for n in tmp_targets.dtype.names:
