@@ -19,7 +19,7 @@ import sys
 # The NAME variable should be of the format "sdss-robostrategy".
 # Please check your NAME adheres to that format.
 NAME = 'robostrategy'
-VERSION = 'dev'
+VERSION = '1.6.25dev'
 RELEASE = 'dev' in VERSION
 
 
