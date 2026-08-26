@@ -3,10 +3,11 @@ import numpy as np
 from peewee import JOIN, fn
 import astropy.io.ascii
 import sdssdb.peewee.sdss5db.targetdb as targetdb
-import sdssdb.peewee.sdss5db.catalogdb as catalogdb
+# import sdssdb.peewee.sdss5db.catalogdb as catalogdb
 
-from sdssdb.peewee.sdss5db import database
-database.set_profile('operations')
+# won't work on the mountain, don't forget a utah solution
+# from sdssdb.peewee.sdss5db import database
+# database.set_profile('operations')
 
 target_dtype = [('stage', np.unicode_, 6),
                 ('rsid', np.int64), # set equal to carton_to_target_pk
@@ -24,7 +25,7 @@ target_dtype = [('stage', np.unicode_, 6),
                 ('pmdec', np.float32),
                 ('parallax', np.float32),
                 ('catalogid', np.int64),
-                ('catalogdb_plan', str, 12),
+                # ('catalogdb_plan', str, 12),
                 ('target_pk', np.int64),
                 ('magnitude', np.float32, 10), # from magnitude
                 ('carton', np.unicode_, 60), # from carton
@@ -186,7 +187,6 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None, racen=None
                                      targetdb.Category.label.alias('category'),
                                      targetdb.Cadence.label_root.alias('cadence'),
                                      targetdb.Instrument.label.alias('fiberType'),
-                                     catalogdb.Version.plan.alias('catalogdb_plan'),
                                      targetdb.Version.plan,
                                      targetdb.Version.tag)
               .join(targetdb.CartonToTarget)
@@ -197,8 +197,6 @@ def get_targets(carton=None, version=None, justcount=False, c2c=None, racen=None
               .join(targetdb.Mapper, JOIN.LEFT_OUTER).switch(targetdb.Carton)
               .join(targetdb.Version).switch(targetdb.Carton)
               .join(targetdb.Category).switch(targetdb.Target)
-              .join(catalogdb.Catalog, on=(catalogdb.Catalog.catalogid == targetdb.Target.catalogid))
-              .join(catalogdb.Version)
               .where((targetdb.Carton.carton == carton) &
                      (targetdb.Version.plan == version)))
                      

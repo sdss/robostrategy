@@ -7,8 +7,8 @@ import sdssdb.peewee.sdss5db.opsdb as opsdb
 import robostrategy.targets
 import roboscheduler.cadence
 
-from sdssdb.peewee.sdss5db import database
-database.set_profile('operations')
+# from sdssdb.peewee.sdss5db import database
+# database.set_profile('operations')
 
 
 target_dtype = robostrategy.targets.target_dtype

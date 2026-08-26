@@ -4,8 +4,8 @@ import sdssdb.peewee.sdss5db.opsdb as opsdb
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdssdb.peewee.sdss5db.catalogdb as catalogdb
 
-from sdssdb.peewee.sdss5db import database
-database.set_profile('operations')
+# from sdssdb.peewee.sdss5db import database
+# database.set_profile('operations')
 
 status_dtype = [('fieldid', np.int32),  # in field
                 ('field_pk', np.int64),  # from field

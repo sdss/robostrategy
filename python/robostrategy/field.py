@@ -9,6 +9,7 @@ import os
 import re
 import random
 import datetime
+import sys
 import jinja2
 import numpy as np
 import fitsio
@@ -18,6 +19,7 @@ import ortools.sat.python.cp_model as cp_model
 import astropy.coordinates
 import astropy.units
 import PyAstronomy.pyasl as pyasl
+import polars
 import roboscheduler
 import roboscheduler.cadence
 import kaiju
@@ -1130,7 +1132,167 @@ class Field(object):
             
         self.mastergrid.unassignTarget(rsid)
         return(True)
+
+    def _bn_validation(self, design_mode=None, targets=None, assignments=None):
+        """
+        Validate a list of targets to determine if they are too close
+        to a bright neighbor. This functionm relies on the
+        healpix map of bright neighbors for each designmode
+        created with this script:
+        https://github.com/sdss/mugatu/blob/master/bin/bright_neigh_healpix_map.py.
+        To use this function, the environment variable BN_HEALPIX must be
+        set to the path to these healpix maps.
+        Borrowed from ToO code.
+
+        Parameters
+        ----------
+        design_mode : str
+                    design mode to make determination for
         
+        targets : ndarray
+            some elements of the targets ndarray
+
+        assignments : ndarray
+            some elements of the assignments ndarray
+
+        Return
+        ------
+        bright_allowed: np.array
+            bright neighbor validation for specified design_mode.
+            True means passes check.
+
+        """
+
+        from astropy_healpix import HEALPix
+
+        BN_HEALPIX = os.getenv("BN_HEALPIX")
+        if BN_HEALPIX is None:
+            raise ValueError("Environment variable BN_HEALPIX not set.")
+
+        if not os.path.exists(BN_HEALPIX):
+            raise ValueError(f"Path $BN_HEALPIX={BN_HEALPIX} does not exist.")
+
+        # load the healpix indicies for the designmode
+        bn_maps_boss_file = f"{BN_HEALPIX}/{design_mode}_boss_bn_healpix.parquet"
+        if not os.path.exists(bn_maps_boss_file):
+            raise FileNotFoundError(f"File {bn_maps_boss_file} does not exist.")
+        bn_maps_boss = polars.scan_parquet(bn_maps_boss_file)
+
+        bn_maps_apogee_file = f"{BN_HEALPIX}/{design_mode}_apogee_bn_healpix.parquet"
+        if not os.path.exists(bn_maps_apogee_file):
+            raise FileNotFoundError(f"File {bn_maps_apogee_file} does not exist.")
+        bn_maps_apogee = polars.scan_parquet(bn_maps_apogee_file)
+
+        # create the correct nside healpix object
+        hp = HEALPix(nside=2**18, order="ring", frame="icrs")
+
+        # get proper motions
+        # pmra = targets["pmra"].to_numpy()
+        # pmdec = targets["pmdec"].to_numpy()
+        # epoch = targets["epoch"].to_numpy()
+        # deal with nulls
+        # ev_pm_null = np.isnan(pmra) | np.isnan(pmdec)
+        # pmra[ev_pm_null] = 0.0
+        # pmdec[ev_pm_null] = 0.0
+        # epoch[np.isnan(epoch)] = 2016.0
+        # get the indicies for all targets
+        coord = astropy.coordinates.SkyCoord(
+            ra=assignments['fiber_ra'] * astropy.units.deg,
+            dec=assignments['fiber_dec'] * astropy.units.deg)
+            # pm_ra_cosdec=pmra * u.mas / u.yr,
+            # pm_dec=pmdec * u.mas / u.yr,
+            # obstime=Time(epoch, format="decimalyear"),
+        # ).apply_space_motion(Time.now())
+        hp_inds = hp.skycoord_to_healpix(coord)
+
+        assert isinstance(hp_inds, np.ndarray)
+
+        # check if ToOs in bright neighbor healpixels
+        bright_allowed = np.zeros(len(targets), dtype=bool) + True
+
+        ev_boss = targets["fiberType"] == "BOSS"
+        ev_apogee = targets["fiberType"] == "APOGEE"
+
+        hp_inds_boss = hp_inds[ev_boss]
+        hp_inds_apogee = hp_inds[ev_apogee]
+
+        # Get bright healpixels that are in our target list.
+        invalid_hp_boss = bn_maps_boss.filter(polars.col.data.is_in(hp_inds_boss))
+        invalid_hp_apogee = bn_maps_apogee.filter(polars.col.data.is_in(hp_inds_apogee))
+
+        # opposite as True == valid target
+        bright_allowed[ev_boss] = ~np.isin(hp_inds[ev_boss], invalid_hp_boss.collect())
+        bright_allowed[ev_apogee] = ~np.isin(hp_inds[ev_apogee], invalid_hp_apogee.collect())
+
+        return bright_allowed
+
+    def _bn_allowed_robot(self, rsid=None, robotID=None, design_mode=None):
+        """Reports if bright neighbor considerations allow an assignment
+           using updated healpix method
+
+        Parameters
+        ----------
+
+        rsid : np.int64
+            rsid of target in assignment
+        
+        robotID : int
+            robotID of robot in assignment
+
+        design_mode : str
+            design mode to consider
+
+        Returns
+        -------
+
+        allowed : bool
+            True if the assignment is allowed by bright neighbor considerations
+            and False if not
+"""
+        try:
+            self.mastergrid.assignRobot2Target(robotID, rsid)
+        except RuntimeError:
+            print("assignRobot2Target failure", flush=True)
+            print("robotID={r}".format(r=robotID), flush=True)
+            print("rsid={r}".format(r=rsid), flush=True)
+            irobot = self.robotID2indx[robotID]
+            print("{rl}".format(rl=self._robot_locked[irobot, :]))
+            sys.exit()
+
+        x = dict()
+        y = dict()
+        
+        x['BOSS'] = self.mastergrid.robotDict[robotID].bossWokXYZ[0]
+        y['BOSS'] = self.mastergrid.robotDict[robotID].bossWokXYZ[1]
+        x['APOGEE'] = self.mastergrid.robotDict[robotID].apWokXYZ[0]
+        y['APOGEE'] = self.mastergrid.robotDict[robotID].apWokXYZ[1]
+
+        ras = list()
+        decs = list()
+        fibertypes = np.array(['APOGEE', 'BOSS'], dtype=[('fiberType', 'U7')])
+
+        for fiberType in ['APOGEE', 'BOSS']:
+            ra_robo, dec_robo = self.xy2radec(x=np.array([x[fiberType],
+                                                            x[fiberType]]),
+                                                y=np.array([y[fiberType],
+                                                            y[fiberType]]),
+                                                fiberType=fiberType)
+            ras.append(ra_robo[0])
+            decs.append(dec_robo[0])
+
+        assignments = np.rec.fromarrays([ras, decs], names=['fiber_ra', 'fiber_dec'])
+
+        allowed = self._bn_validation(design_mode=design_mode, 
+                                      targets=fibertypes, assignments=assignments)
+
+        if not np.all(allowed):
+            self.mastergrid.unassignTarget(rsid)
+            return(False)
+
+        self.mastergrid.unassignTarget(rsid)
+        return(True)
+
+
     def _add_dummy_cadences(self): 
         """Adds some dummy cadences for singlebright and multibright"""
         clist.add_cadence(name='_field_single_1x1',
@@ -1699,14 +1861,14 @@ class Field(object):
                 for c in self.calibration_order:
                     self.achievable_calibrations[c] = self.required_calibrations[c].copy()
 
-            if(self.bright_neighbors):
-                if(self.verbose):
-                    print("fieldid {fieldid}: Find bright stars".format(fieldid=self.fieldid), flush=True)
-                umode = np.unique(self.design_mode)
-                for design_mode in umode:
-                    for fiberType in ['APOGEE', 'BOSS']:
-                        self.set_bright_stars(design_mode=design_mode,
-                                              fiberType=fiberType)
+            # if(self.bright_neighbors):
+            #     if(self.verbose):
+            #         print("fieldid {fieldid}: Find bright stars".format(fieldid=self.fieldid), flush=True)
+            #     umode = np.unique(self.design_mode)
+            #     for design_mode in umode:
+            #         for fiberType in ['APOGEE', 'BOSS']:
+            #             self.set_bright_stars(design_mode=design_mode,
+            #                                   fiberType=fiberType)
 
             if(self.verbose):
                 print("fieldid {fieldid}: Setup assignments".format(fieldid=self.fieldid), flush=True)
@@ -2416,9 +2578,9 @@ class Field(object):
             mags_allowed[mode] = self._mags_allowed(designMode=dm,
                                                     targets=targets)
             if(self.bright_neighbors):
-                bright_allowed[mode] = self._bright_allowed_direct(design_mode=mode,
-                                                                   targets=targets,
-                                                                   assignments=assignments)
+                bright_allowed[mode] = self._bn_validation(design_mode=mode,
+                                                           targets=targets,
+                                                           assignments=assignments)
             else:
                 bright_allowed[mode] = np.ones(len(targets), dtype=bool)
 
@@ -3105,7 +3267,7 @@ class Field(object):
         design_mode = self.design_mode[epoch]
         key = (status.rsid, status.robotID, design_mode)
         if(key not in self.bright_neighbor_cache):
-            self.bright_neighbor_cache[key] = self._bright_allowed_robot(rsid=status.rsid, robotID=status.robotID, design_mode=design_mode)
+            self.bright_neighbor_cache[key] = self._bn_allowed_robot(rsid=status.rsid, robotID=status.robotID, design_mode=design_mode)
         i = status.expindx[iexp]
         status.bright_neighbor_allowed[i] = self.bright_neighbor_cache[key]
         return
@@ -6952,8 +7114,8 @@ Carton completion:
                         rsid = self.targets['rsid'][indx]
                         robotID = self.robotIDs[irobot]
                         if(self.check_expflag(rsid=rsid, iexp=iexp, flagname='FORCED') == False):
-                            allowed = self._bright_allowed_robot(rsid=rsid, robotID=robotID,
-                                                                 design_mode=design_mode)
+                            allowed = self._bn_allowed_robot(rsid=rsid, robotID=robotID,
+                                                             design_mode=design_mode)
                         else:
                             allowed = True
                         if(allowed is False):

@@ -3,8 +3,8 @@ import peewee
 import sdssdb.peewee.sdss5db.targetdb as targetdb
 import sdssdb.peewee.sdss5db.opsdb as opsdb
 
-from sdssdb.peewee.sdss5db import database
-database.set_profile('operations')
+# from sdssdb.peewee.sdss5db import database
+# database.set_profile('operations')
 
 design_dtype = [('design_id', np.int64),
                 ('field_id', np.int32),  # from field
